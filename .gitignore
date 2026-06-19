@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.vite/
+
+# Screenshot-review working artifacts
+.ui-review/
+playwright-report/
+test-results/
+
+# Local logs
+*.log
+.vite-dev.log
+.pw-install.log
+
+# Claude local settings
+.claude/settings.local.json
