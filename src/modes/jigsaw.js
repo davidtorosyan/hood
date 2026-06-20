@@ -89,7 +89,8 @@ function runPuzzle(app, { back }, puzzle) {
     svg.append(pieceLayer);
 
     const order = []; // recs in creation order
-    const counter = el('span', {});
+    const counter = el('span', { class: 'jig-count' });
+    let solved = false;
 
     function apply(rec) {
       rec.g.setAttribute('transform', `translate(${rec.tx.toFixed(1)} ${rec.ty.toFixed(1)})`);
@@ -99,7 +100,24 @@ function runPuzzle(app, { back }, puzzle) {
     function refreshCounter() {
       const remaining = order.filter((r) => !r.locked).length;
       counter.textContent = remaining === 0 ? 'Done!' : `${remaining} to place`;
-      if (remaining === 0) onSolved();
+      if (remaining === 0 && !solved) {
+        solved = true;
+        onSolved();
+      }
+    }
+
+    // Debug: snap every piece home (assembled at translate 0) and finish.
+    function autosolve() {
+      if (!ready) return;
+      order.forEach((rec) => {
+        rec.tx = 0;
+        rec.ty = 0;
+        rec.locked = true;
+        rec.g.classList.remove('jig-near', 'exploding', 'dragging');
+        rec.g.classList.add('placed');
+        apply(rec);
+      });
+      refreshCounter();
     }
 
     // Would dropping `rec` here connect it? A connection requires BOTH the right
@@ -298,7 +316,13 @@ function runPuzzle(app, { back }, puzzle) {
       }, 850);
     });
 
-    const banner = el('div', { class: 'jig-banner' }, [hint, counter]);
+    const banner = el('div', { class: 'jig-banner' }, [
+      hint,
+      el('div', { class: 'jig-banner-right' }, [
+        el('button', { class: 'jig-debug', onClick: autosolve, title: 'Debug: auto-solve' }, 'Solve'),
+        counter,
+      ]),
+    ]);
     const solvedSlot = el('div', { class: 'jig-solved-slot' });
 
     function onSolved() {
