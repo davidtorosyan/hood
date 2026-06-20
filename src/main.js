@@ -1,28 +1,61 @@
 import './style.css';
-import { startGame } from './game.js';
-import { store } from './store.js';
+import { el, clear } from './ui/dom.js';
+import { mountMystery } from './modes/mystery.js';
+import { mountBattle } from './modes/battle.js';
+import { mountCluster } from './modes/cluster.js';
+import { mountBrowse } from './modes/browse.js';
 
 const app = document.querySelector('#app');
+const goHome = () => renderHome();
+
+function modeCard(emoji, title, desc, onClick, variant = '') {
+  return el('button', { class: `mode-card ${variant}`, onClick }, [
+    el('span', { class: 'mode-emoji' }, emoji),
+    el('span', { class: 'mode-text' }, [
+      el('span', { class: 'mode-title' }, title),
+      el('span', { class: 'mode-desc' }, desc),
+    ]),
+    el('span', { class: 'mode-arrow' }, '›'),
+  ]);
+}
 
 function renderHome() {
-  const sessions = store.state.stats.sessions;
-  const best = store.state.stats.bestStreak;
-  app.innerHTML = `
-    <div class="screen home">
-      <div class="home-hero">
-        <div class="home-mark">🗺️</div>
-        <h1>Hood</h1>
-        <p>Learn the neighborhoods of Los Angeles.</p>
-      </div>
-      <div class="home-actions">
-        <button class="btn btn-lg" id="play">Play</button>
-        ${sessions ? `<p class="home-stat">${sessions} session${sessions > 1 ? 's' : ''} · best streak ${best}</p>` : ''}
-      </div>
-    </div>
-  `;
-  document.querySelector('#play').addEventListener('click', () => {
-    startGame(app, renderHome);
-  });
+  clear(app);
+  app.append(
+    el('div', { class: 'screen home' }, [
+      el('div', { class: 'home-top' }, [
+        el('h1', { class: 'home-title' }, 'Hood'),
+        el('p', { class: 'home-tag' }, 'Get to know the neighborhoods of LA.'),
+      ]),
+      el('div', { class: 'mode-list' }, [
+        modeCard(
+          '🕵️',
+          'Daily Mystery',
+          'Guess the neighborhood from clues.',
+          () => mountMystery(app, { back: goHome }),
+        ),
+        modeCard(
+          '⚡',
+          'Card Battle',
+          'Fast comparisons. Build your instincts.',
+          () => mountBattle(app, { back: goHome }),
+        ),
+        modeCard(
+          '🧩',
+          'Build the Cluster',
+          'Learn what sits near what.',
+          () => mountCluster(app, { back: goHome }),
+        ),
+        modeCard(
+          '📇',
+          'Browse cards',
+          'Flip through every neighborhood.',
+          () => mountBrowse(app, { back: goHome }),
+          'ghost',
+        ),
+      ]),
+    ]),
+  );
 }
 
 renderHome();

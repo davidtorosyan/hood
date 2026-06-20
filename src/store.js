@@ -1,8 +1,9 @@
-// Persists per-neighborhood mastery and overall stats in localStorage, and
-// picks which neighborhoods to quiz using a lightweight Leitner box scheme.
-const KEY = 'hood.progress.v1';
+// Lightweight persistence. Intentionally minimal — this redesign avoids heavy
+// scoring and streak pressure. We only remember the daily mystery result so the
+// player can't redo today's, plus a count of cards seen for gentle feedback.
+const KEY = 'hood.v2';
 
-const empty = () => ({ hoods: {}, stats: { sessions: 0, bestStreak: 0 } });
+const empty = () => ({ dailyMystery: {}, seen: {} });
 
 function load() {
   try {
@@ -12,59 +13,23 @@ function load() {
   }
 }
 
-function save(state) {
-  localStorage.setItem(KEY, JSON.stringify(state));
-}
-
-function hoodRecord(state, name) {
-  return (state.hoods[name] ??= { seen: 0, correct: 0, miss: 0, box: 0, lastSeen: 0 });
-}
-
-// Lower box + fewer views = higher priority. Unseen always floats to the top.
-function weight(rec, sessionCount) {
-  if (rec.seen === 0) return 1000;
-  const staleness = sessionCount - rec.lastSeen;
-  return (6 - rec.box) * 10 + staleness;
-}
-
 export const store = {
   state: load(),
-
-  // Pick `count` neighborhoods to quiz this session, weighted toward the
-  // least-mastered, with a little randomness so sessions vary.
-  pickSession(pool, count) {
-    const s = this.state;
-    const sessionCount = s.stats.sessions;
-    const ranked = pool
-      .map((name) => ({ name, w: weight(hoodRecord(s, name), sessionCount) + Math.random() * 8 }))
-      .sort((a, b) => b.w - a.w);
-    return ranked.slice(0, count).map((r) => r.name);
+  save() {
+    localStorage.setItem(KEY, JSON.stringify(this.state));
   },
-
-  record(name, correct) {
-    const s = this.state;
-    const rec = hoodRecord(s, name);
-    rec.seen += 1;
-    rec.lastSeen = s.stats.sessions;
-    if (correct) {
-      rec.correct += 1;
-      rec.box = Math.min(5, rec.box + 1);
-    } else {
-      rec.miss += 1;
-      rec.box = 0;
-    }
-    save(s);
+  getDaily(dateKey) {
+    return this.state.dailyMystery[dateKey] ?? null;
   },
-
-  endSession(bestStreakThisSession) {
-    const s = this.state;
-    s.stats.sessions += 1;
-    s.stats.bestStreak = Math.max(s.stats.bestStreak, bestStreakThisSession);
-    save(s);
+  setDaily(dateKey, result) {
+    this.state.dailyMystery[dateKey] = result;
+    this.save();
   },
-
-  masteryOf(name) {
-    const rec = this.state.hoods[name];
-    return rec ? rec.box / 5 : 0;
+  markSeen(name) {
+    this.state.seen[name] = (this.state.seen[name] ?? 0) + 1;
+    this.save();
+  },
+  seenCount() {
+    return Object.keys(this.state.seen).length;
   },
 };

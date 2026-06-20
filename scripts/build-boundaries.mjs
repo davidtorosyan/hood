@@ -53,7 +53,16 @@ const out = { type: 'FeatureCollection', features };
 mkdirSync('src/data', { recursive: true });
 writeFileSync(OUT, JSON.stringify(out));
 
+// Centroids-only file: this is what the app actually imports (for proximity
+// questions). Keeping it separate avoids bundling ~470KB of polygons we no
+// longer render after the relationship-learning redesign.
+const centroids = Object.fromEntries(
+  features.map((f) => [f.properties.name, f.properties.centroid]),
+);
+writeFileSync('src/data/centroids.json', JSON.stringify(centroids));
+
 const before = readFileSync(RAW).length;
 const after = readFileSync(OUT).length;
 console.log(`Wrote ${features.length} neighborhoods to ${OUT}`);
+console.log(`Also wrote src/data/centroids.json (${(readFileSync('src/data/centroids.json').length / 1024).toFixed(0)}KB)`);
 console.log(`Size: ${(before / 1024).toFixed(0)}KB -> ${(after / 1024).toFixed(0)}KB`);
