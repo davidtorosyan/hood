@@ -563,6 +563,10 @@ body {
 .jig-piece {
   cursor: grab;
 }
+/* The intro: pieces fly from assembled (translate 0) out to their scatter spots. */
+.jig-piece.exploding {
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
 .jig-piece.dragging {
   cursor: grabbing;
 }
@@ -624,6 +628,21 @@ body {
   flex-direction: column;
   gap: 10px;
   margin-top: 6px;
+}
+.jig-zoom-label {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.jig-zoom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.jig-zoom .btn {
+  font-size: 14px;
+  padding: 12px 10px;
 }
 
 /* ---- Browse -------------------------------------------------------------- */

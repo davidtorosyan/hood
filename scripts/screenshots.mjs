@@ -50,6 +50,7 @@ await back();
 await page.getByText('Jigsaw', { exact: true }).click();
 await shot('jigsaw-select');
 await page.locator('.mode-card').first().click();
+await page.waitForTimeout(1700); // let the explode intro settle into the scatter
 await shot('jigsaw-initial');
 {
   const svg = page.locator('svg.jig');

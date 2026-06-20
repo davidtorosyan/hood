@@ -7,7 +7,7 @@
 import { geoMercator } from 'd3-geo';
 import { el, clear, shuffle, pickOne } from '../ui/dom.js';
 import { modeScreen } from '../ui/chrome.js';
-import { PUZZLES } from '../data/puzzles.js';
+import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles.js';
 import shapes from '../data/puzzle-shapes.json';
 import adjacency from '../data/puzzle-adjacency.json';
 import { store } from '../store.js';
@@ -181,7 +181,9 @@ function runPuzzle(app, { back }, puzzle) {
     // there. This keeps the drag alive even as the piece is raised above / passes
     // under other pieces — capturing on the re-parented piece itself is unreliable.
     let drag = null;
+    let ready = false; // pieces aren't draggable until the explode intro finishes
     function startDrag(rec, e) {
+      if (!ready) return;
       e.preventDefault();
       const [ux, uy] = toUser(e);
       if (rec.locked) {
@@ -232,34 +234,67 @@ function runPuzzle(app, { back }, puzzle) {
     svg.addEventListener('pointerup', endDrag);
     svg.addEventListener('pointercancel', endDrag);
 
-    // Create all pieces, loose and scattered.
+    // Create all pieces. Each piece's home is its scatter position (tx/ty), but
+    // we briefly show them ASSEMBLED (at translate 0) first, then let them fly
+    // out to those scatter spots — so you see the whole map before it bursts.
     const scattered = shuffle(pieces);
     scattered.forEach((p, k) => {
       const g = makePiece(p);
       const [tx, ty] = scatterTranslate(p, k, scattered.length);
       const rec = { p, g, tx, ty, locked: false };
       order.push(rec);
-      apply(rec);
+      g.classList.add('exploding'); // CSS transition on transform
+      g.setAttribute('transform', 'translate(0 0)'); // start assembled
       attachDrag(rec);
     });
     counter.textContent = `${order.length} to place`;
 
-    const banner = el('div', { class: 'jig-banner' }, [
-      el('span', { class: 'jig-hint' }, 'Fit the pieces together.'),
-      counter,
-    ]);
+    const hint = el('span', { class: 'jig-hint' }, 'Putting the map together…');
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        order.forEach((rec) => apply(rec)); // fly out to scatter (animated)
+        hint.textContent = 'Fit the pieces back together.';
+        setTimeout(() => {
+          order.forEach((rec) => rec.g.classList.remove('exploding'));
+          ready = true;
+        }, 650);
+      }, 850);
+    });
+
+    const banner = el('div', { class: 'jig-banner' }, [hint, counter]);
     const solvedSlot = el('div', { class: 'jig-solved-slot' });
 
     function onSolved() {
       banner.classList.add('done');
+      const open = (p) => runPuzzle(app, { back }, p);
+      let actions;
+      if (puzzle.children) {
+        // Drill down: pick a region to zoom into its own neighborhoods.
+        actions = [
+          el('p', { class: 'jig-zoom-label' }, 'Zoom into a region:'),
+          el(
+            'div',
+            { class: 'jig-zoom' },
+            puzzle.members.map((name) =>
+              el('button', { class: 'btn btn-soft', onClick: () => open(PUZZLE_BY_ID[puzzle.children[name]]) }, name),
+            ),
+          ),
+          el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
+        ];
+      } else {
+        const parent = puzzle.parent ? PUZZLE_BY_ID[puzzle.parent] : null;
+        actions = [
+          parent
+            ? el('button', { class: 'btn', onClick: () => open(parent) }, `↑ Back to ${parent.title}`)
+            : el('button', { class: 'btn', onClick: () => open(nextPuzzle(puzzle)) }, 'Next puzzle'),
+          el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
+        ];
+      }
       solvedSlot.append(
         el('div', { class: 'jig-solved' }, [
           el('p', { class: 'jig-solved-title' }, `${puzzle.title} assembled 🧩`),
           el('p', { class: 'jig-solved-blurb' }, puzzle.blurb),
-          el('div', { class: 'jig-solved-actions' }, [
-            el('button', { class: 'btn', onClick: () => runPuzzle(app, { back }, nextPuzzle(puzzle)) }, 'Next puzzle'),
-            el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
-          ]),
+          el('div', { class: 'jig-solved-actions' }, actions),
         ]),
       );
       solvedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
