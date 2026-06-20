@@ -9,7 +9,10 @@ import { el, clear, shuffle, pickOne } from '../ui/dom.js';
 import { modeScreen } from '../ui/chrome.js';
 import { PUZZLES } from '../data/puzzles.js';
 import shapes from '../data/puzzle-shapes.json';
+import adjacency from '../data/puzzle-adjacency.json';
 import { store } from '../store.js';
+
+const isAdjacent = (a, b) => adjacency[a]?.includes(b) ?? false;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const VB = 1000; // square user-space viewBox
@@ -94,18 +97,26 @@ function runPuzzle(app, { back }, puzzle) {
       if (remaining === 0) onSolved();
     }
 
-    // Would dropping `rec` here connect it? Returns the target translate (and the
-    // seed piece, if this is the first connection of two loose pieces).
+    // Would dropping `rec` here connect it? A connection requires BOTH the right
+    // relative position (matching translate) AND true geographic adjacency to a
+    // piece already in place — so you can't bridge a gap with a non-neighbor.
+    // Returns the target translate (and the seed piece, if this is the first
+    // connection of two loose pieces).
     function wouldConnect(rec) {
       const locked = lockedList();
       if (locked.length) {
         const o = locked[0];
-        if (Math.hypot(rec.tx - o.tx, rec.ty - o.ty) < SNAP) return { tx: o.tx, ty: o.ty };
+        const positioned = Math.hypot(rec.tx - o.tx, rec.ty - o.ty) < SNAP;
+        if (positioned && locked.some((l) => isAdjacent(rec.p.name, l.p.name))) {
+          return { tx: o.tx, ty: o.ty };
+        }
         return null;
       }
       for (const q of order) {
         if (q === rec || q.locked) continue;
-        if (Math.hypot(rec.tx - q.tx, rec.ty - q.ty) < SNAP) return { tx: q.tx, ty: q.ty, seed: q };
+        if (Math.hypot(rec.tx - q.tx, rec.ty - q.ty) < SNAP && isAdjacent(rec.p.name, q.p.name)) {
+          return { tx: q.tx, ty: q.ty, seed: q };
+        }
       }
       return null;
     }

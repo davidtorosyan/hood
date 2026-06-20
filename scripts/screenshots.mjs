@@ -54,37 +54,51 @@ await shot('jigsaw-initial');
 {
   const svg = page.locator('svg.jig');
   const box = await svg.boundingBox();
-  // Each non-anchor piece's true position is translate(0,0); its current
-  // on-screen center = box center + the piece's untranslated centroid offset.
-  // We read the piece transform + label position from the DOM and drag it home.
-  const pieces = await page.evaluate(() => {
-    const vb = 1000;
-    const out = [];
-    document.querySelectorAll('.jig-piece').forEach((g) => {
-      const t = g.getAttribute('transform') || 'translate(0 0)';
-      const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
-      const label = g.querySelector('.jig-label');
-      out.push({
-        tx: +m[1], ty: +m[2],
-        lx: +label.getAttribute('x'), ly: +label.getAttribute('y'),
-      });
-    });
-    return { vb, out };
-  });
-  const u2px = box.width / pieces.vb;
-  for (let i = 0; i < pieces.out.length; i++) {
-    const p = pieces.out[i];
-    const fromX = box.x + (p.lx + p.tx) * u2px;
-    const fromY = box.y + (p.ly + p.ty) * u2px;
-    const toX = box.x + p.lx * u2px;
-    const toY = box.y + p.ly * u2px;
-    await page.mouse.move(fromX, fromY);
-    await page.mouse.down();
-    await page.mouse.move(toX, toY, { steps: 20 });
-    await page.mouse.move(toX, toY); // settle exactly on target
-    await page.mouse.up();
-    await page.waitForTimeout(60);
-    if (i === 0) await shot('jigsaw-midway');
+  const u2px = box.width / 1000;
+  // A piece's true position is translate(0,0). Drag every unplaced piece there.
+  // Because a connection now also requires adjacency to a placed piece, a piece
+  // dropped before its neighbor won't lock yet — so we repeat in passes until
+  // everything is placed (the adjacency graph is connected, so this converges).
+  const read = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.jig-piece')].map((g) => {
+        const t = g.getAttribute('transform') || 'translate(0 0)';
+        const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
+        const l = g.querySelector('.jig-label');
+        return {
+          name: l.textContent,
+          tx: +m[1], ty: +m[2],
+          lx: +l.getAttribute('x'), ly: +l.getAttribute('y'),
+          placed: g.classList.contains('placed'),
+        };
+      }),
+    );
+  // Raise a piece to the top so a simulated grab can't hit an overlapping piece.
+  const raise = (name) =>
+    page.evaluate((nm) => {
+      const g = [...document.querySelectorAll('.jig-piece')].find(
+        (el) => el.querySelector('.jig-label').textContent === nm);
+      g.parentNode.appendChild(g);
+    }, name);
+  let shotMid = false;
+  for (let pass = 0; pass < 6; pass++) {
+    const ps = await read();
+    if (ps.every((p) => p.placed)) break;
+    for (const p of ps) {
+      if (p.placed) continue;
+      await raise(p.name);
+      const fromX = box.x + (p.lx + p.tx) * u2px;
+      const fromY = box.y + (p.ly + p.ty) * u2px;
+      const toX = box.x + p.lx * u2px;
+      const toY = box.y + p.ly * u2px;
+      await page.mouse.move(fromX, fromY);
+      await page.mouse.down();
+      await page.mouse.move(toX, toY, { steps: 16 });
+      await page.mouse.move(toX, toY);
+      await page.mouse.up();
+      await page.waitForTimeout(45);
+      if (!shotMid) { await shot('jigsaw-midway'); shotMid = true; }
+    }
   }
   await shot('jigsaw-solved');
 }
