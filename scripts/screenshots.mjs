@@ -46,8 +46,10 @@ await page.locator('.choice').first().click();
 await shot('mystery-reinforce');
 await back();
 
-// --- Jigsaw --- (simulate dragging each piece to its true slot to test snapping)
+// --- Jigsaw --- (selector, then simulate dragging each piece to assemble)
 await page.getByText('Jigsaw', { exact: true }).click();
+await shot('jigsaw-select');
+await page.locator('.mode-card').first().click();
 await shot('jigsaw-initial');
 {
   const svg = page.locator('svg.jig');
@@ -86,7 +88,8 @@ await shot('jigsaw-initial');
   }
   await shot('jigsaw-solved');
 }
-await back();
+await back(); // puzzle -> selector
+await back(); // selector -> home
 
 // --- Card Battle ---
 await page.getByText('Card Battle').click();

@@ -39,8 +39,38 @@ function project(puzzle) {
   });
 }
 
-export function mountJigsaw(app, { back }, puzzle) {
-  puzzle = puzzle ?? PUZZLES[0];
+// Entry point: a selector listing every puzzle (also handy for testing combos).
+export function mountJigsaw(app, { back }) {
+  clear(app);
+  app.append(
+    modeScreen(
+      'Jigsaw',
+      back,
+      [
+        el('p', { class: 'mode-intro' }, 'Pick a group of neighborhoods to piece together.'),
+        el(
+          'div',
+          { class: 'mode-list' },
+          PUZZLES.map((p) =>
+            el('button', { class: 'mode-card', onClick: () => runPuzzle(app, { back }, p) }, [
+              el('span', { class: 'mode-emoji' }, '🧩'),
+              el('span', { class: 'mode-text' }, [
+                el('span', { class: 'mode-title' }, p.title),
+                el('span', { class: 'mode-desc' }, `${p.members.length} pieces · ${p.blurb}`),
+              ]),
+              el('span', { class: 'mode-arrow' }, '›'),
+            ]),
+          ),
+        ),
+      ],
+      { bodyClass: 'scroll' },
+    ),
+  );
+}
+
+// Run one puzzle. `back` returns to the selector.
+function runPuzzle(app, { back }, puzzle) {
+  const toSelector = () => mountJigsaw(app, { back });
   const pieces = project(puzzle);
 
   function render() {
@@ -215,8 +245,8 @@ export function mountJigsaw(app, { back }, puzzle) {
           el('p', { class: 'jig-solved-title' }, `${puzzle.title} assembled 🧩`),
           el('p', { class: 'jig-solved-blurb' }, puzzle.blurb),
           el('div', { class: 'jig-solved-actions' }, [
-            el('button', { class: 'btn', onClick: () => mountJigsaw(app, { back }, nextPuzzle(puzzle)) }, 'Next puzzle'),
-            el('button', { class: 'btn btn-ghost', onClick: back }, 'Home'),
+            el('button', { class: 'btn', onClick: () => runPuzzle(app, { back }, nextPuzzle(puzzle)) }, 'Next puzzle'),
+            el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
           ]),
         ]),
       );
@@ -227,7 +257,7 @@ export function mountJigsaw(app, { back }, puzzle) {
     app.append(
       modeScreen(
         'Jigsaw',
-        back,
+        toSelector,
         [
           el('p', { class: 'mode-intro' }, 'Drag the neighborhoods so they connect in the right places.'),
           banner,
