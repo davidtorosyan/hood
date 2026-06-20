@@ -16,7 +16,7 @@ const isAdjacent = (a, b) => adjacency[a]?.includes(b) ?? false;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const VB = 1000; // square user-space viewBox
-const FIT = 620; // the assembled puzzle's natural size within the board
+const FIT = 620; // default assembled size within the board (a puzzle may override)
 const SNAP = 135; // connection radius in user units (~48px on a phone — forgiving)
 
 // Project a puzzle's members into board coords. Each piece's path is drawn at
@@ -31,7 +31,8 @@ function project(puzzle) {
       geometry: { type: 'Polygon', coordinates: [shapes[name]] },
     })),
   };
-  const m = (VB - FIT) / 2;
+  const fit = puzzle.fit ?? FIT;
+  const m = (VB - fit) / 2;
   const proj = geoMercator().fitExtent([[m, m], [VB - m, VB - m]], fc);
   return puzzle.members.map((name) => {
     const ring = shapes[name].map((c) => proj(c));

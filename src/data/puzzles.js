@@ -5,6 +5,16 @@
 // spatial relationships are clean and learnable.
 export const PUZZLES = [
   {
+    id: 'regions',
+    title: 'LA regions',
+    blurb: 'The big picture — fit the top-level regions of LA together.',
+    // `members` are region names; their shapes are the union of each region's
+    // neighborhoods (see src/data/regions.js). regionPuzzle drives the build.
+    regionPuzzle: true,
+    fit: 440, // big pieces — assemble smaller so they scatter without piling up
+    members: ['San Fernando Valley', 'Northeast LA', 'Eastside', 'Central LA', 'Westside', 'South LA'],
+  },
+  {
     id: 'nela',
     title: 'Northeast LA',
     blurb: 'The NELA corridor — assemble the pieces around the river and the hills.',
