@@ -5,7 +5,7 @@
 // (like a real jigsaw). The assembly forms wherever you build it and can be
 // dragged around as a unit. A piece glows when it's in a connectable spot.
 import { geoMercator } from 'd3-geo';
-import { el, clear, shuffle, pickOne } from '../ui/dom.js';
+import { el, clear, shuffle } from '../ui/dom.js';
 import { modeScreen } from '../ui/chrome.js';
 import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles.js';
 import shapes from '../data/puzzle-shapes.json';
@@ -323,7 +323,6 @@ function runPuzzle(app, { back }, puzzle) {
         counter,
       ]),
     ]);
-    const solvedSlot = el('div', { class: 'jig-solved-slot' });
 
     function showToast(msg) {
       const t = el('div', { class: 'jig-toast' }, msg);
@@ -337,32 +336,17 @@ function runPuzzle(app, { back }, puzzle) {
 
     function onSolved() {
       banner.classList.add('done');
-      const open = (p) => runPuzzle(app, { back }, p);
       if (puzzle.children) {
         // Drill down: tap a region piece on the map to zoom into its own
-        // neighborhoods. No bottom card — the map stays full size and a toast
-        // gives the cue (tapping is handled by zoomInto via the pieces).
+        // neighborhoods. The map stays full size; a toast gives the cue.
         zoomMode = true;
         order.forEach((r) => r.g.classList.add('zoomable'));
         hint.textContent = '👆 Tap a region to zoom in';
         showToast(`${puzzle.title} solved!`);
-        return;
+      } else {
+        hint.textContent = puzzle.parent ? '‹ Back for another region' : 'Solved!';
+        showToast(`${puzzle.title} solved! 🎉`);
       }
-      const parent = puzzle.parent ? PUZZLE_BY_ID[puzzle.parent] : null;
-      const actions = [
-        parent
-          ? el('button', { class: 'btn', onClick: () => open(parent) }, `↑ Back to ${parent.title}`)
-          : el('button', { class: 'btn', onClick: () => open(nextPuzzle(puzzle)) }, 'Next puzzle'),
-        el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
-      ];
-      solvedSlot.append(
-        el('div', { class: 'jig-solved' }, [
-          el('p', { class: 'jig-solved-title' }, `${puzzle.title} assembled 🧩`),
-          el('p', { class: 'jig-solved-blurb' }, puzzle.blurb),
-          el('div', { class: 'jig-solved-actions' }, actions),
-        ]),
-      );
-      solvedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     const boardWrap = el('div', { class: 'jig-board' }, [svg]);
@@ -375,7 +359,6 @@ function runPuzzle(app, { back }, puzzle) {
           el('p', { class: 'mode-intro' }, 'Drag the neighborhoods so they connect in the right places.'),
           banner,
           boardWrap,
-          solvedSlot,
         ],
         { note: puzzle.title, bodyClass: 'jig-body' },
       ),
@@ -383,9 +366,4 @@ function runPuzzle(app, { back }, puzzle) {
   }
 
   render();
-}
-
-function nextPuzzle(current) {
-  const others = PUZZLES.filter((p) => p.id !== current.id);
-  return pickOne(others.length ? others : PUZZLES);
 }
