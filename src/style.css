@@ -566,6 +566,20 @@ body {
 .jig-up {
   color: var(--text);
 }
+.jig-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.jig-skip input {
+  margin: 0;
+  cursor: pointer;
+}
 .jig-debug:active,
 .jig-up:active {
   background: var(--line);

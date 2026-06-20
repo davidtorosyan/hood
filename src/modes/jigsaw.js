@@ -20,6 +20,10 @@ const SNAP = 135; // connection radius in user units (~48px on a phone)
 
 const NODES = hierarchy.nodes;
 const ROOT = hierarchy.root;
+
+// Debug toggle (persists across levels): skip the explode intro and drop straight
+// into the assembled map, so you can test zooming in and out quickly.
+let skipExplode = false;
 const childrenOf = (id) => NODES[id].children || [];
 const hasChildren = (id) => childrenOf(id).length > 0;
 const isAdjacent = (a, b) => adjacency[a]?.includes(b) ?? false;
@@ -94,6 +98,7 @@ function runNode(app, { back }, nodeId, { assembled = false }) {
 
   function enterSolved(withToast) {
     banner.classList.add('done');
+    counter.textContent = 'Done!';
     if (order.some((r) => r.p.zoomable)) {
       zoomMode = true;
       order.forEach((r) => r.p.zoomable && r.g.classList.add('zoomable'));
@@ -136,8 +141,7 @@ function runNode(app, { back }, nodeId, { assembled = false }) {
     refreshCounter();
   }
 
-  function autosolve() {
-    if (!ready || solved) return;
+  function snapAll() {
     order.forEach((rec) => {
       rec.tx = 0;
       rec.ty = 0;
@@ -146,7 +150,22 @@ function runNode(app, { back }, nodeId, { assembled = false }) {
       rec.g.classList.add('placed');
       apply(rec);
     });
+  }
+
+  function autosolve() {
+    if (!ready || solved) return;
+    snapAll();
     refreshCounter();
+  }
+
+  // Snap to solved immediately, regardless of the explode intro (for the "skip"
+  // toggle so it works even mid-intro).
+  function forceSolve() {
+    if (solved) return;
+    snapAll();
+    ready = true;
+    solved = true;
+    enterSolved(false);
   }
 
   // Camera-zoom into a child piece, then open its puzzle.
@@ -276,9 +295,18 @@ function runNode(app, { back }, nodeId, { assembled = false }) {
   const hint = el('span', { class: 'jig-hint' }, '');
   counter.textContent = `${order.length} to place`;
 
+  const skipBox = el('input', {
+    type: 'checkbox',
+    onChange: (e) => {
+      skipExplode = e.currentTarget.checked;
+      if (skipExplode) forceSolve();
+    },
+  });
+  skipBox.checked = skipExplode;
   const banner = el('div', { class: 'jig-banner' }, [
     hint,
     el('div', { class: 'jig-banner-right' }, [
+      el('label', { class: 'jig-skip', title: 'Debug: skip the explode intro' }, [skipBox, 'skip']),
       el('button', { class: 'jig-up', onClick: goUp, title: 'Zoom out' }, '↑ up'),
       el('button', { class: 'jig-debug', onClick: autosolve, title: 'Debug: auto-solve' }, 'Solve'),
       counter,
@@ -296,15 +324,10 @@ function runNode(app, { back }, nodeId, { assembled = false }) {
     }, 2600);
   }
 
-  if (assembled) {
-    // Show the map already solved (we zoomed back out to it).
-    order.forEach((rec) => {
-      rec.tx = 0;
-      rec.ty = 0;
-      rec.locked = true;
-      rec.g.classList.add('placed');
-      apply(rec);
-    });
+  if (assembled || skipExplode) {
+    // Show the map already solved — zoomed back out to a parent, or the "skip
+    // explode" debug toggle is on.
+    snapAll();
     ready = true;
     solved = true;
     enterSolved(false);
