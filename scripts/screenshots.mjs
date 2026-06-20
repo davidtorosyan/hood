@@ -48,8 +48,6 @@ await back();
 
 // --- Jigsaw --- (selector, then simulate dragging each piece to assemble)
 await page.getByText('Jigsaw', { exact: true }).click();
-await shot('jigsaw-select');
-await page.locator('.mode-card').first().click();
 await page.waitForTimeout(1700); // let the explode intro settle into the scatter
 await shot('jigsaw-initial');
 {
@@ -103,8 +101,7 @@ await shot('jigsaw-initial');
   }
   await shot('jigsaw-solved');
 }
-await back(); // puzzle -> selector
-await back(); // selector -> home
+await back(); // root puzzle -> home
 
 // --- Card Battle ---
 await page.getByText('Card Battle').click();

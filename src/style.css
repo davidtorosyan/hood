@@ -551,7 +551,8 @@ body {
 .jig-banner.done .jig-count {
   color: var(--good);
 }
-.jig-debug {
+.jig-debug,
+.jig-up {
   appearance: none;
   border: 1px solid var(--line);
   background: var(--surface-2);
@@ -562,7 +563,11 @@ body {
   border-radius: 8px;
   cursor: pointer;
 }
-.jig-debug:active {
+.jig-up {
+  color: var(--text);
+}
+.jig-debug:active,
+.jig-up:active {
   background: var(--line);
 }
 .jig-board {

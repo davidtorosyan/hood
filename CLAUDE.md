@@ -28,11 +28,17 @@ fun; the recall-heavy modes (Mystery, Cluster) were "too hard, can't get started
 beginner.** Lesson: modes should teach via **recognition, not recall**, and be forgiving.
 Jigsaw was added as the zero-knowledge entry point; recall modes sit lower.
 
-1. **Jigsaw** (`src/modes/jigsaw.js`) — drag labeled neighborhood pieces (real, simplified
-   polygons) to snap them into correct relative positions. The geographically central
-   piece is pre-placed as an anchor; faint slot outlines + on-pickup highlight make it
-   solvable from zero. Mechanical → learn "this is north of that." Puzzles in
-   `src/data/puzzles.js`; shapes built into `src/data/puzzle-shapes.json`.
+1. **Jigsaw** (`src/modes/jigsaw.js`) — a **zoomable map of LA**. Pieces start assembled,
+   explode out, and you drag them back together (they snap only to TRUE neighbors — real
+   border adjacency). Then tap a piece to camera-zoom into it and assemble the next level
+   down: **regions → groups of neighborhoods → individual neighborhoods**. Every level is
+   capped (`CAP = 6` pieces); a piece's shape is the union of its children, so zooming
+   reveals the same shape split into parts. "↑ up" zooms back out (parent shown already
+   assembled). No cards — solves show a toast. The whole tree, shapes, and sibling
+   adjacency are generated into `hierarchy.json` / `puzzle-shapes.json` /
+   `puzzle-adjacency.json` by `scripts/build-puzzle-shapes.mjs` from `src/data/regions.js`
+   (Harbor is excluded to keep the top level at 6). Group names are auto-derived
+   (largest neighborhood + " area") — refine in the build if desired.
 2. **Card Battle** (`src/modes/battle.js`) — fast A-vs-B comparisons, each with a short
    teaching explanation. Generators: region ("more Valley?"), proximity ("closer to
    Downtown?" via centroids), related-pair, anchor association, odd-one-out.
@@ -56,16 +62,19 @@ Jigsaw was added as the zero-knowledge entry point; recall modes sit lower.
 - `src/data/neighborhoods.js` — **the content**: per-neighborhood cards (region, cluster,
   nearby[], anchors[], identity, confusions[], hook). This is where most work happens.
 - `src/data/centroids.json` — generated; `{ name: [lng,lat] }`, 4KB, for proximity.
-- `src/data/puzzles.js` — Jigsaw puzzle sets (groups of 4–6 adjacent neighborhoods).
-- `src/data/puzzle-shapes.json` — generated; simplified polygons for puzzle pieces (~12KB).
+- `src/data/regions.js` — partition of all 114 neighborhoods into top-level regions
+  (seeds the Jigsaw hierarchy).
+- `src/data/hierarchy.json` — generated; the zoomable Jigsaw tree (regions → groups → hoods).
+- `src/data/puzzle-shapes.json` — generated; simplified polygon for every Jigsaw node.
+- `src/data/puzzle-adjacency.json` — generated; which sibling pieces border each other.
 - `src/data/boundaries.json` — generated; full polygons (NOT imported by the app — kept
   for regenerating centroids / puzzle shapes / possible future use).
 - `src/relate.js` — closeness/partial-credit + region phrasing, shared by modes.
 - `src/ui/` — `dom.js` (el helper), `chrome.js` (mode shell), `card.js` (learning card).
 - `src/store.js` — minimal localStorage (daily result + seen counts).
 - `scripts/build-boundaries.mjs` — raw GeoJSON → `boundaries.json` + `centroids.json`.
-- `scripts/build-puzzle-shapes.mjs` — extracts + simplifies puzzle polygons (run after
-  editing `puzzles.js`).
+- `scripts/build-puzzle-shapes.mjs` — builds the Jigsaw hierarchy + shapes + adjacency
+  (run after editing `regions.js`; auto-clusters big regions into capped, contiguous groups).
 - `scripts/screenshots.mjs` — UI-review harness (walks all modes at phone viewport;
   simulates Jigsaw drags to test snapping).
 - `scripts/icons.mjs` — favicon.svg → PWA PNG icons.
