@@ -39,7 +39,11 @@ function project(puzzle) {
     const d = 'M' + ring.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z';
     const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
     const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
-    return { name, d, cx, cy };
+    const xs = ring.map((p) => p[0]);
+    const ys = ring.map((p) => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    return { name, d, cx, cy, minX, minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
   });
 }
 
@@ -182,8 +186,41 @@ function runPuzzle(app, { back }, puzzle) {
     // under other pieces — capturing on the re-parented piece itself is unreliable.
     let drag = null;
     let ready = false; // pieces aren't draggable until the explode intro finishes
+    let zoomMode = false; // after solving a parent puzzle, tapping a piece zooms in
+
+    // Camera-zoom into a solved region, then hand off to its child puzzle.
+    function zoomInto(rec) {
+      const child = PUZZLE_BY_ID[puzzle.children?.[rec.p.name]];
+      if (!child) return;
+      zoomMode = false; // prevent re-trigger mid-animation
+      order.forEach((r) => {
+        if (r === rec) return;
+        r.g.style.transition = 'opacity 0.4s ease';
+        r.g.style.opacity = '0';
+      });
+      const pad = 26;
+      const target = [rec.p.minX - pad, rec.p.minY - pad, rec.p.w + 2 * pad, rec.p.h + 2 * pad];
+      const start = [0, 0, VB, VB];
+      const t0 = performance.now();
+      const dur = 600;
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      function frame(now) {
+        const k = Math.min(1, (now - t0) / dur);
+        const e = ease(k);
+        svg.setAttribute('viewBox', start.map((s, i) => (s + (target[i] - s) * e).toFixed(1)).join(' '));
+        if (k < 1) requestAnimationFrame(frame);
+        else runPuzzle(app, { back }, child);
+      }
+      requestAnimationFrame(frame);
+    }
+
     function startDrag(rec, e) {
       if (!ready) return;
+      if (zoomMode) {
+        e.preventDefault();
+        zoomInto(rec);
+        return;
+      }
       e.preventDefault();
       const [ux, uy] = toUser(e);
       if (rec.locked) {
@@ -269,16 +306,12 @@ function runPuzzle(app, { back }, puzzle) {
       const open = (p) => runPuzzle(app, { back }, p);
       let actions;
       if (puzzle.children) {
-        // Drill down: pick a region to zoom into its own neighborhoods.
+        // Drill down: tap a region piece on the map to zoom into its own
+        // neighborhoods (handled by zoomInto via the pieces themselves).
+        zoomMode = true;
+        order.forEach((r) => r.g.classList.add('zoomable'));
         actions = [
-          el('p', { class: 'jig-zoom-label' }, 'Zoom into a region:'),
-          el(
-            'div',
-            { class: 'jig-zoom' },
-            puzzle.members.map((name) =>
-              el('button', { class: 'btn btn-soft', onClick: () => open(PUZZLE_BY_ID[puzzle.children[name]]) }, name),
-            ),
-          ),
+          el('p', { class: 'jig-zoom-label' }, '👆 Tap a region to zoom in.'),
           el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
         ];
       } else {

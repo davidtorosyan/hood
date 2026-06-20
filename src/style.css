@@ -631,18 +631,20 @@ body {
 }
 .jig-zoom-label {
   margin: 2px 0 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-dim);
-}
-.jig-zoom {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.jig-zoom .btn {
   font-size: 14px;
-  padding: 12px 10px;
+  font-weight: 700;
+  color: var(--accent-text);
+  text-align: center;
+}
+/* After solving a region map, pieces become tap-to-zoom targets. */
+.jig-piece.zoomable {
+  cursor: pointer;
+}
+.jig-piece.zoomable .jig-shape {
+  transition: fill 0.15s ease;
+}
+.jig-piece.zoomable:active .jig-shape {
+  fill: var(--accent);
 }
 
 /* ---- Browse -------------------------------------------------------------- */
