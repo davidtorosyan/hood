@@ -535,7 +535,7 @@ body {
   padding: 10px 14px;
   font-size: 14px;
 }
-.jig-anchor-note {
+.jig-hint {
   color: var(--text-dim);
 }
 .jig-banner > span:last-child {
@@ -560,38 +560,28 @@ body {
   display: block;
   touch-action: none;
 }
-.jig-slot {
-  fill: none;
-  stroke: #b8c2d2;
-  stroke-width: 3;
-  stroke-dasharray: 10 8;
-}
-.jig-slot-active {
-  stroke: var(--accent);
-  stroke-dasharray: none;
-  fill: rgba(245, 158, 11, 0.12);
-}
 .jig-piece {
   cursor: grab;
 }
 .jig-piece.dragging {
   cursor: grabbing;
 }
+.jig-piece.placed {
+  cursor: default;
+}
 .jig-shape {
-  fill: #aeb9cd;
+  fill: #9fb0cb;
   stroke: #ffffff;
   stroke-width: 2.5;
   stroke-linejoin: round;
 }
-.jig-piece:not(.jig-anchor):not(.placed) .jig-shape {
-  fill: #9fb0cb;
-}
-.jig-anchor .jig-shape {
-  fill: rgba(245, 158, 11, 0.45);
-  stroke: var(--accent);
-}
 .jig-piece.dragging .jig-shape {
   fill: var(--accent);
+}
+/* Glow when a loose piece is in a connectable spot. */
+.jig-piece.jig-near:not(.placed) .jig-shape {
+  stroke: var(--accent);
+  stroke-width: 5;
 }
 .jig-piece.placed .jig-shape {
   fill: #9bdcc1;
@@ -606,10 +596,6 @@ body {
   stroke: #ffffff;
   stroke-width: 4;
   stroke-linejoin: round;
-}
-.jig-anchor .jig-label {
-  fill: var(--ink);
-  stroke: none;
 }
 .jig-solved {
   background: var(--surface);

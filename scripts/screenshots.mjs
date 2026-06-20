@@ -58,7 +58,7 @@ await shot('jigsaw-initial');
   const pieces = await page.evaluate(() => {
     const vb = 1000;
     const out = [];
-    document.querySelectorAll('.jig-piece:not(.jig-anchor)').forEach((g) => {
+    document.querySelectorAll('.jig-piece').forEach((g) => {
       const t = g.getAttribute('transform') || 'translate(0 0)';
       const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
       const label = g.querySelector('.jig-label');
@@ -78,8 +78,10 @@ await shot('jigsaw-initial');
     const toY = box.y + p.ly * u2px;
     await page.mouse.move(fromX, fromY);
     await page.mouse.down();
-    await page.mouse.move(toX, toY, { steps: 8 });
+    await page.mouse.move(toX, toY, { steps: 20 });
+    await page.mouse.move(toX, toY); // settle exactly on target
     await page.mouse.up();
+    await page.waitForTimeout(60);
     if (i === 0) await shot('jigsaw-midway');
   }
   await shot('jigsaw-solved');
