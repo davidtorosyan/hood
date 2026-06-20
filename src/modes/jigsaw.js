@@ -325,28 +325,36 @@ function runPuzzle(app, { back }, puzzle) {
     ]);
     const solvedSlot = el('div', { class: 'jig-solved-slot' });
 
+    function showToast(msg) {
+      const t = el('div', { class: 'jig-toast' }, msg);
+      boardWrap.append(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => {
+        t.classList.remove('show');
+        setTimeout(() => t.remove(), 300);
+      }, 2600);
+    }
+
     function onSolved() {
       banner.classList.add('done');
       const open = (p) => runPuzzle(app, { back }, p);
-      let actions;
       if (puzzle.children) {
         // Drill down: tap a region piece on the map to zoom into its own
-        // neighborhoods (handled by zoomInto via the pieces themselves).
+        // neighborhoods. No bottom card — the map stays full size and a toast
+        // gives the cue (tapping is handled by zoomInto via the pieces).
         zoomMode = true;
         order.forEach((r) => r.g.classList.add('zoomable'));
-        actions = [
-          el('p', { class: 'jig-zoom-label' }, '👆 Tap a region to zoom in.'),
-          el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
-        ];
-      } else {
-        const parent = puzzle.parent ? PUZZLE_BY_ID[puzzle.parent] : null;
-        actions = [
-          parent
-            ? el('button', { class: 'btn', onClick: () => open(parent) }, `↑ Back to ${parent.title}`)
-            : el('button', { class: 'btn', onClick: () => open(nextPuzzle(puzzle)) }, 'Next puzzle'),
-          el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
-        ];
+        hint.textContent = '👆 Tap a region to zoom in';
+        showToast(`${puzzle.title} solved!`);
+        return;
       }
+      const parent = puzzle.parent ? PUZZLE_BY_ID[puzzle.parent] : null;
+      const actions = [
+        parent
+          ? el('button', { class: 'btn', onClick: () => open(parent) }, `↑ Back to ${parent.title}`)
+          : el('button', { class: 'btn', onClick: () => open(nextPuzzle(puzzle)) }, 'Next puzzle'),
+        el('button', { class: 'btn btn-ghost', onClick: toSelector }, 'All puzzles'),
+      ];
       solvedSlot.append(
         el('div', { class: 'jig-solved' }, [
           el('p', { class: 'jig-solved-title' }, `${puzzle.title} assembled 🧩`),
@@ -357,6 +365,7 @@ function runPuzzle(app, { back }, puzzle) {
       solvedSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
+    const boardWrap = el('div', { class: 'jig-board' }, [svg]);
     clear(app);
     app.append(
       modeScreen(
@@ -365,7 +374,7 @@ function runPuzzle(app, { back }, puzzle) {
         [
           el('p', { class: 'mode-intro' }, 'Drag the neighborhoods so they connect in the right places.'),
           banner,
-          el('div', { class: 'jig-board' }, [svg]),
+          boardWrap,
           solvedSlot,
         ],
         { note: puzzle.title, bodyClass: 'jig-body' },
