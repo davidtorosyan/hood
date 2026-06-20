@@ -11,6 +11,8 @@
   },
   "devDependencies": {
     "@mapbox/geojson-rewind": "^0.5.2",
+    "@turf/helpers": "^7.3.5",
+    "@turf/simplify": "^7.3.5",
     "playwright": "^1.61.0",
     "vite": "^5.4.0",
     "vite-plugin-pwa": "^0.20.0"

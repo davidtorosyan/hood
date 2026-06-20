@@ -46,6 +46,46 @@ await page.locator('.choice').first().click();
 await shot('mystery-reinforce');
 await back();
 
+// --- Jigsaw --- (simulate dragging each piece to its true slot to test snapping)
+await page.getByText('Jigsaw', { exact: true }).click();
+await shot('jigsaw-initial');
+{
+  const svg = page.locator('svg.jig');
+  const box = await svg.boundingBox();
+  // Each non-anchor piece's true position is translate(0,0); its current
+  // on-screen center = box center + the piece's untranslated centroid offset.
+  // We read the piece transform + label position from the DOM and drag it home.
+  const pieces = await page.evaluate(() => {
+    const vb = 1000;
+    const out = [];
+    document.querySelectorAll('.jig-piece:not(.jig-anchor)').forEach((g) => {
+      const t = g.getAttribute('transform') || 'translate(0 0)';
+      const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
+      const label = g.querySelector('.jig-label');
+      out.push({
+        tx: +m[1], ty: +m[2],
+        lx: +label.getAttribute('x'), ly: +label.getAttribute('y'),
+      });
+    });
+    return { vb, out };
+  });
+  const u2px = box.width / pieces.vb;
+  for (let i = 0; i < pieces.out.length; i++) {
+    const p = pieces.out[i];
+    const fromX = box.x + (p.lx + p.tx) * u2px;
+    const fromY = box.y + (p.ly + p.ty) * u2px;
+    const toX = box.x + p.lx * u2px;
+    const toY = box.y + p.ly * u2px;
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(toX, toY, { steps: 8 });
+    await page.mouse.up();
+    if (i === 0) await shot('jigsaw-midway');
+  }
+  await shot('jigsaw-solved');
+}
+await back();
+
 // --- Card Battle ---
 await page.getByText('Card Battle').click();
 await shot('battle-question');

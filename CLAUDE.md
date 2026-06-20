@@ -22,17 +22,28 @@ Hosted as a static site on **GitHub Pages**; no backend. Light state in localSto
 - These three modes are **playtest prototypes** to discover the best learning loop — favor
   making them distinct and trying ideas over polishing one.
 
-## The three modes (+ browse)
-1. **Daily Mystery** (`src/modes/mystery.js`) — a mystery neighborhood revealed through
-   clues one at a time (region → nearby → anchors → identity → hook). Guess any time;
-   partial credit (exact / same cluster / right region / right next door). Ends on a
-   learning card + two quick reinforcement questions.
+## The modes (+ browse)
+Home order is by approachability — **playtest feedback (2026-06-20): only Card Battle was
+fun; the recall-heavy modes (Mystery, Cluster) were "too hard, can't get started" for a
+beginner.** Lesson: modes should teach via **recognition, not recall**, and be forgiving.
+Jigsaw was added as the zero-knowledge entry point; recall modes sit lower.
+
+1. **Jigsaw** (`src/modes/jigsaw.js`) — drag labeled neighborhood pieces (real, simplified
+   polygons) to snap them into correct relative positions. The geographically central
+   piece is pre-placed as an anchor; faint slot outlines + on-pickup highlight make it
+   solvable from zero. Mechanical → learn "this is north of that." Puzzles in
+   `src/data/puzzles.js`; shapes built into `src/data/puzzle-shapes.json`.
 2. **Card Battle** (`src/modes/battle.js`) — fast A-vs-B comparisons, each with a short
    teaching explanation. Generators: region ("more Valley?"), proximity ("closer to
    Downtown?" via centroids), related-pair, anchor association, odd-one-out.
-3. **Build the Cluster** (`src/modes/cluster.js`) — reason about a small cluster (first:
+3. **Daily Mystery** (`src/modes/mystery.js`) — a mystery neighborhood revealed through
+   clues one at a time (region → nearby → anchors → identity → hook). Guess any time;
+   partial credit (exact / same cluster / right region / right next door). Ends on a
+   learning card + two quick reinforcement questions. (Known: too hard for beginners.)
+4. **Build the Cluster** (`src/modes/cluster.js`) — reason about a small cluster (first:
    Northeast LA) — membership, "between", and which-side orientation. No big map.
-4. **Browse** (`src/modes/browse.js`) — reference list of every learning card by region.
+   (Known: too hard for beginners.)
+5. **Browse** (`src/modes/browse.js`) — reference list of every learning card by region.
 
 ## Stack
 - **Vite** dev server + static build. **vanilla JS** (no framework).
@@ -45,13 +56,18 @@ Hosted as a static site on **GitHub Pages**; no backend. Light state in localSto
 - `src/data/neighborhoods.js` — **the content**: per-neighborhood cards (region, cluster,
   nearby[], anchors[], identity, confusions[], hook). This is where most work happens.
 - `src/data/centroids.json` — generated; `{ name: [lng,lat] }`, 4KB, for proximity.
+- `src/data/puzzles.js` — Jigsaw puzzle sets (groups of 4–6 adjacent neighborhoods).
+- `src/data/puzzle-shapes.json` — generated; simplified polygons for puzzle pieces (~12KB).
 - `src/data/boundaries.json` — generated; full polygons (NOT imported by the app — kept
-  for regenerating centroids / possible future use).
+  for regenerating centroids / puzzle shapes / possible future use).
 - `src/relate.js` — closeness/partial-credit + region phrasing, shared by modes.
 - `src/ui/` — `dom.js` (el helper), `chrome.js` (mode shell), `card.js` (learning card).
 - `src/store.js` — minimal localStorage (daily result + seen counts).
 - `scripts/build-boundaries.mjs` — raw GeoJSON → `boundaries.json` + `centroids.json`.
-- `scripts/screenshots.mjs` — UI-review harness (walks all modes at phone viewport).
+- `scripts/build-puzzle-shapes.mjs` — extracts + simplifies puzzle polygons (run after
+  editing `puzzles.js`).
+- `scripts/screenshots.mjs` — UI-review harness (walks all modes at phone viewport;
+  simulates Jigsaw drags to test snapping).
 - `scripts/icons.mjs` — favicon.svg → PWA PNG icons.
 
 ## Content model (the important part)

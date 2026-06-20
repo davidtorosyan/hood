@@ -3,6 +3,7 @@ import { el, clear } from './ui/dom.js';
 import { mountMystery } from './modes/mystery.js';
 import { mountBattle } from './modes/battle.js';
 import { mountCluster } from './modes/cluster.js';
+import { mountJigsaw } from './modes/jigsaw.js';
 import { mountBrowse } from './modes/browse.js';
 
 const app = document.querySelector('#app');
@@ -29,10 +30,10 @@ function renderHome() {
       ]),
       el('div', { class: 'mode-list' }, [
         modeCard(
-          '🕵️',
-          'Daily Mystery',
-          'Guess the neighborhood from clues.',
-          () => mountMystery(app, { back: goHome }),
+          '🧩',
+          'Jigsaw',
+          'Drag neighborhoods into place. Start here.',
+          () => mountJigsaw(app, { back: goHome }),
         ),
         modeCard(
           '⚡',
@@ -41,7 +42,13 @@ function renderHome() {
           () => mountBattle(app, { back: goHome }),
         ),
         modeCard(
-          '🧩',
+          '🕵️',
+          'Daily Mystery',
+          'Guess the neighborhood from clues.',
+          () => mountMystery(app, { back: goHome }),
+        ),
+        modeCard(
+          '🔗',
           'Build the Cluster',
           'Learn what sits near what.',
           () => mountCluster(app, { back: goHome }),

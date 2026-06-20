@@ -515,6 +515,126 @@ body {
   color: var(--text-dim);
 }
 
+/* ---- Jigsaw -------------------------------------------------------------- */
+.jig-body {
+  gap: 10px;
+}
+.jig-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.jig-anchor-note {
+  color: var(--text-dim);
+}
+.jig-banner > span:last-child {
+  font-weight: 700;
+  color: var(--accent);
+  flex: none;
+}
+.jig-banner.done > span:last-child {
+  color: var(--good);
+}
+.jig-board {
+  background: radial-gradient(circle at 50% 45%, #161a22 0%, #0f1115 78%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+}
+.jig {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+.jig-slot {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 3;
+  stroke-dasharray: 10 8;
+}
+.jig-slot-active {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  fill: rgba(255, 179, 71, 0.08);
+}
+.jig-piece {
+  cursor: grab;
+}
+.jig-piece.dragging {
+  cursor: grabbing;
+}
+.jig-shape {
+  fill: #2d3442;
+  stroke: #0f1115;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.jig-piece:not(.jig-anchor):not(.placed) .jig-shape {
+  fill: #3a4252;
+}
+.jig-anchor .jig-shape {
+  fill: rgba(255, 179, 71, 0.32);
+  stroke: var(--accent);
+}
+.jig-piece.dragging .jig-shape {
+  fill: var(--accent);
+}
+.jig-piece.placed .jig-shape {
+  fill: rgba(54, 211, 153, 0.28);
+  stroke: var(--good);
+}
+.jig-label {
+  fill: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: #0f1115;
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+.jig-anchor .jig-label {
+  fill: #1a1205;
+  stroke: none;
+}
+.jig-solved {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--good);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: rise 0.2s ease;
+}
+.jig-solved-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+.jig-solved-blurb {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.jig-solved-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
 /* ---- Browse -------------------------------------------------------------- */
 .browse-section {
   display: flex;
