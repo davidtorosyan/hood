@@ -159,7 +159,7 @@ function build(id, label, parent, members, used = new Set()) {
       const sorted = [...g].sort((a, b) => ringArea(ringOf(b)) - ringArea(ringOf(a)));
       const anchor = sorted.find((n) => !used.has(n)) || sorted[0];
       const gid = `${id} › ${anchor}`;
-      build(gid, `${anchor} area`, id, g, new Set([...used, anchor]));
+      build(gid, anchor, id, g, new Set([...used, anchor]));
       node.children.push(gid);
     }
   }

@@ -19,6 +19,10 @@ const VB_W = 1000; // user-space width; height is derived from the board's aspec
 const SNAP = 150; // connection radius in user units
 const FILL = 0.84; // fraction of the board width the assembled map fills
 
+// Distinct pastel fills so joined-up pieces are easy to tell apart (assigned by
+// sibling index; ≤ CAP pieces per level so each gets its own).
+const PALETTE = ['#8ecaa3', '#f2c673', '#9bb8ec', '#ec9f9b', '#bda9e0', '#7ecabf', '#d9b483'];
+
 const NODES = hierarchy.nodes;
 const ROOT = hierarchy.root;
 const childrenOf = (id) => NODES[id].children || [];
@@ -45,7 +49,7 @@ function project(nodeId, vbW, vbH) {
   const bh = vbH * FILL;
   const proj = geoMercator().fitExtent([[(vbW - bw) / 2, (vbH - bh) / 2], [(vbW + bw) / 2, (vbH + bh) / 2]], fc);
   const toPath = (lnglat) => 'M' + lnglat.map((c) => proj(c)).map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z';
-  return kids.map((id) => {
+  return kids.map((id, i) => {
     const ring = shapes[id].map((c) => proj(c));
     const xs = ring.map((p) => p[0]);
     const ys = ring.map((p) => p[1]);
@@ -58,6 +62,7 @@ function project(nodeId, vbW, vbH) {
       id,
       label: NODES[id].label,
       zoomable: hasChildren(id),
+      color: PALETTE[i % PALETTE.length],
       inner,
       d: 'M' + ring.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z',
       cx: ring.reduce((s, p) => s + p[0], 0) / ring.length,
@@ -297,6 +302,7 @@ function runNode(app, { back }, nodeId, { assembled = false, zoomOutFrom = null 
     g.setAttribute('class', `jig-piece${p.zoomable ? ' zoomy' : ' leaf'}`);
     g.dataset.cx = p.cx.toFixed(1);
     g.dataset.cy = p.cy.toFixed(1);
+    g.style.setProperty('--fill', p.color);
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', p.d);
     path.setAttribute('class', 'jig-shape');
@@ -310,11 +316,18 @@ function runNode(app, { back }, nodeId, { assembled = false, zoomOutFrom = null 
         g.append(ip);
       }
     }
+    // Auto-size the label to the piece so it actually fits and stays readable.
     const lines = wrapLabel(p.label);
-    const LH = 42;
+    const maxChars = Math.max(...lines.map((l) => l.length));
+    const byWidth = (p.w * 0.94) / (maxChars * 0.56);
+    const byHeight = (p.h * 0.6) / lines.length;
+    const fs = Math.max(20, Math.min(54, byWidth, byHeight));
+    const LH = fs * 1.02;
     const label = document.createElementNS(SVG_NS, 'text');
     label.setAttribute('class', 'jig-label');
     label.setAttribute('text-anchor', 'middle');
+    label.style.fontSize = `${fs.toFixed(1)}px`;
+    label.style.strokeWidth = `${(fs * 0.2).toFixed(1)}px`;
     lines.forEach((ln, i) => {
       const ts = document.createElementNS(SVG_NS, 'tspan');
       ts.setAttribute('x', p.cx);

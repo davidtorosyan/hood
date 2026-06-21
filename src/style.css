@@ -689,7 +689,7 @@ body {
   pointer-events: none;
 }
 .jig-piece.placed .jig-inner {
-  stroke: rgba(13, 92, 64, 0.13);
+  stroke: rgba(20, 30, 50, 0.16);
 }
 .jig-piece.dragging .jig-shape {
   fill: var(--accent);
@@ -700,21 +700,17 @@ body {
   stroke-width: 5;
 }
 .jig-piece.placed .jig-shape {
-  fill: #9bdcc1;
-  stroke: var(--good);
-}
-.jig-piece.placed.zoomy .jig-shape {
-  fill: #aee3cd;
+  fill: var(--fill, #9bdcc1);
+  stroke: #ffffff;
+  stroke-width: 2.5;
 }
 .jig-label {
   fill: #0c1320;
-  font-size: 41px;
   font-weight: 800;
   letter-spacing: -0.4px;
   pointer-events: none;
   paint-order: stroke;
   stroke: #ffffff;
-  stroke-width: 9;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
