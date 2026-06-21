@@ -683,13 +683,13 @@ body {
 /* Faint outlines of a zoomable piece's children — signals it breaks down. */
 .jig-inner {
   fill: none;
-  stroke: rgba(22, 30, 48, 0.32);
-  stroke-width: 2.5;
+  stroke: rgba(22, 30, 48, 0.1);
+  stroke-width: 1.5;
   stroke-linejoin: round;
   pointer-events: none;
 }
 .jig-piece.placed .jig-inner {
-  stroke: rgba(13, 92, 64, 0.4);
+  stroke: rgba(13, 92, 64, 0.13);
 }
 .jig-piece.dragging .jig-shape {
   fill: var(--accent);
