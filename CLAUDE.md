@@ -107,3 +107,65 @@ added to build on push to `main` and deploy to Pages.
 Which mode is most fun / teaches most / best builds relative-location intuition / feels
 too quiz-like / makes Dave want to keep playing; and which info (region, nearby, anchors,
 history, etc.) sticks best. Build to answer those, not to ship a finished system.
+
+## 🎓 Playtesting learnings (the point of this prototype)
+This branch is a prototype. Here's everything we learned, so the rewrite doesn't relearn it.
+
+### Which loop works
+- **The zoomable Jigsaw map is the winner.** Dave got genuinely into it. A map you
+  assemble, then tap a piece to zoom into and assemble the next level down, is fun AND
+  teaches relative location mechanically.
+- **Card Battle was the only other mode that was fun** — a forgiving A-vs-B with a teaching
+  line every time. Works because you can engage from zero knowledge.
+- **Recall-heavy modes flopped for a beginner.** Daily Mystery and Build the Cluster were
+  "too hard, can't get started." The original v1 map-click quiz had the same flaw plus
+  fiddly tapping.
+- **Core lesson:** for someone learning from scratch, teach via **recognition + mechanical
+  action, not recall.** Let the player engage before they know anything; teach through the
+  interaction, don't gate on it.
+
+### Jigsaw design that landed (build the rewrite around this)
+- **Recursive, zoomable hierarchy**, hard-capped at ~6 pieces per level. Big regions
+  auto-split into contiguous sub-groups down to individual neighborhoods. A node's shape is
+  the **union of its children**, so zooming always shows the same shape broken into parts
+  (this consistency matters — an early version zoomed a region into a differently-shaped
+  curated subset and it felt broken).
+- **Connect by true adjacency only.** Pieces snap to each other only when they're real
+  geographic neighbors AND in the right relative position — never bridge a gap with a
+  non-neighbor. Adjacency is precomputed from polygon borders.
+- **Explode intro** (show assembled → burst apart → rebuild) and **camera zoom in/out**
+  (animate the SVG viewBox) both feel good and are worth keeping.
+- **Navigation:** a clickable **breadcrumb** (LA › region › group → …) for a sense of depth
+  and to jump up levels; an explicit **"up"** that zooms out.
+- **No solved cards** — a transient **toast** over a full-size map reads better than a panel
+  that slides up and shrinks the board.
+
+### Visual / UX learnings (hard-won; bake into the rewrite from day 1)
+- **Use the whole screen.** Fill the viewport; measure the board and match the SVG viewBox
+  so there's no letterbox waste. Small board = small pieces = unreadable.
+- **Auto-size each label to its piece.** A single fixed font size across very different
+  piece sizes is unreadable. Wrap long names to ~2 balanced lines, strong white halo.
+- **Distinct colors for placed pieces** (gray while loose). One uniform green for an
+  assembled map is hard to parse; per-piece pastel fills + white borders read like a map.
+- **Signal zoomable vs terminal:** zoomable pieces show *very faint* outlines of their inner
+  children (so you see they break down); leaf pieces are flat. Keep the hint subtle.
+- **Debug affordances earned their keep:** a "skip explode / auto-solve" toggle and a
+  "Solve" button to jump straight to a state while iterating.
+
+### Technical gotchas (don't rediscover these)
+- **Pointer capture on the stable SVG root**, not on the dragged piece. Re-parenting a piece
+  to raise it cancels capture and drops the drag mid-gesture on touch.
+- **Winding order:** d3-geo wants **clockwise** exterior rings. Raw boundary data AND
+  `@turf/union` output can be CCW, which d3 reads as "covers the whole globe" and collapses
+  the projection. Rewind clockwise (`@mapbox/geojson-rewind(gj, true)`) after any union /
+  new boundary data.
+- **Connected partitions:** when auto-clustering a region into groups, each group must be a
+  single connected component or that sub-puzzle is unsolvable (you can't attach a piece with
+  no placed neighbor). Grow groups along the adjacency graph; don't dump leftovers by
+  distance.
+
+### Honest state of this prototype
+It works and is fun, but the Jigsaw code (`src/modes/jigsaw.js`) grew organically into one
+large, fragile `runNode` with lots of interacting flags (ready/solved/zoomMode, explode
+timers, runtime measure). That fragility is **why we're rewriting** — see the rewrite
+charter on `main`.
