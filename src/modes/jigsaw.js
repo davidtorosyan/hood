@@ -44,16 +44,21 @@ function project(nodeId, vbW, vbH) {
   const bw = vbW * FILL;
   const bh = vbH * FILL;
   const proj = geoMercator().fitExtent([[(vbW - bw) / 2, (vbH - bh) / 2], [(vbW + bw) / 2, (vbH + bh) / 2]], fc);
+  const toPath = (lnglat) => 'M' + lnglat.map((c) => proj(c)).map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z';
   return kids.map((id) => {
     const ring = shapes[id].map((c) => proj(c));
     const xs = ring.map((p) => p[0]);
     const ys = ring.map((p) => p[1]);
     const minX = Math.min(...xs);
     const minY = Math.min(...ys);
+    // Zoomable pieces carry faint outlines of their own children, so you can
+    // SEE that they break down (and tapping will reveal those sections).
+    const inner = hasChildren(id) ? childrenOf(id).map((gid) => toPath(shapes[gid])) : null;
     return {
       id,
       label: NODES[id].label,
       zoomable: hasChildren(id),
+      inner,
       d: 'M' + ring.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z',
       cx: ring.reduce((s, p) => s + p[0], 0) / ring.length,
       cy: ring.reduce((s, p) => s + p[1], 0) / ring.length,
@@ -63,6 +68,24 @@ function project(nodeId, vbW, vbH) {
       h: Math.max(...ys) - minY,
     };
   });
+}
+
+// Lay a label out as up to two balanced lines (long region/area names overflow
+// a single line and read poorly). Returns the lines.
+function wrapLabel(str) {
+  const words = str.split(' ');
+  if (words.length <= 1) return [str];
+  let best = 1;
+  let bestDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(' ').length;
+    const b = words.slice(i).join(' ').length;
+    if (Math.abs(a - b) < bestDiff) {
+      bestDiff = Math.abs(a - b);
+      best = i;
+    }
+  }
+  return [words.slice(0, best).join(' '), words.slice(best).join(' ')];
 }
 
 export function mountJigsaw(app, { back }) {
@@ -271,18 +294,36 @@ function runNode(app, { back }, nodeId, { assembled = false, zoomOutFrom = null 
 
   function makePiece(p) {
     const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'jig-piece');
+    g.setAttribute('class', `jig-piece${p.zoomable ? ' zoomy' : ' leaf'}`);
+    g.dataset.cx = p.cx.toFixed(1);
+    g.dataset.cy = p.cy.toFixed(1);
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', p.d);
     path.setAttribute('class', 'jig-shape');
+    g.append(path);
+    // Faint inner subdivisions for zoomable pieces.
+    if (p.inner) {
+      for (const d of p.inner) {
+        const ip = document.createElementNS(SVG_NS, 'path');
+        ip.setAttribute('d', d);
+        ip.setAttribute('class', 'jig-inner');
+        g.append(ip);
+      }
+    }
+    const lines = wrapLabel(p.label);
+    const LH = 42;
     const label = document.createElementNS(SVG_NS, 'text');
-    label.setAttribute('x', p.cx);
-    label.setAttribute('y', p.cy);
     label.setAttribute('class', 'jig-label');
     label.setAttribute('text-anchor', 'middle');
-    label.setAttribute('dominant-baseline', 'central');
-    label.textContent = p.label;
-    g.append(path, label);
+    lines.forEach((ln, i) => {
+      const ts = document.createElementNS(SVG_NS, 'tspan');
+      ts.setAttribute('x', p.cx);
+      ts.setAttribute('y', (p.cy + (i - (lines.length - 1) / 2) * LH).toFixed(1));
+      ts.setAttribute('dominant-baseline', 'central');
+      ts.textContent = ln;
+      label.append(ts);
+    });
+    g.append(label);
     const rec = { p, g, tx: 0, ty: 0, locked: false };
     g.addEventListener('pointerdown', (e) => startDrag(rec, e));
     pieceLayer.append(g);

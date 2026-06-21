@@ -672,6 +672,25 @@ body {
   stroke-width: 2.5;
   stroke-linejoin: round;
 }
+/* Leaf pieces (terminal — can't zoom further) read as solid/flat. Zoomable
+   pieces are a touch lighter so their inner subdivisions show through. */
+.jig-piece.zoomy .jig-shape {
+  fill: #aebbd2;
+}
+.jig-piece.leaf .jig-shape {
+  fill: #93a3c0;
+}
+/* Faint outlines of a zoomable piece's children — signals it breaks down. */
+.jig-inner {
+  fill: none;
+  stroke: rgba(22, 30, 48, 0.32);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.jig-piece.placed .jig-inner {
+  stroke: rgba(13, 92, 64, 0.4);
+}
 .jig-piece.dragging .jig-shape {
   fill: var(--accent);
 }
@@ -684,15 +703,20 @@ body {
   fill: #9bdcc1;
   stroke: var(--good);
 }
+.jig-piece.placed.zoomy .jig-shape {
+  fill: #aee3cd;
+}
 .jig-label {
-  fill: var(--text);
-  font-size: 40px;
-  font-weight: 700;
+  fill: #0c1320;
+  font-size: 41px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
   pointer-events: none;
   paint-order: stroke;
   stroke: #ffffff;
-  stroke-width: 7;
+  stroke-width: 9;
   stroke-linejoin: round;
+  stroke-linecap: round;
 }
 /* After solving a region map, pieces become tap-to-zoom targets. */
 .jig-piece.zoomable {

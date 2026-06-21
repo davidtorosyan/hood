@@ -63,11 +63,10 @@ await shot('jigsaw-initial');
       [...document.querySelectorAll('.jig-piece')].map((g) => {
         const t = g.getAttribute('transform') || 'translate(0 0)';
         const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
-        const l = g.querySelector('.jig-label');
         return {
-          name: l.textContent,
+          name: g.querySelector('.jig-label').textContent,
           tx: +m[1], ty: +m[2],
-          lx: +l.getAttribute('x'), ly: +l.getAttribute('y'),
+          lx: +g.dataset.cx, ly: +g.dataset.cy,
           placed: g.classList.contains('placed'),
         };
       }),
