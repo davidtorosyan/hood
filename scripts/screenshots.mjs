@@ -126,14 +126,51 @@ async function pressDragTo(name, tx, ty, release = true) {
   if (release) await page.mouse.up();
 }
 
-const btnDisabled = (sel) => page.locator(sel).isDisabled();
-const checkControls = async (where, wantJumble, wantSolve) => {
-  const j = await btnDisabled('.jig-jumble');
-  const s = await btnDisabled('.jig-solve');
-  if (j !== !wantJumble || s !== !wantSolve) {
-    errors.push(`BUG: controls wrong ${where} (jumbleEnabled=${!j}, solveEnabled=${!s})`);
-  }
+// Scramble a solved map by grabbing it and shaking — rapid back-and-forth pan.
+async function shakeScramble() {
+  const box = await page.locator('svg.jig').boundingBox();
+  const u2px = box.width / 1000;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  for (let i = 0; i < 8; i++) await page.mouse.move(cx + (i % 2 ? 250 : -250) * u2px, cy);
+  await page.mouse.up();
+  await page.waitForTimeout(900); // explode → play
+}
+
+// Two-finger pinch via synthetic pointer events. spread=true zooms in (fingers
+// apart), false zooms out. Returns the change in breadcrumb depth.
+async function pinch(spread) {
+  const before = await page.locator('.jig-crumb').count();
+  await page.evaluate((isSpread) => {
+    const svg = document.querySelector('svg.jig');
+    const r = svg.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const ev = (type, id, x) =>
+      svg.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: cy, bubbles: true, cancelable: true }));
+    const a = isSpread ? 30 : 150;
+    const b = isSpread ? 165 : 22;
+    ev('pointerdown', 1, cx - a);
+    ev('pointerdown', 2, cx + a);
+    ev('pointermove', 1, cx - b);
+    ev('pointermove', 2, cx + b);
+    ev('pointerup', 1, cx - b);
+    ev('pointerup', 2, cx + b);
+  }, spread);
+  await page.waitForTimeout(1200);
+  return (await page.locator('.jig-crumb').count()) - before;
+}
+
+const solveVisible = () => page.locator('.jig-solve').isVisible();
+const checkSolve = async (where, want) => {
+  if ((await solveVisible()) !== want) errors.push(`BUG: Solve visibility wrong ${where} (want ${want})`);
 };
+const anyGlow = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('.jig-glow')].some((e) => e.getAttribute('d') && e.style.display !== 'none'),
+  );
 
 await page.goto(URL, { waitUntil: 'networkidle' });
 await shot('home');
@@ -142,23 +179,34 @@ await shot('home');
 await page.getByRole('button', { name: 'Play' }).click();
 await page.waitForTimeout(800);
 await shot('regions-assembled');
-await checkControls('when solved', true, false); // can Jumble, can't Solve
+await checkSolve('when solved', false); // nothing to solve → Solve hidden
 
-// Jumble, then assemble by hand (exercises real drag + snap).
-await page.locator('.jig-jumble').click();
-await page.waitForTimeout(900); // explode animation → play
+// Pan the solved map (a plain drag, no shake), then release — it should spring
+// back to centre.
+{
+  const box = await page.locator('svg.jig').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 55, { steps: 10 });
+  await shot('panned');
+  await page.mouse.up();
+  await page.waitForTimeout(450);
+  const off = (await readPieces()).reduce((m, p) => Math.max(m, Math.hypot(p.tx, p.ty)), 0);
+  if (off > 45) errors.push(`BUG: solved map didn't spring back after pan (offset ${off.toFixed(0)})`);
+}
+
+// Scramble by shaking, then assemble by hand (exercises real drag + snap).
+await shakeScramble();
 await shot('regions-jumbled');
-await checkControls('when fully jumbled', false, true); // can Solve, can't Jumble
+await checkSolve('when scrambled', true);
 
-// Magnetic glow: drop one region in place, then bring an adjacent one close and
-// hold — both should glow along their border before snapping.
+// Connection glow: drop one region in place, bring an adjacent one close and
+// hold — only the facing edge should light up on both.
 await pressDragTo('San Fernando Valley', 0, 0, true);
 await pressDragTo('Central LA', 165, 165, false); // held, just outside the snap
 await page.waitForTimeout(120);
-if (!(await page.locator('.jig-piece.jig-magnet').count())) {
-  errors.push('BUG: no magnet glow as a piece nears its connection');
-}
-await shot('magnet-glow');
+if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
+await shot('connection-glow');
 await page.mouse.up();
 
 await solveBoard(() => shot('regions-midway'));
@@ -167,9 +215,14 @@ await solveBoard(() => shot('regions-midway'));
   if (left.length) console.log('UNPLACED after solve:', JSON.stringify(left));
 }
 await shot('regions-solved');
-await checkControls('back when solved', true, false);
+await checkSolve('back when solved', false);
 
-// Zoom into the first zoomable region (assembled boards are tap-to-zoom).
+// Pinch to zoom in (into the region under the pinch), then pinch to zoom out.
+if ((await pinch(true)) <= 0) errors.push('BUG: pinch-out did not zoom in');
+await shot('pinch-zoomed-in');
+if ((await pinch(false)) >= 0) errors.push('BUG: pinch-in did not zoom out');
+
+// Tap a region to zoom in (assembled boards are tap-to-zoom).
 {
   const ps = await readPieces();
   const target = ps.find((p) => p.zoomable) ?? ps[0];
@@ -180,13 +233,11 @@ await checkControls('back when solved', true, false);
   await shot('region-zoomed');
 }
 
-// On the sub-level, exercise the Jumble + Solve buttons, then verify that a
-// jumble→Solve→tap sequence still zooms (regression guard for the timer race
-// where a stale jumble timer flipped the board back out of the solved phase).
+// On the sub-level: shake to scramble, Solve button, then verify a
+// shake→Solve→tap sequence still zooms (regression guard for the phase race).
 const crumbDepth = () => page.locator('.jig-crumb').count();
 const depthBefore = await crumbDepth();
-await page.locator('.jig-jumble').click();
-await page.waitForTimeout(900);
+await shakeScramble();
 await shot('region-jumbled');
 await page.locator('.jig-solve').click();
 await page.waitForTimeout(800); // let the snap-together animation finish
@@ -200,7 +251,7 @@ await shot('region-solved-by-button');
     await page.mouse.click(box.x + (target.lx + target.tx) * u2px, box.y + (target.ly + target.ty) * u2px);
     await page.waitForTimeout(1200);
     if ((await crumbDepth()) <= depthBefore) {
-      errors.push('BUG: tap after jumble→Solve did not zoom in (phase race)');
+      errors.push('BUG: tap after shake→Solve did not zoom in (phase race)');
     } else {
       await shot('after-solve-zoom');
       await page.locator('.jig-up').click(); // step back to the sub-level

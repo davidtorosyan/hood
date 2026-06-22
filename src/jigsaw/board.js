@@ -15,6 +15,8 @@ import {
   pieceBox,
   projectChildren,
   scatterTranslate,
+  facingPath,
+  ringContains,
 } from './geometry.js';
 import { Piece } from './piece.js';
 import { labelOf } from './tree.js';
@@ -24,6 +26,38 @@ const SNAP = 150; // connection radius, in board user units
 const MAGNET = 440; // distance at which a piece starts to "feel" its connection
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
+const SETTLE_MS = 300; // spring-back time after panning a solved map
+const TAP_SLOP = 22; // movement under this (user units) counts as a tap, not a drag
+const PINCH_IN = 0.72; // pinch ratio that triggers zoom out
+const PINCH_OUT = 1.34; // spread ratio that triggers zoom in
+
+// Detects a shake from a stream of pointer positions: enough quick back-and-forth
+// reversals within a short window. Units are board user-space.
+class ShakeDetector {
+  constructor() {
+    this.samples = [];
+  }
+  push(x, y, t) {
+    this.samples.push({ x, t });
+    const cut = t - 450;
+    while (this.samples.length && this.samples[0].t < cut) this.samples.shift();
+  }
+  shaking() {
+    let reversals = 0;
+    let lastDir = 0;
+    let amp = 0;
+    const s = this.samples;
+    for (let i = 1; i < s.length; i++) {
+      const dx = s[i].x - s[i - 1].x;
+      if (Math.abs(dx) < 18) continue;
+      amp += Math.abs(dx);
+      const dir = Math.sign(dx);
+      if (lastDir && dir !== lastDir) reversals += 1;
+      lastDir = dir;
+    }
+    return reversals >= 3 && amp > 480;
+  }
+}
 
 export class Board {
   #pendingTimer = 0; // a scheduled end-of-animation callback we may need to cancel
@@ -35,8 +69,9 @@ export class Board {
     this.cbs = cbs;
     this.pieces = [];
     this.phase = 'building';
-    this.drag = null;
-    this.glowing = new Set(); // pieces currently showing a magnet glow
+    this.pointers = new Map(); // active pointerId -> {x,y} in board user space
+    this.gesture = null; // current gesture: piece drag, pan, or pinch
+    this.glowing = new Set(); // pieces currently showing a connection glow
     this.vbH = VB_W;
     this.svg = this.#initSvg();
   }
@@ -44,14 +79,18 @@ export class Board {
   #initSvg() {
     const svg = svgEl('svg', { class: 'jig', preserveAspectRatio: 'xMidYMid meet' });
     this.pieceLayer = svgEl('g');
-    // Labels live in their own layer above every piece, so a label is never
-    // painted over by a neighbouring piece's fill.
+    // Connection-edge glow sits above the pieces; labels above everything, so a
+    // label is never painted over by a neighbouring piece's fill.
+    this.glowLayer = svgEl('g', { class: 'jig-glows' });
     this.labelLayer = svgEl('g', { class: 'jig-labels' });
-    svg.append(this.pieceLayer, this.labelLayer);
-    svg.addEventListener('pointermove', (e) => this.#onMove(e));
-    const end = () => this.#endDrag();
-    svg.addEventListener('pointerup', end);
-    svg.addEventListener('pointercancel', end);
+    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer);
+    // All gestures (piece drag, pan, pinch) are driven from the SVG root so we
+    // can track multiple pointers; pieces are hit-tested from the event target.
+    svg.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
+    svg.addEventListener('pointermove', (e) => this.#onPointerMove(e));
+    const up = (e) => this.#onPointerUp(e);
+    svg.addEventListener('pointerup', up);
+    svg.addEventListener('pointercancel', up);
     return svg;
   }
 
@@ -75,8 +114,8 @@ export class Board {
     pieces.forEach((piece) => {
       piece.setLabel(plans.get(piece.id));
       piece.moveTo(0, 0); // start at the true (assembled) position
-      piece.g.addEventListener('pointerdown', (e) => this.#startDrag(piece, e));
       this.pieceLayer.append(piece.g);
+      this.glowLayer.append(piece.glowEl);
       this.labelLayer.append(piece.labelEl);
       this.pieces.push(piece);
     });
@@ -230,18 +269,11 @@ export class Board {
     this.cbs.onRemaining?.(remaining, this.pieces.length);
   }
 
-  // Tell the host which controls make sense now: you can't Jumble an already-
-  // fully-jumbled board (nothing placed), nor Solve an already-solved one.
+  // Tell the host whether a Solve shortcut makes sense — only while assembling
+  // (an already-solved board has nothing to solve). Scrambling is by shake, so
+  // there's no Jumble control to manage.
   #emitControls() {
-    const locked = this.pieces.filter((p) => p.locked).length;
-    let canJumble = false;
-    let canSolve = false;
-    if (this.phase === 'solved') canJumble = true;
-    else if (this.phase === 'play') {
-      canJumble = locked > 0;
-      canSolve = true;
-    }
-    this.cbs.onControls?.(canJumble, canSolve);
+    this.cbs.onControls?.(this.phase === 'play');
   }
 
   #enterSolved(withToast) {
@@ -254,7 +286,11 @@ export class Board {
     if (withToast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
   }
 
-  // --- dragging ------------------------------------------------------------
+  // --- input / gestures ----------------------------------------------------
+  // Everything is driven from a small pointer map on the SVG root, so we can tell
+  // apart: a single-pointer piece drag (assembling), a single-pointer press on a
+  // solved map (tap to zoom/info, or drag to pan — and shake to scramble), and a
+  // two-pointer pinch (spread = zoom in, pinch = zoom out).
 
   #toUser(evt) {
     const pt = this.svg.createSVGPoint();
@@ -264,77 +300,230 @@ export class Board {
     return [u.x, u.y];
   }
 
-  #startDrag(piece, e) {
-    // When solved, a piece is a target, not draggable: a group zooms in, a leaf
-    // (individual neighborhood) opens its info card.
-    if (this.phase === 'solved') {
-      e.preventDefault();
-      if (piece.zoomable) this.#zoomInto(piece);
-      else this.cbs.onSelectLeaf?.(piece.id);
+  // The piece under a pointer event (walk up from the hit path to its group).
+  #pieceFromEvent(e) {
+    let el = e.target;
+    while (el && el !== this.svg) {
+      if (el.classList && el.classList.contains('jig-piece')) {
+        return this.pieces.find((p) => p.g === el) || null;
+      }
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  // The piece whose shape covers board point (ux,uy) — for the pinch midpoint.
+  #pieceAt(ux, uy) {
+    for (const p of this.pieces) {
+      if (ringContains(p.geom.ring, ux - p.tx, uy - p.ty)) return p;
+    }
+    return null;
+  }
+
+  #onPointerDown(e) {
+    if (this.phase !== 'play' && this.phase !== 'solved') return; // not mid-animation
+    e.preventDefault();
+    try {
+      this.svg.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic events (tests) may have no real pointer to capture */
+    }
+    const [ux, uy] = this.#toUser(e);
+    this.pointers.set(e.pointerId, { x: ux, y: uy });
+
+    if (this.pointers.size >= 2) {
+      this.#beginPinch();
       return;
     }
-    if (this.phase !== 'play') return;
-    e.preventDefault();
+    const piece = this.#pieceFromEvent(e);
+    if (this.phase === 'play') {
+      this.gesture = piece ? this.#beginPieceDrag(piece, ux, uy) : null;
+    } else {
+      this.#beginSolvedGesture(piece, ux, uy); // tap, pan, or shake
+    }
+  }
+
+  #onPointerMove(e) {
+    if (!this.pointers.has(e.pointerId)) return;
     const [ux, uy] = this.#toUser(e);
+    this.pointers.set(e.pointerId, { x: ux, y: uy });
+    const g = this.gesture;
+    if (!g) return;
+    if (g.type === 'pinch') this.#updatePinch();
+    else if (g.type === 'piece') this.#movePieceDrag(ux, uy);
+    else if (g.type === 'pan') this.#movePan(ux, uy);
+  }
+
+  #onPointerUp(e) {
+    this.pointers.delete(e.pointerId);
+    const g = this.gesture;
+    if (!g) return;
+    if (g.type === 'pinch') {
+      // ignore the remainder until every finger is up (avoids a stray pan)
+      this.gesture = this.pointers.size > 0 ? { type: 'dead' } : null;
+      return;
+    }
+    if (g.type === 'dead') {
+      if (this.pointers.size === 0) this.gesture = null;
+      return;
+    }
+    if (g.type === 'piece') this.#endPieceDrag();
+    else if (g.type === 'pan') this.#endPan();
+    this.gesture = null;
+  }
+
+  // --- pinch (two fingers) ---
+  #beginPinch() {
+    this.#abortSingleGesture();
+    const [a, b] = [...this.pointers.values()];
+    this.gesture = {
+      type: 'pinch',
+      startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      fired: false,
+    };
+  }
+
+  #updatePinch() {
+    const g = this.gesture;
+    if (g.fired || this.pointers.size < 2) return;
+    const [a, b] = [...this.pointers.values()];
+    const ratio = Math.hypot(a.x - b.x, a.y - b.y) / g.startDist;
+    if (ratio >= PINCH_OUT) {
+      g.fired = true;
+      if (this.phase === 'solved') {
+        const piece = this.#pieceAt(g.mid.x, g.mid.y);
+        if (piece && piece.zoomable) this.#zoomInto(piece);
+      }
+    } else if (ratio <= PINCH_IN) {
+      g.fired = true;
+      this.cbs.onZoomOut?.();
+    }
+  }
+
+  #abortSingleGesture() {
+    const g = this.gesture;
+    if (!g) return;
+    if (g.type === 'piece') {
+      if (g.mode === 'free') {
+        g.piece.setDragging(false);
+        this.#clearGlow();
+      } else {
+        g.starts.forEach((s) => s.p.setDragging(false));
+      }
+    } else if (g.type === 'pan' && g.moved && !g.exploded) {
+      this.pieces.forEach((p) => p.setDragging(false));
+      this.#springBack();
+    }
+    this.gesture = null;
+  }
+
+  // --- single-pointer piece drag (assembling) ---
+  #beginPieceDrag(piece, ux, uy) {
     if (piece.locked) {
-      // Drag the whole assembled cluster together.
-      const group = this.#lockedPieces();
+      const group = this.#lockedPieces(); // drag the whole assembled cluster
       group.forEach((p) => p.setDragging(true));
-      this.drag = { mode: 'group', ux, uy, starts: group.map((p) => ({ p, tx: p.tx, ty: p.ty })) };
-    } else {
-      this.pieceLayer.append(piece.g); // raise above sibling pieces
-      this.labelLayer.append(piece.labelEl); // and its label above sibling labels
-      piece.setDragging(true);
-      this.drag = { mode: 'free', piece, ux, uy, tx: piece.tx, ty: piece.ty };
+      return { type: 'piece', mode: 'group', ux, uy, starts: group.map((p) => ({ p, tx: p.tx, ty: p.ty })) };
     }
-    // Capture on the stable SVG root, NOT the piece — re-parenting a piece would
-    // cancel capture and drop the drag mid-gesture on touch.
-    this.svg.setPointerCapture(e.pointerId);
+    this.pieceLayer.append(piece.g); // raise above siblings
+    this.glowLayer.append(piece.glowEl);
+    this.labelLayer.append(piece.labelEl);
+    piece.setDragging(true);
+    return { type: 'piece', mode: 'free', piece, ux, uy, tx: piece.tx, ty: piece.ty };
   }
 
-  #onMove(e) {
-    if (!this.drag) return;
-    const [ux, uy] = this.#toUser(e);
-    const dx = ux - this.drag.ux;
-    const dy = uy - this.drag.uy;
-    if (this.drag.mode === 'free') {
-      const piece = this.drag.piece;
-      piece.moveTo(this.drag.tx + dx, this.drag.ty + dy);
-      this.#updateMagnet(piece);
+  #movePieceDrag(ux, uy) {
+    const g = this.gesture;
+    const dx = ux - g.ux;
+    const dy = uy - g.uy;
+    if (g.mode === 'free') {
+      g.piece.moveTo(g.tx + dx, g.ty + dy);
+      this.#updateGlow(g.piece);
     } else {
-      for (const s of this.drag.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
+      for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
     }
   }
 
-  #endDrag() {
-    if (!this.drag) return;
-    if (this.drag.mode === 'free') {
-      const piece = this.drag.piece;
-      piece.setDragging(false);
+  #endPieceDrag() {
+    const g = this.gesture;
+    if (g.mode === 'free') {
+      g.piece.setDragging(false);
       this.#clearGlow();
-      const res = this.#wouldConnect(piece);
-      if (res) this.#place(piece, res);
+      const res = this.#wouldConnect(g.piece);
+      if (res) this.#place(g.piece, res);
     } else {
-      this.drag.starts.forEach((s) => s.p.setDragging(false));
+      g.starts.forEach((s) => s.p.setDragging(false));
     }
-    this.drag = null;
   }
 
-  // --- magnetic glow -------------------------------------------------------
-  // As a loose piece nears the spot where it would connect, it and the piece
-  // it's joining glow along their border — stronger the closer they get, full
-  // at the snap radius — so you can feel the connection before releasing.
+  // --- solved-map press: tap, pan, or shake-to-scramble ---
+  #beginSolvedGesture(piece, ux, uy) {
+    this.gesture = {
+      type: 'pan',
+      piece,
+      ux,
+      uy,
+      moved: false,
+      exploded: false,
+      starts: this.pieces.map((p) => ({ p, tx: p.tx, ty: p.ty })),
+      shake: new ShakeDetector(),
+    };
+  }
 
-  // The piece this one would connect to, and how far (in the same metric the
-  // snap uses), or null if there's no eligible neighbour to home in on.
-  #magnetTarget(piece) {
+  #movePan(ux, uy) {
+    const g = this.gesture;
+    const dx = ux - g.ux;
+    const dy = uy - g.uy;
+    if (!g.moved && Math.hypot(dx, dy) > TAP_SLOP) {
+      g.moved = true;
+      this.pieces.forEach((p) => p.setDragging(true));
+    }
+    if (g.moved) for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
+    g.shake.push(ux, uy, performance.now());
+    if (g.moved && g.shake.shaking()) {
+      g.exploded = true;
+      this.pieces.forEach((p) => p.setDragging(false));
+      this.gesture = null;
+      this.jumble(); // shake it apart
+    }
+  }
+
+  #endPan() {
+    const g = this.gesture;
+    if (!g.moved) {
+      // A tap: groups zoom in, leaves open their info card.
+      if (g.piece && g.piece.zoomable) this.#zoomInto(g.piece);
+      else if (g.piece) this.cbs.onSelectLeaf?.(g.piece.id);
+    } else if (!g.exploded) {
+      this.pieces.forEach((p) => p.setDragging(false));
+      this.#springBack(); // panned but not shaken — settle the map back home
+    }
+  }
+
+  #springBack() {
+    this.pieces.forEach((p) => p.setSettling(true));
+    this.svg.getBoundingClientRect(); // reflow so the transition runs
+    this.pieces.forEach((p) => p.moveTo(0, 0));
+    setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
+  }
+
+  // Called by the app on a device shake (phone) — scramble if we're solved.
+  shakeToScramble() {
+    if (this.phase === 'solved') this.jumble();
+  }
+
+  // --- connection glow -----------------------------------------------------
+  // As a loose piece nears where it would connect, the EDGE that will mate lights
+  // up on both pieces — stronger the closer they get, full at the snap radius.
+
+  // The piece this one would connect to, and how far (the snap metric), or null.
+  #glowTarget(piece) {
     const locked = this.#lockedPieces();
     if (locked.length) {
       const neighbours = locked.filter((l) => isAdjacent(piece.id, l.id));
       if (!neighbours.length) return null;
       const anchor = locked[0]; // all locked pieces share one translate
       const dist = Math.hypot(piece.tx - anchor.tx, piece.ty - anchor.ty);
-      // Glow the adjacent placed piece whose shape is nearest right now.
       let target = neighbours[0];
       let best = Infinity;
       for (const l of neighbours) {
@@ -360,21 +549,23 @@ export class Board {
     return target ? { target, dist } : null;
   }
 
-  #updateMagnet(piece) {
+  #updateGlow(piece) {
     const next = new Map();
-    const m = this.#magnetTarget(piece);
+    const m = this.#glowTarget(piece);
     if (m && m.dist < MAGNET) {
       const glow = Math.max(0, Math.min(1, (MAGNET - m.dist) / (MAGNET - SNAP)));
-      next.set(piece, glow);
-      if (m.target) next.set(m.target, glow);
+      const aT = [piece.tx, piece.ty];
+      const bT = [m.target.tx, m.target.ty];
+      next.set(piece, { glow, d: facingPath(piece.geom.ring, aT, m.target.geom.ring, bT) });
+      next.set(m.target, { glow, d: facingPath(m.target.geom.ring, bT, piece.geom.ring, aT) });
     }
-    for (const p of this.glowing) if (!next.has(p)) p.setGlow(0);
-    for (const [p, g] of next) p.setGlow(g);
+    for (const p of this.glowing) if (!next.has(p)) p.setGlow(0, '');
+    for (const [p, v] of next) p.setGlow(v.glow, v.d);
     this.glowing = new Set(next.keys());
   }
 
   #clearGlow() {
-    for (const p of this.glowing) p.setGlow(0);
+    for (const p of this.glowing) p.setGlow(0, '');
     this.glowing.clear();
   }
 

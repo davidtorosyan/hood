@@ -56,6 +56,7 @@ export function projectChildren(nodeId, vbW, vbH) {
       id,
       zoomable: hasChildren(id),
       inner,
+      ring, // projected local points [x,y][], for the facing-edge glow + hit tests
       d: ringToPath(ring),
       cx: ring.reduce((s, p) => s + p[0], 0) / ring.length,
       cy: ring.reduce((s, p) => s + p[1], 0) / ring.length,
@@ -65,6 +66,59 @@ export function projectChildren(nodeId, vbW, vbH) {
       h: Math.max(...ys) - minY,
     };
   });
+}
+
+// Shortest distance from point p to the polyline `ring` (treated as closed).
+function distToRing(p, ring) {
+  let best = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy || 1;
+    let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a[0] + t * dx;
+    const cy = a[1] + t * dy;
+    best = Math.min(best, Math.hypot(p[0] - cx, p[1] - cy));
+  }
+  return best;
+}
+
+// The stretch of ring A that faces ring B — the edge that will mate when the two
+// pieces snap. Each ring is at its own translate. Returns an SVG path string in
+// A's LOCAL coords (so it rides A's transform): the A edges whose endpoints are
+// near B (within a band of A's closest approach to B).
+export function facingPath(aRing, aT, bRing, bT) {
+  const bWorld = bRing.map((q) => [q[0] + bT[0], q[1] + bT[1]]);
+  const dist = aRing.map((q) => distToRing([q[0] + aT[0], q[1] + aT[1]], bWorld));
+  const minD = Math.min(...dist);
+  if (!Number.isFinite(minD)) return '';
+  const band = minD + 75; // how much of the facing arc to light up
+  let d = '';
+  for (let i = 0; i < aRing.length; i++) {
+    const j = (i + 1) % aRing.length;
+    if (dist[i] <= band && dist[j] <= band) {
+      const a = aRing[i];
+      const b = aRing[j];
+      d += `M${a[0].toFixed(1)},${a[1].toFixed(1)}L${b[0].toFixed(1)},${b[1].toFixed(1)}`;
+    }
+  }
+  return d;
+}
+
+// Is local point (x,y) inside ring (even-odd / ray cast)? Used for pinch hit-test.
+export function ringContains(ring, x, y) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 // Where a loose piece scatters to before assembly: spread evenly around a ring,

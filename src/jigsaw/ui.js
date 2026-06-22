@@ -22,19 +22,18 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// The status banner: a hint, the Jumble/Solve/up controls, and a pieces-left
-// counter. The host drives it through setHint / setCounter / setSolved.
-export function statusBanner({ onUp, onJumble, onSolve }) {
+// The status banner: a hint, a Solve shortcut (shown only while there's a
+// scramble to solve), the up control, and a pieces-left counter. There's no
+// Jumble button — you scramble a solved map by grabbing and shaking it.
+export function statusBanner({ onUp, onSolve }) {
   const hint = el('span', { class: 'jig-hint' }, '');
   const counter = el('span', { class: 'jig-count' }, '');
 
-  const jumbleBtn = el('button', { class: 'jig-btn jig-jumble', onClick: onJumble, title: 'Scatter the pieces' }, 'Jumble');
   const solveBtn = el('button', { class: 'jig-btn jig-solve', onClick: onSolve, title: 'Snap the pieces back together' }, 'Solve');
 
   const banner = el('div', { class: 'jig-banner' }, [
     hint,
     el('div', { class: 'jig-banner-right' }, [
-      jumbleBtn,
       solveBtn,
       el('button', { class: 'jig-btn jig-up', onClick: onUp, title: 'Zoom out one level', 'aria-label': 'Zoom out' }, '↑'),
       counter,
@@ -44,9 +43,9 @@ export function statusBanner({ onUp, onJumble, onSolve }) {
   return {
     banner,
     setHint: (t) => (hint.textContent = t),
-    setControls: (canJumble, canSolve) => {
-      jumbleBtn.disabled = !canJumble;
-      solveBtn.disabled = !canSolve;
+    // Solve is only shown when there's actually something to solve.
+    setControls: (canSolve) => {
+      solveBtn.style.display = canSolve ? '' : 'none';
     },
     setCounter: (remaining) => {
       if (remaining > 0) banner.classList.remove('done');
@@ -55,7 +54,9 @@ export function statusBanner({ onUp, onJumble, onSolve }) {
     setSolved: (zoomable) => {
       banner.classList.add('done');
       counter.textContent = 'Done!';
-      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a neighborhood for info';
+      hint.textContent = zoomable
+        ? '👆 Tap to zoom in · 🤙 shake to scramble'
+        : '👆 Tap for info · 🤙 shake to scramble';
     },
   };
 }

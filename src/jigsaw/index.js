@@ -13,7 +13,43 @@ import { Board } from './board.js';
 import { breadcrumb, statusBanner, showToast } from './ui.js';
 import { showCard } from './card.js';
 
+// The board currently on screen — the target for a device shake.
+let currentBoard = null;
+let shakeInstalled = false;
+
+// Best-effort: shaking the phone scrambles a solved map, the same as shaking it
+// by hand. iOS 13+ needs motion permission, which we request on the (user-
+// gesture) Play tap; elsewhere it just works. Silently does nothing if blocked.
+function setupDeviceShake() {
+  if (shakeInstalled || typeof window === 'undefined' || !window.DeviceMotionEvent) return;
+  const install = () => {
+    if (shakeInstalled) return;
+    shakeInstalled = true;
+    let lastMag = 0;
+    let spikes = [];
+    window.addEventListener('devicemotion', (e) => {
+      const a = e.accelerationIncludingGravity;
+      if (!a) return;
+      const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+      const now = performance.now();
+      if (Math.abs(mag - lastMag) > 13) {
+        spikes.push(now);
+        while (spikes.length && now - spikes[0] > 600) spikes.shift();
+        if (spikes.length >= 5) {
+          spikes = [];
+          currentBoard?.shakeToScramble();
+        }
+      }
+      lastMag = mag;
+    });
+  };
+  const req = window.DeviceMotionEvent.requestPermission;
+  if (typeof req === 'function') req.call(window.DeviceMotionEvent).then((r) => r === 'granted' && install()).catch(() => {});
+  else install();
+}
+
 export function mountJigsaw(app, { back }) {
+  setupDeviceShake();
   renderNode(app, { back }, ROOT, {});
 }
 
@@ -35,7 +71,6 @@ function renderNode(app, ctx, nodeId, opts) {
   // --- chrome ---
   const bannerUi = statusBanner({
     onUp: goUp,
-    onJumble: () => board.jumble(),
     onSolve: () => board.solve(),
   });
   const boardWrap = el('div', { class: 'jig-board' });
@@ -47,9 +82,11 @@ function renderNode(app, ctx, nodeId, opts) {
     onSolved: (zoomable) => bannerUi.setSolved(zoomable),
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
+    onZoomOut: goUp,
     onSelectLeaf: (id) => showCard(app, id),
-    onControls: (canJumble, canSolve) => bannerUi.setControls(canJumble, canSolve),
+    onControls: (canSolve) => bannerUi.setControls(canSolve),
   });
+  currentBoard = board;
   boardWrap.append(board.svg);
 
   clear(app);

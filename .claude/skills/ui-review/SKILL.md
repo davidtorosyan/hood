@@ -16,12 +16,12 @@ bugs — you are. After any UI-affecting change, run this loop before reporting 
 
 2. **Capture.** Run the harness, passing the live URL if it isn't the default:
    `node scripts/screenshots.mjs http://localhost:<port>/hood/`
-   It drives a full Jigsaw session (home → assemble the LA-regions map → zoom into a
-   region → assemble that sub-level → zoom back out → dive to a leaf level → open a
-   neighborhood info card) at an iPhone viewport, writes labeled PNGs to `.ui-review/`,
-   and **fails on any console error** — treat a non-zero exit as a bug to fix first. If
-   the harness logs `UNPLACED after solve`, a piece wouldn't snap — investigate
-   (adjacency data or snap logic) before judging visuals.
+   It drives a full Jigsaw session (home → pan the solved map → shake-scramble → assemble
+   with the connection glow → pinch zoom in/out → tap-zoom → dive to a leaf → open a
+   neighborhood card) at an iPhone viewport, writes labeled PNGs to `.ui-review/`, and
+   **fails on any console error or a failed gesture/state assertion** — treat a non-zero
+   exit as a bug to fix first. If it logs `UNPLACED after solve`, a piece wouldn't snap —
+   investigate (adjacency data or snap logic) before judging visuals.
 
 3. **Evaluate.** Read every screenshot in `.ui-review/` and critique like a designer.
    Look for:

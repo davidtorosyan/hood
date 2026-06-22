@@ -20,6 +20,10 @@ export class Piece {
     this.locked = false;
     this.labelEl = null;
     this.g = this.#buildBody(geom, color, label);
+    // A glowing overlay of just the edge facing a piece we're connecting to.
+    // Lives in the board's glow layer; rides this piece's transform.
+    this.glowEl = svgEl('path', { class: 'jig-glow' });
+    this.glowEl.style.display = 'none';
   }
 
   #buildBody(geom, color, label) {
@@ -80,6 +84,7 @@ export class Piece {
     const t = `translate(${this.tx.toFixed(1)}px, ${this.ty.toFixed(1)}px)`;
     this.g.style.transform = t;
     if (this.labelEl) this.labelEl.style.transform = t;
+    this.glowEl.style.transform = t;
     this.g.dataset.tx = this.tx.toFixed(1); // exposed for the screenshot harness
     this.g.dataset.ty = this.ty.toFixed(1);
   }
@@ -87,32 +92,40 @@ export class Piece {
   lock() {
     this.locked = true;
     this.g.classList.add('placed');
-    this.g.classList.remove('jig-magnet', 'exploding', 'dragging');
-    this.g.style.removeProperty('--glow');
+    this.g.classList.remove('exploding', 'dragging');
+    this.setGlow(0, '');
     this.labelEl.classList.remove('exploding');
   }
 
   // Return to a loose state (used when the player jumbles an assembled map).
   unlock() {
     this.locked = false;
-    this.g.classList.remove('placed', 'zoomable', 'selectable', 'jig-magnet', 'dragging');
-    this.g.style.removeProperty('--glow');
+    this.g.classList.remove('placed', 'zoomable', 'selectable', 'dragging');
+    this.setGlow(0, '');
   }
 
   // --- transient visual state ---------------------------------------------
-  // Magnet glow strength, 0..1, as a loose piece nears its connection.
-  setGlow(g) {
-    if (g > 0) {
-      this.g.classList.add('jig-magnet');
-      this.g.style.setProperty('--glow', g.toFixed(3));
+  // Light up the facing edge `d` (in this piece's local coords) at strength
+  // 0..1, as it nears a connection. d='' / g<=0 clears it.
+  setGlow(g, d) {
+    if (g > 0 && d) {
+      this.glowEl.setAttribute('d', d);
+      this.glowEl.style.setProperty('--glow', g.toFixed(3));
+      this.glowEl.style.display = '';
     } else {
-      this.g.classList.remove('jig-magnet');
-      this.g.style.removeProperty('--glow');
+      this.glowEl.style.display = 'none';
+      this.glowEl.removeAttribute('d');
     }
   }
 
   setDragging(on) {
     this.g.classList.toggle('dragging', on);
+  }
+
+  // Briefly transition the transform — used to spring the map back after a pan.
+  setSettling(on) {
+    this.g.classList.toggle('settling', on);
+    this.labelEl.classList.toggle('settling', on);
   }
 
   setExploding(on) {

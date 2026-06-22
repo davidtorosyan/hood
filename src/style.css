@@ -217,20 +217,6 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
-.jig-btn:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
-/* Jumble is the call to action on an assembled board — make it pop. */
-.jig-jumble {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--ink);
-}
-.jig-jumble:active {
-  filter: brightness(0.94);
-  background: var(--accent);
-}
 .jig-board {
   position: relative;
   background: radial-gradient(circle at 50% 42%, #ffffff 0%, #e7ecf4 82%);
@@ -267,7 +253,17 @@ body {
   width: 100%;
   height: 100%;
   display: block;
-  touch-action: none;
+  touch-action: none; /* we handle all gestures ourselves (drag, pan, pinch) */
+  /* Stop iOS from treating a drag as a text/loupe selection on the SVG labels. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.jig-label,
+.jig-labels {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .jig-piece {
   cursor: grab;
@@ -306,8 +302,7 @@ body {
 .jig-piece.placed .jig-inner {
   stroke: rgba(20, 30, 50, 0.16);
 }
-/* The held piece lifts off the board (its colour stays, so a magnet glow on its
-   border reads). A near connection replaces this filter with the glow below. */
+/* The held piece lifts off the board (its colour stays, so the edge glow reads). */
 .jig-piece.dragging .jig-shape {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
 }
@@ -316,13 +311,23 @@ body {
   stroke: #ffffff;
   stroke-width: 2.5;
 }
-/* Magnetic glow: a loose piece and the piece it's joining light up along their
-   border, intensifying (via --glow, 0..1) the closer they get to snapping. The
-   rule sits after .placed so it wins the stroke on an already-placed target. */
-.jig-piece.jig-magnet .jig-shape {
+/* Spring a panned map back to centre. */
+.jig-piece.settling,
+.jig-label-wrap.settling {
+  transition: transform 0.28s ease;
+}
+/* Connection glow: only the EDGE that will mate lights up (a path in the glow
+   layer), intensifying via --glow (0..1) the closer the pieces get to snapping. */
+.jig-glows {
+  pointer-events: none;
+}
+.jig-glow {
+  fill: none;
   stroke: var(--accent);
-  stroke-width: calc(2.5px + 5px * var(--glow, 0));
-  filter: drop-shadow(0 0 calc(13px * var(--glow, 0)) rgba(245, 158, 11, var(--glow, 0)));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: calc(3px + 7px * var(--glow, 0));
+  filter: drop-shadow(0 0 calc(11px * var(--glow, 0)) rgba(245, 158, 11, var(--glow, 0)));
 }
 /* Labels render in their own layer above every piece; they never intercept
    pointer events (you grab the shape underneath). */
