@@ -99,11 +99,16 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
     a label is never painted over by a neighbour; each label shares its piece's transform.
   - `tree.js` — read-only access to the generated `hierarchy/shapes/adjacency` JSON.
   - `ui.js` — presentational chrome: breadcrumb, status banner, toast.
+  - `card.js` — the tap-a-neighborhood info card (modal): name, type, region,
+    approximate population, a boundary-outline thumbnail, and a fun fact. On a solved
+    board a leaf tap fires `onSelectLeaf`; a group tap still zooms.
 - `src/ui/` — `dom.js` (`el`/`svgEl`/`shuffle`), `chrome.js` (screen + top bar shell).
 - `src/store.js` — minimal localStorage (which pieces have been placed).
 - `src/data/` — generated geometry + `regions.js` (the partition). Regenerate with
-  `npm run build:shapes` after editing `regions.js`. `neighborhoods.js` is unused by the
-  Jigsaw (kept as reference content for future modes / Phase 2).
+  `npm run build:shapes` after editing `regions.js`. `places.js` holds the per-neighborhood
+  card content (approximate `pop`, `type`, optional `fact`), keyed by leaf name — figures are
+  approximate (anchored to L.A. Almanac), so correct freely. `neighborhoods.js` is unused by
+  the Jigsaw (kept as reference content for future modes / Phase 2).
 - `scripts/` — `build-puzzle-shapes.mjs`, `build-boundaries.mjs`, `icons.mjs`, and
   `screenshots.mjs` (drives a full Jigsaw session for the `ui-review` skill).
 

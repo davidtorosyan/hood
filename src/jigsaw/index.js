@@ -11,6 +11,7 @@ import { screen } from '../ui/chrome.js';
 import { ROOT, NODES, pathIds } from './tree.js';
 import { Board } from './board.js';
 import { breadcrumb, statusBanner, showToast } from './ui.js';
+import { showCard } from './card.js';
 
 export function mountJigsaw(app, { back }) {
   renderNode(app, { back }, ROOT, {});
@@ -46,6 +47,7 @@ function renderNode(app, ctx, nodeId, opts) {
     onSolved: (zoomable) => bannerUi.setSolved(zoomable),
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
+    onSelectLeaf: (id) => showCard(app, id),
   });
   boardWrap.append(board.svg);
 

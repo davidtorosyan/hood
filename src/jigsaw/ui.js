@@ -48,7 +48,7 @@ export function statusBanner({ onUp, onJumble, onSolve }) {
     setSolved: (zoomable) => {
       banner.classList.add('done');
       counter.textContent = 'Done!';
-      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : '🎉 Solved!';
+      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a neighborhood for info';
     },
   };
 }

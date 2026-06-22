@@ -174,6 +174,29 @@ await page.locator('.jig-up').click();
 await page.waitForTimeout(1100);
 await shot('zoomed-back-out');
 
+// Dive to a leaf level and open a neighborhood info card (boards load already
+// assembled, so we can tap straight down without solving).
+const tapPiece = async (filter) => {
+  const ps = await readPieces();
+  const t = ps.find(filter) ?? ps[0];
+  // Grab a point provably inside the piece (its centroid can fall in a concavity).
+  const g = await grabPoint(t.name);
+  await page.mouse.click(g.sx, g.sy);
+  await page.waitForTimeout(1100);
+  return t;
+};
+await tapPiece((p) => p.name === 'Central LA' && p.zoomable); // region with groups
+await tapPiece((p) => p.zoomable); // into a group → leaf level
+await shot('leaf-level');
+await tapPiece((p) => !p.zoomable); // tap a neighborhood → card
+await page.waitForTimeout(400);
+if (!(await page.locator('.card').count())) {
+  errors.push('BUG: tapping a leaf neighborhood did not open the info card');
+}
+await shot('neighborhood-card');
+await page.locator('.card-close').click();
+await page.waitForTimeout(300);
+
 await browser.close();
 
 if (errors.length) {

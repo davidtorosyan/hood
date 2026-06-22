@@ -94,7 +94,7 @@ export class Piece {
   // Return to a loose state (used when the player jumbles an assembled map).
   unlock() {
     this.locked = false;
-    this.g.classList.remove('placed', 'zoomable', 'jig-near', 'dragging');
+    this.g.classList.remove('placed', 'zoomable', 'selectable', 'jig-near', 'dragging');
   }
 
   // --- transient visual state ---------------------------------------------
@@ -113,6 +113,11 @@ export class Piece {
 
   markZoomable() {
     if (this.zoomable) this.g.classList.add('zoomable');
+  }
+
+  // A leaf piece on a solved board: tappable to open its info card.
+  markSelectable() {
+    this.g.classList.add('selectable');
   }
 
   // Fade the piece (body + label) out — used for the siblings when zooming in.

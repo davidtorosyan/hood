@@ -343,13 +343,119 @@ body {
   stroke: #ffffff;
   stroke-width: 1.2;
 }
-/* After solving, pieces become tap-to-zoom targets. */
-.jig-piece.zoomable {
+/* After solving, pieces become tap targets — groups zoom in, leaves open a card. */
+.jig-piece.zoomable,
+.jig-piece.selectable {
   cursor: pointer;
 }
-.jig-piece.zoomable .jig-shape {
+.jig-piece.zoomable .jig-shape,
+.jig-piece.selectable .jig-shape {
   transition: fill 0.15s ease;
 }
-.jig-piece.zoomable:active .jig-shape {
+.jig-piece.zoomable:active .jig-shape,
+.jig-piece.selectable:active .jig-shape {
   fill: var(--accent);
+}
+
+/* ---- Neighborhood info card --------------------------------------------- */
+.card-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 26, 38, 0.45);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.card-backdrop.show {
+  opacity: 1;
+}
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 18px 20px 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  transform: scale(0.92);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card-backdrop.show .card {
+  transform: scale(1);
+}
+.card-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  appearance: none;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 15px;
+  cursor: pointer;
+}
+.card-close:active {
+  background: var(--line);
+}
+.card-shape {
+  width: 150px;
+  height: 116px;
+  margin: 4px auto 2px;
+  display: block;
+}
+.card-shape-path {
+  fill: rgba(245, 158, 11, 0.18);
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.card-name {
+  font-size: 26px;
+  letter-spacing: -0.6px;
+  margin: 6px 0 10px;
+}
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.card-chip {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.card-chip.card-region {
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--accent-text);
+}
+.card-pop {
+  font-size: 15px;
+  color: var(--text-dim);
+}
+.card-pop b {
+  color: var(--text);
+  font-size: 17px;
+}
+.card-fact {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 11px 13px;
+  text-align: left;
 }

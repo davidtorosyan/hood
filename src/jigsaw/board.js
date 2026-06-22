@@ -226,7 +226,8 @@ export class Board {
   #enterSolved(withToast) {
     this.phase = 'solved';
     const zoomable = this.pieces.some((p) => p.zoomable);
-    if (zoomable) this.pieces.forEach((p) => p.markZoomable());
+    // Groups become zoom targets; leaves become tap-for-info targets.
+    this.pieces.forEach((p) => (p.zoomable ? p.markZoomable() : p.markSelectable()));
     this.cbs.onSolved?.(zoomable);
     if (withToast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
   }
@@ -242,12 +243,12 @@ export class Board {
   }
 
   #startDrag(piece, e) {
-    // When solved, pieces become zoom targets instead of draggable.
+    // When solved, a piece is a target, not draggable: a group zooms in, a leaf
+    // (individual neighborhood) opens its info card.
     if (this.phase === 'solved') {
-      if (piece.zoomable) {
-        e.preventDefault();
-        this.#zoomInto(piece);
-      }
+      e.preventDefault();
+      if (piece.zoomable) this.#zoomInto(piece);
+      else this.cbs.onSelectLeaf?.(piece.id);
       return;
     }
     if (this.phase !== 'play') return;
