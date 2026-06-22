@@ -168,11 +168,9 @@ function build(id, label, parent, members, used = new Set()) {
   }
 }
 
-// Harbor is a detached southern appendage (its only link to the rest is the thin
-// Harbor Gateway strip); leaving it out keeps the top level at 6 clean regions.
-const TOP_REGIONS = Object.keys(REGION_GROUPS).filter((r) => r !== 'Harbor');
+const TOP_REGIONS = Object.keys(REGION_GROUPS);
 
-nodes.la = { id: 'la', label: 'LA regions', parent: null, children: [] };
+nodes.la = { id: 'la', label: 'LA County', parent: null, children: [] };
 nodeHoods.set('la', TOP_REGIONS.flatMap((r) => REGION_GROUPS[r]));
 for (const region of TOP_REGIONS) {
   build(region, region, 'la', REGION_GROUPS[region]);

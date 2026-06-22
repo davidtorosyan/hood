@@ -1,14 +1,15 @@
 // Processes the raw LA Times "Mapping L.A." neighborhood GeoJSON into a compact
-// boundaries file the app ships: rounded coordinates + a precomputed centroid
-// (used for "pin it on the map" distance scoring).
+// boundaries file the app ships: rounded coordinates + a precomputed centroid.
 //
-// Source: LA Times Mapping L.A. neighborhood boundaries (via LA GeoHub).
+// Source: LA Times Mapping L.A. — the COUNTY-WIDE set (272 areas: City-of-LA
+// neighborhoods + independent cities + unincorporated communities). The original
+// City-of-LA-only file (la_hoods_raw.geojson) is kept for reference.
 // Run: node scripts/build-boundaries.mjs
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { geoCentroid } from 'd3-geo';
 import rewind from '@mapbox/geojson-rewind';
 
-const RAW = 'la_hoods_raw.geojson';
+const RAW = 'la_county_raw.geojson';
 const OUT = 'src/data/boundaries.json';
 const PRECISION = 5; // ~1.1m at LA's latitude — plenty for a map game
 

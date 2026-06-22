@@ -10,7 +10,7 @@ function renderHome() {
     el('div', { class: 'screen home' }, [
       el('div', { class: 'home-top' }, [
         el('h1', { class: 'home-title' }, 'Hood'),
-        el('p', { class: 'home-tag' }, 'Get to know the neighborhoods of LA — piece by piece.'),
+        el('p', { class: 'home-tag' }, 'Get to know Los Angeles County — piece by piece.'),
       ]),
       el('div', { class: 'home-art' }, '🧩'),
       el('button', { class: 'btn home-play', onClick: () => mountJigsaw(app, { back: renderHome }) }, 'Play'),

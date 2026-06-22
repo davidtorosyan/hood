@@ -69,10 +69,15 @@ Treat the prototype's structure as a reference, not gospel — re-architect free
   one-giant-function. The whole reason for the rewrite.
 
 ## Scope
-- **Phase 1:** City of LA neighborhoods (data already in `prototypes`), the zoomable Jigsaw
-  done well.
-- **Phase 2 (Dave's real goal):** all of **LA County** — Glendale, Santa Monica, Pasadena,
-  etc. Needs additional boundary sources beyond the City-of-LA set.
+- **Phase 1 (done):** City of LA neighborhoods, the zoomable Jigsaw done well.
+- **Phase 2 (done — urban metro):** the LA County metro — 240 areas (City-of-LA hoods +
+  ~83 independent cities like Glendale/Santa Monica/Long Beach + unincorporated
+  communities), grouped by geography into 7 top regions. Source: the LA Times "Mapping
+  L.A." **county** GeoJSON (`la_county_raw.geojson`). Deliberately EXCLUDED (see
+  `regions.js` `EXCLUDED`): the Antelope Valley + Santa Clarita Valley (cut off by
+  mountains), wildland slivers, and Catalina Island — so the board stays dense (piece size
+  = geographic area). Possible future: include the high desert; refine auto-derived group
+  names; deepen card facts.
 
 ## Current architecture
 Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**,

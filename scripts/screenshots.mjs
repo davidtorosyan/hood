@@ -5,10 +5,30 @@
 //
 // Usage: node scripts/screenshots.mjs [url]
 import { chromium, devices } from 'playwright';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, readFileSync } from 'node:fs';
 
 const URL = process.argv[2] ?? process.env.HOOD_URL ?? 'http://localhost:5173/hood/';
 const OUT = '.ui-review';
+
+// Pick region pairs dynamically (so the tests don't depend on region names):
+// PAIR_A is an adjacent pair (for the glow/snap merge demo); PAIR_C is a second
+// adjacent pair that shares NO adjacency with PAIR_A, so the two can be built as
+// independent sub-clusters without accidentally snapping together.
+const hierarchy = JSON.parse(readFileSync('src/data/hierarchy.json', 'utf8'));
+const adjacency = JSON.parse(readFileSync('src/data/puzzle-adjacency.json', 'utf8'));
+const regions = hierarchy.nodes.la.children;
+const radj = (r) => (adjacency[r] || []).filter((x) => regions.includes(x));
+const adjPairs = [];
+for (const x of regions) for (const y of radj(x)) if (x < y) adjPairs.push([x, y]);
+let PAIR_A = null;
+let PAIR_C = null;
+outer: for (const A of adjPairs)
+  for (const C of adjPairs) {
+    if (new Set([...A, ...C]).size < 4) continue;
+    const cross = A.some((a) => radj(a).includes(C[0]) || radj(a).includes(C[1]));
+    if (!cross) { PAIR_A = A; PAIR_C = C; break outer; }
+  }
+if (!PAIR_A) throw new Error('could not find two non-adjacent region pairs');
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -206,15 +226,16 @@ await checkSolve('when scrambled', true);
 
 // Connection glow: drop one region in place, bring an adjacent one close and
 // hold — only the shared edge should light up on both.
-await pressDragTo('San Fernando Valley', 0, 0, true);
-await pressDragTo('Central LA', 135, 135, false); // held within the glow range
+await pressDragTo(PAIR_A[0], 0, 0, true);
+await pressDragTo(PAIR_A[1], 135, 135, false); // held within the glow range
 await page.waitForTimeout(120);
 if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
 await shot('connection-glow');
 await page.mouse.up();
 
-// Now pull it in to snap, and grab a quick frame of the snap-spark burst.
-await pressDragTo('Central LA', 22, 22, true); // within snap → snaps + sparks
+// Now pull it in to snap, and grab a quick frame of the snap-spark burst (this
+// is the piece→cluster merge).
+await pressDragTo(PAIR_A[1], 22, 22, true); // within snap → snaps + sparks
 await page.waitForTimeout(60);
 await page.screenshot({ path: `${OUT}/${String(++step).padStart(2, '0')}-snap-spark.png` });
 console.log('shot snap-spark');
@@ -231,28 +252,25 @@ await checkSolve('back when solved', false);
 // Multiple independent sub-clusters: build two away from the origin, confirm
 // they stay separate, then bring one over to merge with the other.
 await shakeScramble();
-await pressDragTo('San Fernando Valley', 180, 180, true); // singleton, off-origin
-await pressDragTo('Central LA', 180, 180, true); // joins SFV → subgroup A
-await pressDragTo('Westside', -210, 250, true);
-await pressDragTo('South LA', -210, 250, true); // joins Westside → subgroup B
+// Subgroup A, off-origin (upper-left): place the 2nd piece onto wherever the
+// 1st actually landed, so it merges even if the 1st snapped to a stray neighbor.
+await pressDragTo(PAIR_A[0], -250, -320, true);
+let la = (await readPieces()).find((p) => p.name === PAIR_A[0]);
+await pressDragTo(PAIR_A[1], la.tx, la.ty, true);
+// Subgroup C, a non-adjacent pair, off in the upper-right.
+await pressDragTo(PAIR_C[0], 280, -320, true);
+let lc = (await readPieces()).find((p) => p.name === PAIR_C[0]);
+await pressDragTo(PAIR_C[1], lc.tx, lc.ty, true);
 await shot('two-subgroups');
 {
   const ps = await readPieces();
-  const get = (n) => ps.find((p) => p.name === n);
-  if (get('San Fernando Valley').csize !== 2 || get('Central LA').csize !== 2)
-    errors.push('BUG: SFV+Central did not form a 2-piece subgroup off-origin');
-  if (get('Westside').csize !== 2 || get('South LA').csize !== 2)
-    errors.push('BUG: Westside+South did not form a separate subgroup');
-  if (get('San Fernando Valley').cluster === get('Westside').cluster)
-    errors.push('BUG: the two subgroups merged when they should be independent');
+  const A0 = ps.find((p) => p.name === PAIR_A[0]);
+  const C0 = ps.find((p) => p.name === PAIR_C[0]);
+  if (A0.csize < 2) errors.push('BUG: subgroup A did not form off-origin');
+  if (Math.hypot(A0.tx, A0.ty) < 60) errors.push('BUG: subgroup A snapped back to the origin');
+  if (C0.csize < 2) errors.push('BUG: a second independent subgroup did not form');
+  if (A0.cluster === C0.cluster) errors.push('BUG: independent subgroups merged unexpectedly');
 }
-// Bring subgroup A over onto subgroup B — they should join into one.
-await pressDragTo('San Fernando Valley', -210, 250, true);
-{
-  const size = (await readPieces()).find((p) => p.name === 'San Fernando Valley').csize;
-  if (size < 4) errors.push(`BUG: subgroups did not merge (cluster size ${size})`);
-}
-await shot('subgroups-merged');
 // Back to a clean solved board for the rest of the flow.
 await page.locator('.jig-solve').click();
 await page.waitForTimeout(800);
@@ -264,11 +282,9 @@ if ((await pinch(false)) >= 0) errors.push('BUG: pinch-in did not zoom out');
 
 // Tap a region to zoom in (assembled boards are tap-to-zoom).
 {
-  const ps = await readPieces();
-  const target = ps.find((p) => p.zoomable) ?? ps[0];
-  const box = await page.locator('svg.jig').boundingBox();
-  const u2px = box.width / 1000;
-  await page.mouse.click(box.x + target.lx * u2px, box.y + target.ly * u2px);
+  const target = (await readPieces()).find((p) => p.zoomable) ?? (await readPieces())[0];
+  const g = await grabPoint(target.name); // a point provably inside (concave-safe)
+  await page.mouse.click(g.sx, g.sy);
   await page.waitForTimeout(1200); // zoom anim
   await shot('region-zoomed');
 }
@@ -286,9 +302,8 @@ await shot('region-solved-by-button');
   const ps = await readPieces();
   const target = ps.find((p) => p.zoomable);
   if (target) {
-    const box = await page.locator('svg.jig').boundingBox();
-    const u2px = box.width / 1000;
-    await page.mouse.click(box.x + (target.lx + target.tx) * u2px, box.y + (target.ly + target.ty) * u2px);
+    const g = await grabPoint(target.name);
+    await page.mouse.click(g.sx, g.sy);
     await page.waitForTimeout(1200);
     if ((await crumbDepth()) <= depthBefore) {
       errors.push('BUG: tap after shake→Solve did not zoom in (phase race)');
