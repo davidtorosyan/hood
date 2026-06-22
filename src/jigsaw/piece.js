@@ -17,7 +17,7 @@ export class Piece {
     this.zoomable = geom.zoomable;
     this.tx = 0;
     this.ty = 0;
-    this.locked = false;
+    this.cluster = null; // Set of pieces it moves/snaps with (managed by Board)
     this.labelEl = null;
     this.g = this.#buildBody(geom, color, label);
     // A glowing overlay of just the edge facing a piece we're connecting to.
@@ -89,17 +89,18 @@ export class Piece {
     this.g.dataset.ty = this.ty.toFixed(1);
   }
 
-  lock() {
-    this.locked = true;
-    this.g.classList.add('placed');
-    this.g.classList.remove('exploding', 'dragging');
-    this.setGlow(0, '');
-    this.labelEl.classList.remove('exploding');
+  // "Placed" = joined into a multi-piece cluster → shows its map colour (vs the
+  // grey of a loose singleton).
+  setPlaced(on) {
+    this.g.classList.toggle('placed', on);
+    if (on) {
+      this.g.classList.remove('exploding', 'dragging');
+      this.labelEl.classList.remove('exploding');
+    }
   }
 
-  // Return to a loose state (used when the player jumbles an assembled map).
-  unlock() {
-    this.locked = false;
+  // Back to a loose look (used when the player scrambles an assembled map).
+  reset() {
     this.g.classList.remove('placed', 'zoomable', 'selectable', 'dragging');
     this.setGlow(0, '');
   }

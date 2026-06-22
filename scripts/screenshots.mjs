@@ -41,6 +41,8 @@ const readPieces = () =>
       ly: +g.dataset.cy,
       placed: g.classList.contains('placed'),
       zoomable: g.classList.contains('zoomable'),
+      cluster: g.dataset.cluster,
+      csize: +(g.dataset.csize || 1),
     })),
   );
 
@@ -87,11 +89,12 @@ async function solveBoard(onMidway) {
   const box = await svg.boundingBox();
   const u2px = box.width / 1000;
   let didMid = false;
+  const solved = (ps) => ps.every((p) => p.csize === ps.length); // one cluster
   for (let pass = 0; pass < 8; pass++) {
     const ps = await readPieces();
-    if (ps.every((p) => p.placed)) break;
+    if (solved(ps)) break;
     for (const p of ps) {
-      if (p.placed) continue;
+      if (p.csize > 1) continue; // already joined to a cluster
       const grab = await grabPoint(p.name);
       if (!grab) continue;
       const toX = grab.sx - p.tx * u2px; // shift by -translate → true position
@@ -218,11 +221,41 @@ console.log('shot snap-spark');
 
 await solveBoard(() => shot('regions-midway'));
 {
-  const left = (await readPieces()).filter((p) => !p.placed);
-  if (left.length) console.log('UNPLACED after solve:', JSON.stringify(left));
+  const ps = await readPieces();
+  const left = ps.filter((p) => p.csize !== ps.length);
+  if (left.length) console.log('UNPLACED after solve:', JSON.stringify(left.map((p) => p.name)));
 }
 await shot('regions-solved');
 await checkSolve('back when solved', false);
+
+// Multiple independent sub-clusters: build two away from the origin, confirm
+// they stay separate, then bring one over to merge with the other.
+await shakeScramble();
+await pressDragTo('San Fernando Valley', 180, 180, true); // singleton, off-origin
+await pressDragTo('Central LA', 180, 180, true); // joins SFV → subgroup A
+await pressDragTo('Westside', -210, 250, true);
+await pressDragTo('South LA', -210, 250, true); // joins Westside → subgroup B
+await shot('two-subgroups');
+{
+  const ps = await readPieces();
+  const get = (n) => ps.find((p) => p.name === n);
+  if (get('San Fernando Valley').csize !== 2 || get('Central LA').csize !== 2)
+    errors.push('BUG: SFV+Central did not form a 2-piece subgroup off-origin');
+  if (get('Westside').csize !== 2 || get('South LA').csize !== 2)
+    errors.push('BUG: Westside+South did not form a separate subgroup');
+  if (get('San Fernando Valley').cluster === get('Westside').cluster)
+    errors.push('BUG: the two subgroups merged when they should be independent');
+}
+// Bring subgroup A over onto subgroup B — they should join into one.
+await pressDragTo('San Fernando Valley', -210, 250, true);
+{
+  const size = (await readPieces()).find((p) => p.name === 'San Fernando Valley').csize;
+  if (size < 4) errors.push(`BUG: subgroups did not merge (cluster size ${size})`);
+}
+await shot('subgroups-merged');
+// Back to a clean solved board for the rest of the flow.
+await page.locator('.jig-solve').click();
+await page.waitForTimeout(800);
 
 // Pinch to zoom in (into the region under the pinch), then pinch to zoom out.
 if ((await pinch(true)) <= 0) errors.push('BUG: pinch-out did not zoom in');

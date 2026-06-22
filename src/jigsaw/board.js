@@ -130,6 +130,7 @@ export class Board {
       this.labelLayer.append(piece.labelEl);
       this.pieces.push(piece);
     });
+    this.#initClusters();
   }
 
   // Begin the level already assembled — we never auto-jumble; the player decides
@@ -150,8 +151,9 @@ export class Board {
     this.#cancelPending();
     this.#assignScatter();
     this.phase = 'jumbling';
-    this.pieces.forEach((p) => p.unlock());
-    this.#emitRemaining();
+    this.pieces.forEach((p) => p.reset());
+    this.#initClusters(); // every piece back to its own loose cluster
+    this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
     this.cbs.onHint?.('Drag the neighbors together.');
     // Animate from assembled (0,0) out to the scatter spots.
@@ -218,57 +220,105 @@ export class Board {
     });
   }
 
-  // --- snapping ------------------------------------------------------------
+  // --- clusters & snapping -------------------------------------------------
+  // Pieces form CLUSTERS — sub-assemblies that move and snap as a unit. Every
+  // piece in a cluster shares one translate (so they sit in their correct
+  // relative positions). You can build several clusters independently and then
+  // merge them, just like a real jigsaw.
 
-  #lockedPieces() {
-    return this.pieces.filter((p) => p.locked);
+  #initClusters() {
+    for (const p of this.pieces) p.cluster = new Set([p]);
   }
 
-  // If `piece` is currently in a spot where it may connect, return where to lock
-  // it ({ tx, ty }, plus an optional `seed` loose piece to lock alongside it for
-  // the very first connection). Otherwise null. A connection always requires
-  // TRUE border adjacency to whatever it's joining — never bridge a gap.
-  #wouldConnect(piece) {
-    const locked = this.#lockedPieces();
-    if (locked.length) {
-      const anchor = locked[0]; // all locked pieces share one translate
-      const positioned = Math.hypot(piece.tx - anchor.tx, piece.ty - anchor.ty) < SNAP;
-      if (positioned && locked.some((l) => isAdjacent(piece.id, l.id))) {
-        return { tx: anchor.tx, ty: anchor.ty };
-      }
-      return null;
-    }
-    // No pieces placed yet: two loose neighbours can start the map together.
-    for (const other of this.pieces) {
-      if (other === piece || other.locked) continue;
-      if (
-        Math.hypot(piece.tx - other.tx, piece.ty - other.ty) < SNAP &&
-        isAdjacent(piece.id, other.id)
-      ) {
-        return { tx: other.tx, ty: other.ty, seed: other };
-      }
-    }
-    return null;
+  #allClusters() {
+    return new Set(this.pieces.map((p) => p.cluster));
   }
 
-  #place(piece, res) {
-    // Where do the pieces join? Use the shared-edge midpoint for the snap spark.
-    const m = this.#glowTarget(piece);
-    let spark = null;
-    if (m) {
-      const info = facingInfo(piece.geom.ring, [res.tx, res.ty], m.target.geom.ring, [m.target.tx, m.target.ty]);
-      if (info.mid) spark = [info.mid[0] + res.tx, info.mid[1] + res.ty];
+  #clusterTx(cluster) {
+    const p = cluster.values().next().value;
+    return [p.tx, p.ty];
+  }
+
+  #mergeClusters(a, b) {
+    if (a === b) return a;
+    for (const p of b) {
+      a.add(p);
+      p.cluster = a;
     }
-    // Pull it the last bit into place with a quick eased "click", then lock.
-    piece.setSnapping(true);
-    this.svg.getBoundingClientRect(); // commit current position as the start
-    piece.moveTo(res.tx, res.ty);
-    piece.lock();
-    if (res.seed) res.seed.lock();
-    setTimeout(() => piece.setSnapping(false), SNAP_MS + 40);
-    if (spark) this.#snapBurst(spark);
-    store.markSeen(piece.id);
+    return a;
+  }
+
+  // Repeatedly merge any two clusters that are adjacent AND aligned (same
+  // translate) — so a piece dropped between several joins them all.
+  #settleClusters() {
+    let merged = true;
+    while (merged) {
+      merged = false;
+      const clusters = [...this.#allClusters()];
+      for (let i = 0; i < clusters.length && !merged; i++) {
+        for (let j = i + 1; j < clusters.length && !merged; j++) {
+          const A = clusters[i];
+          const B = clusters[j];
+          const [ax, ay] = this.#clusterTx(A);
+          const [bx, by] = this.#clusterTx(B);
+          if (Math.hypot(ax - bx, ay - by) > 1) continue; // not aligned
+          let adj = false;
+          for (const a of A) {
+            for (const b of B) if (isAdjacent(a.id, b.id)) { adj = true; break; }
+            if (adj) break;
+          }
+          if (adj) {
+            this.#mergeClusters(A, B);
+            merged = true;
+          }
+        }
+      }
+    }
+  }
+
+  // On drop: snap the dragged cluster onto the nearest cluster it can join
+  // (some pair of pieces adjacent, and within SNAP of their true offset), then
+  // merge everything that lines up.
+  #dropCluster(cluster, dragged) {
+    const [tx, ty] = this.#clusterTx(cluster);
+    let best = null;
+    for (const c of this.pieces) {
+      if (cluster.has(c)) continue;
+      let adj = false;
+      for (const d of cluster) if (isAdjacent(d.id, c.id)) { adj = true; break; }
+      if (!adj) continue;
+      const dist = Math.hypot(tx - c.tx, ty - c.ty);
+      if (dist < SNAP && (!best || dist < best.dist)) best = { c, dist };
+    }
+    if (best) {
+      const dx = best.c.tx - tx;
+      const dy = best.c.ty - ty;
+      const spark = this.#sharedMidpoint(cluster, best.c, dx, dy);
+      // Pull the cluster the last bit in with a quick eased "click".
+      for (const p of cluster) p.setSnapping(true);
+      this.svg.getBoundingClientRect();
+      for (const p of cluster) p.moveTo(p.tx + dx, p.ty + dy);
+      setTimeout(() => { for (const p of cluster) p.setSnapping(false); }, SNAP_MS + 40);
+      this.#settleClusters();
+      if (spark) this.#snapBurst(spark);
+      for (const p of dragged) store.markSeen(p.id);
+    }
     this.#refresh();
+  }
+
+  // World point where a snapping cluster meets piece `c` (its shared edge mid),
+  // for the snap spark. dx,dy is the snap offset just applied to the cluster.
+  #sharedMidpoint(cluster, c, dx, dy) {
+    let src = null;
+    let bestD = Infinity;
+    for (const d of cluster) {
+      if (!isAdjacent(d.id, c.id)) continue;
+      const cd = Math.hypot(d.geom.cx + d.tx + dx - (c.geom.cx + c.tx), d.geom.cy + d.ty + dy - (c.geom.cy + c.ty));
+      if (cd < bestD) { bestD = cd; src = d; }
+    }
+    if (!src) return null;
+    const info = facingInfo(src.geom.ring, [c.tx, c.ty], c.geom.ring, [c.tx, c.ty]);
+    return info.mid ? [info.mid[0] + c.tx, info.mid[1] + c.ty] : null;
   }
 
   // A burst of lines radiating from the join, plus a quick expanding ring — the
@@ -300,25 +350,34 @@ export class Board {
     requestAnimationFrame(frame);
   }
 
+  // Assemble everything into one cluster at the origin (Solve / load-assembled).
   #snapAll() {
+    const all = new Set(this.pieces);
     this.pieces.forEach((p) => {
       p.moveTo(0, 0);
-      p.lock();
+      p.cluster = all;
+      p.setPlaced(true);
     });
   }
 
   #refresh() {
-    this.#emitRemaining();
-    if (this.pieces.every((p) => p.locked) && this.phase !== 'solved') {
-      this.#enterSolved(true);
-    } else {
-      this.#emitControls();
-    }
+    this.#emitProgress();
+    for (const p of this.pieces) p.setPlaced(p.cluster.size > 1);
+    if (this.#allClusters().size === 1 && this.phase === 'play') this.#enterSolved(true);
+    else this.#emitControls();
   }
 
-  #emitRemaining() {
-    const remaining = this.pieces.filter((p) => !p.locked).length;
-    this.cbs.onRemaining?.(remaining, this.pieces.length);
+  // "Left" = pieces not yet attached to the largest cluster (0 → fully assembled).
+  #emitProgress() {
+    let biggest = 0;
+    const ids = new Map();
+    for (const p of this.pieces) {
+      if (!ids.has(p.cluster)) ids.set(p.cluster, ids.size);
+      p.g.dataset.cluster = ids.get(p.cluster); // exposed for the harness
+      p.g.dataset.csize = p.cluster.size;
+      biggest = Math.max(biggest, p.cluster.size);
+    }
+    this.cbs.onRemaining?.(this.pieces.length - biggest, this.pieces.length);
   }
 
   // Tell the host whether a Solve shortcut makes sense — only while assembling
@@ -457,12 +516,8 @@ export class Board {
     const g = this.gesture;
     if (!g) return;
     if (g.type === 'piece') {
-      if (g.mode === 'free') {
-        g.piece.setDragging(false);
-        this.#clearGlow();
-      } else {
-        g.starts.forEach((s) => s.p.setDragging(false));
-      }
+      g.starts.forEach((s) => s.p.setDragging(false));
+      this.#clearGlow();
     } else if (g.type === 'pan' && g.moved && !g.exploded) {
       this.pieces.forEach((p) => p.setDragging(false));
       this.#springBack();
@@ -470,42 +525,32 @@ export class Board {
     this.gesture = null;
   }
 
-  // --- single-pointer piece drag (assembling) ---
+  // --- single-pointer cluster drag (assembling) ---
+  // Grab a piece and you drag its whole cluster — a lone piece or a sub-assembly.
   #beginPieceDrag(piece, ux, uy) {
-    if (piece.locked) {
-      const group = this.#lockedPieces(); // drag the whole assembled cluster
-      group.forEach((p) => p.setDragging(true));
-      return { type: 'piece', mode: 'group', ux, uy, starts: group.map((p) => ({ p, tx: p.tx, ty: p.ty })) };
+    const cluster = piece.cluster;
+    for (const p of cluster) {
+      this.pieceLayer.append(p.g); // raise the whole cluster above the rest
+      this.glowLayer.append(p.glowEl);
+      this.labelLayer.append(p.labelEl);
+      p.setDragging(true);
     }
-    this.pieceLayer.append(piece.g); // raise above siblings
-    this.glowLayer.append(piece.glowEl);
-    this.labelLayer.append(piece.labelEl);
-    piece.setDragging(true);
-    return { type: 'piece', mode: 'free', piece, ux, uy, tx: piece.tx, ty: piece.ty };
+    return { type: 'piece', ux, uy, cluster, starts: [...cluster].map((p) => ({ p, tx: p.tx, ty: p.ty })) };
   }
 
   #movePieceDrag(ux, uy) {
     const g = this.gesture;
     const dx = ux - g.ux;
     const dy = uy - g.uy;
-    if (g.mode === 'free') {
-      g.piece.moveTo(g.tx + dx, g.ty + dy);
-      this.#updateGlow(g.piece);
-    } else {
-      for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
-    }
+    for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
+    this.#updateGlow(g.cluster);
   }
 
   #endPieceDrag() {
     const g = this.gesture;
-    if (g.mode === 'free') {
-      g.piece.setDragging(false);
-      this.#clearGlow();
-      const res = this.#wouldConnect(g.piece);
-      if (res) this.#place(g.piece, res);
-    } else {
-      g.starts.forEach((s) => s.p.setDragging(false));
-    }
+    for (const s of g.starts) s.p.setDragging(false);
+    this.#clearGlow();
+    this.#dropCluster(g.cluster, g.starts.map((s) => s.p));
   }
 
   // --- solved-map press: tap, pan, or shake-to-scramble ---
@@ -568,58 +613,44 @@ export class Board {
   // As a loose piece nears where it would connect, the EDGE that will mate lights
   // up on both pieces — stronger the closer they get, full at the snap radius.
 
-  // The piece this one would connect to, and how far (the snap metric), or null.
-  #glowTarget(piece) {
-    const locked = this.#lockedPieces();
-    if (locked.length) {
-      const neighbours = locked.filter((l) => isAdjacent(piece.id, l.id));
-      if (!neighbours.length) return null;
-      const anchor = locked[0]; // all locked pieces share one translate
-      const dist = Math.hypot(piece.tx - anchor.tx, piece.ty - anchor.ty);
-      let target = neighbours[0];
-      let best = Infinity;
-      for (const l of neighbours) {
-        const d = Math.hypot(piece.centerX - l.centerX, piece.centerY - l.centerY);
-        if (d < best) {
-          best = d;
-          target = l;
-        }
-      }
-      return { target, dist };
+  // The best join the dragged CLUSTER could make: a cross-cluster adjacent pair
+  // (source piece in the cluster, target piece outside it), nearest in translate
+  // distance — i.e. closest to its correct relative position. The translate
+  // metric means the glow only appears when the shared borders are actually being
+  // brought together, not when an (in-map) neighbour happens to sit elsewhere.
+  #glowTarget(cluster) {
+    const [tx, ty] = this.#clusterTx(cluster);
+    let best = null;
+    for (const c of this.pieces) {
+      if (cluster.has(c)) continue;
+      let src = null;
+      for (const d of cluster) if (isAdjacent(d.id, c.id)) { src = d; break; }
+      if (!src) continue;
+      const dist = Math.hypot(tx - c.tx, ty - c.ty);
+      if (!best || dist < best.dist) best = { source: src, target: c, dist };
     }
-    // No pieces placed yet: home toward the nearest adjacent loose neighbour.
-    let target = null;
-    let dist = Infinity;
-    for (const other of this.pieces) {
-      if (other === piece || other.locked || !isAdjacent(piece.id, other.id)) continue;
-      const d = Math.hypot(piece.tx - other.tx, piece.ty - other.ty);
-      if (d < dist) {
-        dist = d;
-        target = other;
-      }
-    }
-    return target ? { target, dist } : null;
+    return best;
   }
 
-  #updateGlow(piece) {
+  #updateGlow(cluster) {
     const next = new Map();
     let connector = null;
-    const m = this.#glowTarget(piece);
+    const m = this.#glowTarget(cluster);
     if (m && m.dist < MAGNET) {
       const glow = Math.max(0, Math.min(1, (MAGNET - m.dist) / (MAGNET - SNAP)));
-      // Light up the TRUE shared border: compute it with the piece placed where
-      // it will SNAP (the target's translate), not where it's currently dragged,
-      // so only the correct edge glows however you approach.
+      // Light up the TRUE shared border: compute it with the source piece placed
+      // where it will SNAP (the target's translate), not where it's currently
+      // dragged, so only the correct edge glows however you approach.
       const connectT = [m.target.tx, m.target.ty];
-      const aInfo = facingInfo(piece.geom.ring, connectT, m.target.geom.ring, connectT);
-      const bInfo = facingInfo(m.target.geom.ring, connectT, piece.geom.ring, connectT);
-      next.set(piece, { glow, d: aInfo.d });
+      const aInfo = facingInfo(m.source.geom.ring, connectT, m.target.geom.ring, connectT);
+      const bInfo = facingInfo(m.target.geom.ring, connectT, m.source.geom.ring, connectT);
+      next.set(m.source, { glow, d: aInfo.d });
       next.set(m.target, { glow, d: bInfo.d });
       // A faint line joining the two glowing edges (in board world coords).
       if (aInfo.mid && bInfo.mid) {
         connector = {
           glow,
-          x1: aInfo.mid[0] + piece.tx, y1: aInfo.mid[1] + piece.ty,
+          x1: aInfo.mid[0] + m.source.tx, y1: aInfo.mid[1] + m.source.ty,
           x2: bInfo.mid[0] + m.target.tx, y2: bInfo.mid[1] + m.target.ty,
         };
       }

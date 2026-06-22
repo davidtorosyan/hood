@@ -86,11 +86,15 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
     Thin wiring — no game mechanics. Replaces the prototype's fragile `runNode`.
   - `board.js` — `Board`: one node's interactive puzzle. An explicit phase machine
     (`building → play → solved`, plus transient `jumbling`/`solving`/`zooming`) owning a
-    multi-pointer gesture system and camera zoom; talks out only via callbacks. Gestures:
-    one-finger drag assembles pieces (with a facing-edge connection glow); on a solved map
-    a tap zooms in / opens a leaf card, a one-finger drag pans (springs back), and shaking
-    the map scrambles it (there's no Jumble button — `index.js` also wires a best-effort
-    devicemotion shake); two-finger pinch zooms in (into the region under the pinch) / out.
+    multi-pointer gesture system and camera zoom; talks out only via callbacks. Pieces form
+    CLUSTERS (sub-assemblies sharing one translate) — you can build several independently
+    and merge them; a drop snaps the dragged cluster onto the nearest cluster it can join
+    (adjacent pieces, within snap of their true offset) and `#settleClusters` merges
+    everything that lines up. Gestures: one-finger drag moves a cluster (with a true-shared-
+    edge connection glow + a faint tether, and a snap "click" + spark on join); on a solved
+    map a tap zooms in / opens a leaf card, a one-finger drag pans (springs back), and
+    shaking scrambles it (no Jumble button — `index.js` also wires a best-effort devicemotion
+    shake); two-finger pinch zooms in (into the region under the pinch) / out.
   - `piece.js` — `Piece`: one SVG group + its placement state; small methods for visual
     state (near/dragging/placed/zoomable) so DOM bookkeeping lives in one place.
   - `geometry.js` — pure, no DOM: projects a node's children to the board, piece boxes,
