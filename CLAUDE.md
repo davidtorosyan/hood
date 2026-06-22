@@ -90,7 +90,13 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
   - `piece.js` — `Piece`: one SVG group + its placement state; small methods for visual
     state (near/dragging/placed/zoomable) so DOM bookkeeping lives in one place.
   - `geometry.js` — pure, no DOM: projects a node's children to the board, piece boxes,
-    scatter positions. `labels.js` — wrap + auto-size labels. `palette.js` — piece fills.
+    scatter positions. `palette.js` — piece fills.
+  - `labels.js` — `layoutLabels` plans a level's labels together: wrap + auto-size to fit
+    inside each piece, but a label that's too tight or that would collide with another
+    becomes a **callout** (text pushed to open space with a leader line). Collisions use
+    per-line boxes (not one padded rectangle) so a wide line + narrow line don't false-
+    positive. Labels render in a **top layer** (`board` `labelLayer`) above all pieces, so
+    a label is never painted over by a neighbour; each label shares its piece's transform.
   - `tree.js` — read-only access to the generated `hierarchy/shapes/adjacency` JSON.
   - `ui.js` — presentational chrome: breadcrumb, status banner, toast.
 - `src/ui/` — `dom.js` (`el`/`svgEl`/`shuffle`), `chrome.js` (screen + top bar shell).

@@ -315,15 +315,33 @@ body {
   stroke: #ffffff;
   stroke-width: 2.5;
 }
+/* Labels render in their own layer above every piece; they never intercept
+   pointer events (you grab the shape underneath). */
+.jig-labels {
+  pointer-events: none;
+}
+.jig-label-wrap.exploding {
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
 .jig-label {
   fill: #0c1320;
   font-weight: 800;
   letter-spacing: -0.4px;
-  pointer-events: none;
   paint-order: stroke;
   stroke: #ffffff;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+/* Callout: a thin leader line from a too-small piece out to its label, with a
+   dot anchoring it on the piece. The label's white halo masks the line's end. */
+.jig-leader {
+  stroke: rgba(20, 28, 46, 0.5);
+  stroke-width: 1.6;
+}
+.jig-dot {
+  fill: rgba(20, 28, 46, 0.7);
+  stroke: #ffffff;
+  stroke-width: 1.2;
 }
 /* After solving, pieces become tap-to-zoom targets. */
 .jig-piece.zoomable {

@@ -18,6 +18,7 @@ import {
 } from './geometry.js';
 import { Piece } from './piece.js';
 import { labelOf } from './tree.js';
+import { layoutLabels } from './labels.js';
 
 const SNAP = 150; // connection radius, in board user units
 const ZOOM_MS = 580;
@@ -41,7 +42,10 @@ export class Board {
   #initSvg() {
     const svg = svgEl('svg', { class: 'jig', preserveAspectRatio: 'xMidYMid meet' });
     this.pieceLayer = svgEl('g');
-    svg.append(this.pieceLayer);
+    // Labels live in their own layer above every piece, so a label is never
+    // painted over by a neighbouring piece's fill.
+    this.labelLayer = svgEl('g', { class: 'jig-labels' });
+    svg.append(this.pieceLayer, this.labelLayer);
     svg.addEventListener('pointermove', (e) => this.#onMove(e));
     const end = () => this.#endDrag();
     svg.addEventListener('pointerup', end);
@@ -56,11 +60,22 @@ export class Board {
     this.vbH = vbH;
     this.svg.setAttribute('viewBox', `0 0 ${VB_W} ${vbH}`);
     const geoms = projectChildren(this.nodeId, VB_W, vbH);
-    geoms.forEach((geom, i) => {
-      const piece = new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) });
+    const pieces = geoms.map(
+      (geom, i) => new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) }),
+    );
+    // Lay all labels out together so they can dodge each other and the small
+    // pieces become leader-line callouts.
+    const plans = layoutLabels(
+      pieces.map((p) => ({ id: p.id, label: labelOf(p.id), geom: p.geom })),
+      VB_W,
+      vbH,
+    );
+    pieces.forEach((piece) => {
+      piece.setLabel(plans.get(piece.id));
       piece.moveTo(0, 0); // start at the true (assembled) position
       piece.g.addEventListener('pointerdown', (e) => this.#startDrag(piece, e));
       this.pieceLayer.append(piece.g);
+      this.labelLayer.append(piece.labelEl);
       this.pieces.push(piece);
     });
   }
@@ -244,7 +259,8 @@ export class Board {
       group.forEach((p) => p.setDragging(true));
       this.drag = { mode: 'group', ux, uy, starts: group.map((p) => ({ p, tx: p.tx, ty: p.ty })) };
     } else {
-      this.pieceLayer.append(piece.g); // raise above siblings
+      this.pieceLayer.append(piece.g); // raise above sibling pieces
+      this.labelLayer.append(piece.labelEl); // and its label above sibling labels
       piece.setDragging(true);
       this.drag = { mode: 'free', piece, ux, uy, tx: piece.tx, ty: piece.ty };
     }
@@ -293,11 +309,7 @@ export class Board {
   #zoomInto(piece) {
     if (!piece.zoomable) return;
     this.phase = 'zooming';
-    this.pieces.forEach((p) => {
-      if (p === piece) return;
-      p.g.style.transition = 'opacity 0.4s ease';
-      p.g.style.opacity = '0';
-    });
+    this.pieces.forEach((p) => p !== piece && p.fadeOut());
     this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () =>
       this.cbs.onZoomInto?.(piece.id),
     );

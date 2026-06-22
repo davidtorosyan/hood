@@ -34,7 +34,7 @@ const shot = async (label) => {
 const readPieces = () =>
   page.evaluate(() =>
     [...document.querySelectorAll('.jig-piece')].map((g) => ({
-      name: g.querySelector('.jig-label').textContent,
+      name: g.dataset.name,
       tx: +(g.dataset.tx || 0),
       ty: +(g.dataset.ty || 0),
       lx: +g.dataset.cx,
@@ -51,7 +51,7 @@ const readPieces = () =>
 const grabPoint = (name) =>
   page.evaluate((nm) => {
     const g = [...document.querySelectorAll('.jig-piece')].find(
-      (el) => el.querySelector('.jig-label').textContent === nm,
+      (el) => el.dataset.name === nm,
     );
     if (!g) return null;
     g.parentNode.appendChild(g); // raise above siblings

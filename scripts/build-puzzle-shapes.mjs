@@ -158,8 +158,11 @@ function build(id, label, parent, members, used = new Set()) {
     for (const g of partition(members, k)) {
       const sorted = [...g].sort((a, b) => ringArea(ringOf(b)) - ringArea(ringOf(a)));
       const anchor = sorted.find((n) => !used.has(n)) || sorted[0];
+      // A group is named for its most prominent neighborhood, but suffixed so it
+      // never reads as one of the neighborhoods it contains (which is confusing
+      // — e.g. a "Glassell Park" group holding the Glassell Park hood).
       const gid = `${id} › ${anchor}`;
-      build(gid, anchor, id, g, new Set([...used, anchor]));
+      build(gid, `${anchor} area`, id, g, new Set([...used, anchor]));
       node.children.push(gid);
     }
   }
