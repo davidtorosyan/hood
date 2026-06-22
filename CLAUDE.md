@@ -6,9 +6,9 @@ in, what it's near, and where it sits. Hosted as a static site on **GitHub Pages
 backend, light state in localStorage.
 
 > **This is a clean-slate rewrite.** A prototype (the `prototypes` branch) explored the
-> design and proved out the fun. This `main` branch starts empty — just this charter — and
-> we build the real thing from scratch. **No implementation code exists yet, and none should
-> be added until we start the build session.** This commit is only the plan + git scaffolding.
+> design and proved out the fun. This `main` branch was rebuilt from scratch around the one
+> validated mode — the zoomable Jigsaw — with a clean, modular architecture. The build has
+> started; see **Current architecture** below.
 
 ## Why a rewrite
 The prototype validated the concept and taught us a lot (all captured in the `prototypes`
@@ -74,12 +74,39 @@ Treat the prototype's structure as a reference, not gospel — re-architect free
 - **Phase 2 (Dave's real goal):** all of **LA County** — Glendale, Santa Monica, Pasadena,
   etc. Needs additional boundary sources beyond the City-of-LA set.
 
-## Start-of-build checklist (next session)
-1. Read the `prototypes` branch `CLAUDE.md` (full design history + playtesting learnings +
-   technical gotchas: pointer-capture, winding-order, connected partitions).
-2. Decide the stack and scaffold the project (package.json, build tool, PWA, dev server).
-3. Pull the boundary data + generated geometry from `prototypes` (see commands above).
-4. Build the zoomable Jigsaw from scratch with a clean architecture.
+## Current architecture
+Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**,
+**Playwright** for the screenshot harness. `npm run dev` (LAN host), `npm run build`
+(static `dist/`, `BASE_PATH` defaults to `/hood/`), `npm run shots` (UI-review harness).
 
-> Local note: the working tree may still contain ignored, stale prototype artifacts
-> (`node_modules/`, `dist/`) — regenerate or delete as needed; they are not tracked here.
+- `src/main.js` — entry; a tiny home screen with a **Play** button into the Jigsaw.
+- `src/jigsaw/` — the mode, split into small modules (the point of the rewrite):
+  - `index.js` — orchestrator: for one node, builds chrome + a `Board`, wires the Board's
+    events to the UI, and handles navigation (up, breadcrumb jumps, zoom into a child).
+    Thin wiring — no game mechanics. Replaces the prototype's fragile `runNode`.
+  - `board.js` — `Board`: one node's interactive puzzle. An explicit phase machine
+    (`building → intro → play → solved`) owning the drag/snap state machine, explode
+    intro, solved detection, and camera zoom. Talks out only via callbacks.
+  - `piece.js` — `Piece`: one SVG group + its placement state; small methods for visual
+    state (near/dragging/placed/zoomable) so DOM bookkeeping lives in one place.
+  - `geometry.js` — pure, no DOM: projects a node's children to the board, piece boxes,
+    scatter positions. `labels.js` — wrap + auto-size labels. `palette.js` — piece fills.
+  - `tree.js` — read-only access to the generated `hierarchy/shapes/adjacency` JSON.
+  - `ui.js` — presentational chrome: breadcrumb, status banner, toast.
+- `src/ui/` — `dom.js` (`el`/`svgEl`/`shuffle`), `chrome.js` (screen + top bar shell).
+- `src/store.js` — minimal localStorage (which pieces have been placed).
+- `src/data/` — generated geometry + `regions.js` (the partition). Regenerate with
+  `npm run build:shapes` after editing `regions.js`. `neighborhoods.js` is unused by the
+  Jigsaw (kept as reference content for future modes / Phase 2).
+- `scripts/` — `build-puzzle-shapes.mjs`, `build-boundaries.mjs`, `icons.mjs`, and
+  `screenshots.mjs` (drives a full Jigsaw session for the `ui-review` skill).
+
+**Keep these invariants** (hard-won — see prototype learnings): pointer capture on the
+stable SVG root not the dragged piece; clockwise winding for any new boundary data; each
+auto-clustered group a single connected component; every level capped at ~6 pieces.
+
+## Next steps / ideas
+- Flesh out auto-derived group names in `build-puzzle-shapes.mjs` (currently "X area").
+- Phase 2: add LA-County boundary sources (Glendale, Santa Monica, Pasadena…) and extend
+  `regions.js` + the build to cover them.
+- Consider re-introducing the only other fun mode (Card Battle) once the Jigsaw is polished.

@@ -1,0 +1,76 @@
+// The Jigsaw mode: a zoomable map of LA. Assemble a level's pieces by dragging
+// true neighbours together, then tap a piece to zoom into it and assemble the
+// next level down — regions → groups → individual neighbourhoods.
+//
+// This module is just the wiring: for one node it builds the chrome + a Board,
+// connects the Board's events to the chrome, and handles navigation between
+// nodes (up, breadcrumb jumps, and zooming into a child). All the mechanics live
+// in the Board.
+import { el, clear } from '../ui/dom.js';
+import { screen } from '../ui/chrome.js';
+import { ROOT, NODES, pathIds } from './tree.js';
+import { Board } from './board.js';
+import { breadcrumb, statusBanner, showToast } from './ui.js';
+
+// Debug toggle, shared across levels: skip the explode intro (start solved).
+let skipExplode = false;
+
+export function mountJigsaw(app, { back }) {
+  renderNode(app, { back }, ROOT, {});
+}
+
+function renderNode(app, ctx, nodeId, opts) {
+  const node = NODES[nodeId];
+  const assembled = opts.assembled || skipExplode;
+
+  // --- navigation ---
+  const goUp = () =>
+    node.parent
+      ? renderNode(app, ctx, node.parent, { assembled: true, zoomOutFrom: nodeId })
+      : ctx.back();
+  const goTo = (id) => {
+    if (id === nodeId) return;
+    const childToward = pathIds(nodeId)[pathIds(id).length];
+    renderNode(app, ctx, id, { assembled: true, zoomOutFrom: childToward });
+  };
+  const zoomInto = (childId) => renderNode(app, ctx, childId, {});
+
+  // --- chrome ---
+  const bannerUi = statusBanner({
+    onUp: goUp,
+    onSolve: () => board.solveAll(),
+    skip: skipExplode,
+    onSkipToggle: (on) => {
+      skipExplode = on;
+      if (on) board.forceSolve();
+    },
+  });
+  const boardWrap = el('div', { class: 'jig-board' });
+
+  // --- board ---
+  const board = new Board(nodeId, {
+    onRemaining: (remaining) => bannerUi.setCounter(remaining),
+    onHint: (text) => bannerUi.setHint(text),
+    onSolved: (zoomable) => bannerUi.setSolved(zoomable),
+    onToast: (msg) => showToast(boardWrap, msg),
+    onZoomInto: zoomInto,
+  });
+  boardWrap.append(board.svg);
+
+  clear(app);
+  app.append(
+    screen('Jigsaw', goUp, [breadcrumb(nodeId, goTo), bannerUi.banner, boardWrap], {
+      bodyClass: 'jig-body',
+    }),
+  );
+
+  // Measure the board so the SVG viewBox matches its aspect (the map fills it
+  // with no letterboxing), then build the pieces and start.
+  requestAnimationFrame(() => {
+    const w = boardWrap.clientWidth || 360;
+    const h = boardWrap.clientHeight || 360;
+    const vbH = Math.round((1000 * h) / w);
+    board.build(vbH);
+    board.start(opts);
+  });
+}

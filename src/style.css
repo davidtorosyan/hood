@@ -1,0 +1,344 @@
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #eef1f7;
+  --line: #dce1ea;
+  --text: #1b2230;
+  --text-dim: #5f6b7c;
+  --accent: #f59e0b;
+  --accent-text: #b45309;
+  --ink: #3a2a05; /* text on top of accent fills */
+  --good: #0f9d6b;
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#app {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Buttons ------------------------------------------------------------- */
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 16px 28px;
+  font-size: 18px;
+  font-weight: 800;
+  background: var(--accent);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.icon-btn {
+  appearance: none;
+  background: var(--surface-2);
+  color: var(--text);
+  border: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+/* ---- Top bar ------------------------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(var(--safe-top) + 12px) 16px 12px;
+  flex: none;
+}
+.topbar-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.topbar-note {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.screen-body {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 16px calc(var(--safe-bottom) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- Home ---------------------------------------------------------------- */
+.home {
+  padding: calc(var(--safe-top) + 28px) 22px calc(var(--safe-bottom) + 28px);
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+}
+.home-top {
+  margin-top: 18px;
+}
+.home-title {
+  font-size: 58px;
+  letter-spacing: -2px;
+  margin: 0;
+}
+.home-tag {
+  color: var(--text-dim);
+  font-size: 17px;
+  margin: 6px 0 0;
+  max-width: 19em;
+}
+.home-art {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 110px;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.12));
+}
+.home-play {
+  width: 100%;
+  max-width: 320px;
+}
+.home-note {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 2px 0 0;
+}
+
+/* ---- Jigsaw -------------------------------------------------------------- */
+.jig-body {
+  gap: 8px;
+  overflow: hidden; /* the board fills the space; nothing scrolls */
+}
+
+/* Breadcrumb: where you are in the nesting; each level is tappable. */
+.jig-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  flex: none;
+  line-height: 1.3;
+}
+.jig-crumb {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 1px 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.jig-crumb.current {
+  color: var(--text);
+  font-weight: 800;
+  cursor: default;
+}
+.jig-crumb-sep {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.jig-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.jig-hint {
+  color: var(--text-dim);
+}
+.jig-banner-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.jig-count {
+  font-weight: 700;
+  color: var(--accent-text);
+}
+.jig-banner.done .jig-count {
+  color: var(--good);
+}
+.jig-debug,
+.jig-up {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.jig-up {
+  color: var(--text);
+}
+.jig-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.jig-skip input {
+  margin: 0;
+  cursor: pointer;
+}
+.jig-debug:active,
+.jig-up:active {
+  background: var(--line);
+}
+.jig-board {
+  position: relative;
+  background: radial-gradient(circle at 50% 42%, #ffffff 0%, #e7ecf4 82%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  width: 100%;
+  flex: 1; /* fill the remaining screen height */
+  min-height: 0;
+}
+/* Toast cue over the map; doesn't reflow the board, taps pass through. */
+.jig-toast {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translate(-50%, -10px);
+  background: rgba(27, 34, 48, 0.94);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.jig-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.jig {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+.jig-piece {
+  cursor: grab;
+}
+/* The intro: pieces fly from assembled (translate 0) out to their scatter spots. */
+.jig-piece.exploding {
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.jig-piece.dragging {
+  cursor: grabbing;
+}
+.jig-piece.placed {
+  cursor: default;
+}
+.jig-shape {
+  fill: #9fb0cb;
+  stroke: #ffffff;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+/* Leaf pieces (terminal) read solid/flat; zoomable pieces a touch lighter so
+   their inner subdivisions show through. */
+.jig-piece.zoomy .jig-shape {
+  fill: #aebbd2;
+}
+.jig-piece.leaf .jig-shape {
+  fill: #93a3c0;
+}
+.jig-inner {
+  fill: none;
+  stroke: rgba(22, 30, 48, 0.1);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.jig-piece.placed .jig-inner {
+  stroke: rgba(20, 30, 50, 0.16);
+}
+.jig-piece.dragging .jig-shape {
+  fill: var(--accent);
+}
+/* Glow when a loose piece is in a connectable spot. */
+.jig-piece.jig-near:not(.placed) .jig-shape {
+  stroke: var(--accent);
+  stroke-width: 5;
+}
+.jig-piece.placed .jig-shape {
+  fill: var(--fill, #9bdcc1);
+  stroke: #ffffff;
+  stroke-width: 2.5;
+}
+.jig-label {
+  fill: #0c1320;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+/* After solving, pieces become tap-to-zoom targets. */
+.jig-piece.zoomable {
+  cursor: pointer;
+}
+.jig-piece.zoomable .jig-shape {
+  transition: fill 0.15s ease;
+}
+.jig-piece.zoomable:active .jig-shape {
+  fill: var(--accent);
+}
