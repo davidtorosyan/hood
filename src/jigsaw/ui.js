@@ -22,25 +22,18 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// The status banner. Returns the element plus handles the host updates through:
-//   setHint(text), setCounter(remaining), setSolved(zoomable)
-// and reads back the live skip-intro checkbox via getSkip()/onSkipToggle.
-export function statusBanner({ onUp, onSolve, skip, onSkipToggle }) {
+// The status banner: a hint, the Jumble/Solve/up controls, and a pieces-left
+// counter. The host drives it through setHint / setCounter / setSolved.
+export function statusBanner({ onUp, onJumble, onSolve }) {
   const hint = el('span', { class: 'jig-hint' }, '');
   const counter = el('span', { class: 'jig-count' }, '');
-
-  const skipBox = el('input', {
-    type: 'checkbox',
-    onChange: (e) => onSkipToggle(e.currentTarget.checked),
-  });
-  skipBox.checked = skip;
 
   const banner = el('div', { class: 'jig-banner' }, [
     hint,
     el('div', { class: 'jig-banner-right' }, [
-      el('label', { class: 'jig-skip', title: 'Debug: skip the explode intro' }, [skipBox, 'skip']),
-      el('button', { class: 'jig-up', onClick: onUp, title: 'Zoom out' }, '↑ up'),
-      el('button', { class: 'jig-debug', onClick: onSolve, title: 'Debug: auto-solve' }, 'Solve'),
+      el('button', { class: 'jig-btn jig-jumble', onClick: onJumble, title: 'Scatter the pieces' }, 'Jumble'),
+      el('button', { class: 'jig-btn jig-solve', onClick: onSolve, title: 'Snap the pieces back together' }, 'Solve'),
+      el('button', { class: 'jig-btn jig-up', onClick: onUp, title: 'Zoom out one level', 'aria-label': 'Zoom out' }, '↑'),
       counter,
     ]),
   ]);
@@ -49,12 +42,13 @@ export function statusBanner({ onUp, onSolve, skip, onSkipToggle }) {
     banner,
     setHint: (t) => (hint.textContent = t),
     setCounter: (remaining) => {
+      if (remaining > 0) banner.classList.remove('done');
       counter.textContent = remaining === 0 ? 'Done!' : `${remaining} left`;
     },
     setSolved: (zoomable) => {
       banner.classList.add('done');
       counter.textContent = 'Done!';
-      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : 'Solved!';
+      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : '🎉 Solved!';
     },
   };
 }

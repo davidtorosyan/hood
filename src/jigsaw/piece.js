@@ -60,13 +60,24 @@ export class Piece {
   }
 
   applyTransform() {
-    this.g.setAttribute('transform', `translate(${this.tx.toFixed(1)} ${this.ty.toFixed(1)})`);
+    // Use the CSS `transform` PROPERTY, not the SVG `transform` attribute: only
+    // the CSS property animates via CSS transitions in Safari/Firefox (Chromium
+    // animates both). px units on an SVG element resolve to user-space units.
+    this.g.style.transform = `translate(${this.tx.toFixed(1)}px, ${this.ty.toFixed(1)}px)`;
+    this.g.dataset.tx = this.tx.toFixed(1); // exposed for the screenshot harness
+    this.g.dataset.ty = this.ty.toFixed(1);
   }
 
   lock() {
     this.locked = true;
     this.g.classList.add('placed');
     this.g.classList.remove('jig-near', 'exploding', 'dragging');
+  }
+
+  // Return to a loose state (used when the player jumbles an assembled map).
+  unlock() {
+    this.locked = false;
+    this.g.classList.remove('placed', 'zoomable', 'jig-near', 'dragging');
   }
 
   // --- transient visual state ---------------------------------------------

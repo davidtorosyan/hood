@@ -29,22 +29,19 @@ const shot = async (label) => {
   console.log(`shot ${name}`);
 };
 
-// Read the live pieces (name, true centroid, current translate, placed?).
+// Read the live pieces (name, true centroid, current translate, placed?). The
+// app tracks the translate in data-tx/data-ty (it renders via CSS transform).
 const readPieces = () =>
   page.evaluate(() =>
-    [...document.querySelectorAll('.jig-piece')].map((g) => {
-      const t = g.getAttribute('transform') || 'translate(0 0)';
-      const m = t.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
-      return {
-        name: g.querySelector('.jig-label').textContent,
-        tx: +m[1],
-        ty: +m[2],
-        lx: +g.dataset.cx,
-        ly: +g.dataset.cy,
-        placed: g.classList.contains('placed'),
-        zoomable: g.classList.contains('zoomable'),
-      };
-    }),
+    [...document.querySelectorAll('.jig-piece')].map((g) => ({
+      name: g.querySelector('.jig-label').textContent,
+      tx: +(g.dataset.tx || 0),
+      ty: +(g.dataset.ty || 0),
+      lx: +g.dataset.cx,
+      ly: +g.dataset.cy,
+      placed: g.classList.contains('placed'),
+      zoomable: g.classList.contains('zoomable'),
+    })),
   );
 
 // Raise a loose piece to the top and return a screen point PROVABLY inside its
@@ -60,14 +57,20 @@ const grabPoint = (name) =>
     g.parentNode.appendChild(g); // raise above siblings
     const path = g.querySelector('.jig-shape');
     const svg = g.ownerSVGElement;
-    const bb = path.getBBox();
+    const bb = path.getBBox(); // geometry coords, pre-translate (the `d` numbers)
+    const tx = parseFloat(g.dataset.tx) || 0;
+    const ty = parseFloat(g.dataset.ty) || 0;
     const pt = svg.createSVGPoint();
     for (let iy = 1; iy < 8; iy++) {
       for (let ix = 1; ix < 8; ix++) {
         pt.x = bb.x + (bb.width * ix) / 8;
         pt.y = bb.y + (bb.height * iy) / 8;
         if (path.isPointInFill(pt)) {
-          const s = pt.matrixTransform(path.getScreenCTM());
+          // geometry → SVG-root user space (add the piece's translate) → screen.
+          const u = svg.createSVGPoint();
+          u.x = pt.x + tx;
+          u.y = pt.y + ty;
+          const s = u.matrixTransform(svg.getScreenCTM());
           return { sx: s.x, sy: s.y };
         }
       }
@@ -110,11 +113,15 @@ async function solveBoard(onMidway) {
 await page.goto(URL, { waitUntil: 'networkidle' });
 await shot('home');
 
-// Enter the Jigsaw.
+// Enter the Jigsaw — the board arrives already assembled (no auto-jumble).
 await page.getByRole('button', { name: 'Play' }).click();
-await page.waitForTimeout(1700); // let the explode intro settle into the scatter
-await shot('regions-initial');
+await page.waitForTimeout(800);
+await shot('regions-assembled');
 
+// Jumble, then assemble by hand (exercises real drag + snap).
+await page.locator('.jig-jumble').click();
+await page.waitForTimeout(900); // explode animation → play
+await shot('regions-jumbled');
 await solveBoard(() => shot('regions-midway'));
 {
   const left = (await readPieces()).filter((p) => !p.placed);
@@ -122,17 +129,44 @@ await solveBoard(() => shot('regions-midway'));
 }
 await shot('regions-solved');
 
-// Zoom into the first zoomable region.
+// Zoom into the first zoomable region (assembled boards are tap-to-zoom).
 {
   const ps = await readPieces();
   const target = ps.find((p) => p.zoomable) ?? ps[0];
   const box = await page.locator('svg.jig').boundingBox();
   const u2px = box.width / 1000;
   await page.mouse.click(box.x + target.lx * u2px, box.y + target.ly * u2px);
-  await page.waitForTimeout(1700); // zoom anim + child intro
-  await shot('region-zoomed-initial');
-  await solveBoard();
-  await shot('region-solved');
+  await page.waitForTimeout(1200); // zoom anim
+  await shot('region-zoomed');
+}
+
+// On the sub-level, exercise the Jumble + Solve buttons, then verify that a
+// jumble→Solve→tap sequence still zooms (regression guard for the timer race
+// where a stale jumble timer flipped the board back out of the solved phase).
+const crumbDepth = () => page.locator('.jig-crumb').count();
+const depthBefore = await crumbDepth();
+await page.locator('.jig-jumble').click();
+await page.waitForTimeout(900);
+await shot('region-jumbled');
+await page.locator('.jig-solve').click();
+await page.waitForTimeout(800); // let the snap-together animation finish
+await shot('region-solved-by-button');
+{
+  const ps = await readPieces();
+  const target = ps.find((p) => p.zoomable);
+  if (target) {
+    const box = await page.locator('svg.jig').boundingBox();
+    const u2px = box.width / 1000;
+    await page.mouse.click(box.x + (target.lx + target.tx) * u2px, box.y + (target.ly + target.ty) * u2px);
+    await page.waitForTimeout(1200);
+    if ((await crumbDepth()) <= depthBefore) {
+      errors.push('BUG: tap after jumble→Solve did not zoom in (phase race)');
+    } else {
+      await shot('after-solve-zoom');
+      await page.locator('.jig-up').click(); // step back to the sub-level
+      await page.waitForTimeout(1100);
+    }
+  }
 }
 
 // Zoom back out via the "up" control.

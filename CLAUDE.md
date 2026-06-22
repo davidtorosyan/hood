@@ -104,6 +104,12 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
 **Keep these invariants** (hard-won — see prototype learnings): pointer capture on the
 stable SVG root not the dragged piece; clockwise winding for any new boundary data; each
 auto-clustered group a single connected component; every level capped at ~6 pieces.
+Animate piece movement via the CSS `transform` **property** (`style.transform`), never the
+SVG `transform` **attribute** — only Chromium transitions the attribute, so the attribute
+route teleports pieces on iOS Safari/Firefox. Force a reflow between the start and end
+transform so the transition actually runs. Any deferred animation/phase timer must be
+cancellable (`#cancelPending`) so a follow-up action (e.g. Solve mid-Jumble) can't be
+clobbered by a stale timer flipping the phase back.
 
 ## Next steps / ideas
 - Flesh out auto-derived group names in `build-puzzle-shapes.mjs` (currently "X area").

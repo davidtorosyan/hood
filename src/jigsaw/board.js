@@ -21,8 +21,11 @@ import { labelOf } from './tree.js';
 
 const SNAP = 150; // connection radius, in board user units
 const ZOOM_MS = 580;
+const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 
 export class Board {
+  #pendingTimer = 0; // a scheduled end-of-animation callback we may need to cancel
+
   // cbs: { onRemaining(n,total), onHint(text), onSolved(zoomable),
   //        onZoomInto(childId), onToast(msg) }
   constructor(nodeId, cbs = {}) {
@@ -48,56 +51,100 @@ export class Board {
 
   // --- build & lifecycle ---------------------------------------------------
 
-  // Create the pieces for `vbH` (the measured board aspect) and scatter them.
+  // Create the pieces for `vbH` (the measured board aspect), placed assembled.
   build(vbH) {
     this.vbH = vbH;
     this.svg.setAttribute('viewBox', `0 0 ${VB_W} ${vbH}`);
     const geoms = projectChildren(this.nodeId, VB_W, vbH);
-    const pieces = geoms.map(
-      (geom, i) => new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) }),
-    );
-    shuffle(pieces).forEach((piece, k, arr) => {
-      const [tx, ty] = scatterTranslate(piece.geom, k, arr.length, vbH);
-      piece.moveTo(tx, ty);
+    geoms.forEach((geom, i) => {
+      const piece = new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) });
+      piece.moveTo(0, 0); // start at the true (assembled) position
       piece.g.addEventListener('pointerdown', (e) => this.#startDrag(piece, e));
       this.pieceLayer.append(piece.g);
       this.pieces.push(piece);
     });
-    this.#emitRemaining();
   }
 
-  // Begin the puzzle. `assembled` shows it already solved (used for skip-intro
-  // and when arriving from a child); `zoomOutFrom` reverse-zooms from that child.
-  start({ assembled = false, zoomOutFrom = null } = {}) {
-    if (assembled) {
-      this.#snapAll();
-      this.#enterSolved(false);
-      if (zoomOutFrom) {
-        const from = this.pieces.find((p) => p.id === zoomOutFrom);
-        if (from) this.#animateZoom(this.#boxFor(from), fullVB(this.vbH));
-      }
-    } else {
-      this.#playIntro();
+  // Begin the level already assembled — we never auto-jumble; the player decides
+  // when to scramble. `zoomOutFrom` reverse-zooms from the child we arrived from.
+  start({ zoomOutFrom = null } = {}) {
+    this.#snapAll();
+    this.#enterSolved(false);
+    if (zoomOutFrom) {
+      const from = this.pieces.find((p) => p.id === zoomOutFrom);
+      if (from) this.#animateZoom(this.#boxFor(from), fullVB(this.vbH));
     }
   }
 
-  // Show assembled, burst apart to the scatter spots, then hand control over.
-  #playIntro() {
-    this.phase = 'intro';
-    this.cbs.onHint?.('Putting the map together…');
-    this.pieces.forEach((p) => {
-      p.setExploding(true);
-      p.g.setAttribute('transform', 'translate(0 0)'); // start assembled
+  // Burst the assembled map apart into loose pieces for the player to rebuild.
+  // Triggered by the Jumble button — there's no automatic scatter.
+  jumble() {
+    if (this.phase !== 'solved' && this.phase !== 'play') return;
+    this.#cancelPending();
+    this.#assignScatter();
+    this.phase = 'jumbling';
+    this.pieces.forEach((p) => p.unlock());
+    this.#emitRemaining();
+    this.cbs.onHint?.('Drag the neighbors together.');
+    // Animate from assembled (0,0) out to the scatter spots.
+    this.#animatePieces(
+      (p) => [0, 0],
+      (p) => [p.scatterTx, p.scatterTy],
+      () => {
+        this.phase = 'play';
+      },
+    );
+  }
+
+  // Snap everything home (the Solve button — gave up, or just want to move on).
+  // No toast: a hand-assembled solve earns the celebration; this one doesn't.
+  solve() {
+    if (this.phase === 'solved' || this.phase === 'building') return;
+    this.#cancelPending();
+    this.phase = 'solving';
+    // Fly every piece in to its true position, then lock + mark solved.
+    this.#animatePieces(null, () => [0, 0], () => {
+      this.#snapAll();
+      this.#enterSolved(false);
     });
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        this.pieces.forEach((p) => p.applyTransform()); // fly out to scatter
-        this.cbs.onHint?.('Fit the pieces back together.');
-        setTimeout(() => {
-          this.pieces.forEach((p) => p.setExploding(false));
-          this.phase = 'play';
-        }, 650);
-      }, 850);
+  }
+
+  // Run a transform transition on every piece: place them at `from` (if given),
+  // flush layout so the browser commits that as the start, switch to `to`, and
+  // call `done` once the CSS transition has run. Transitions the CSS `transform`
+  // PROPERTY (not the SVG attribute) so it animates on Safari/Firefox too.
+  #animatePieces(from, to, done) {
+    this.pieces.forEach((p) => {
+      if (from) {
+        const [fx, fy] = from(p);
+        p.moveTo(fx, fy);
+      }
+      p.setExploding(true);
+    });
+    this.svg.getBoundingClientRect(); // force reflow → start state is committed
+    this.pieces.forEach((p) => {
+      const [tx, ty] = to(p);
+      p.moveTo(tx, ty);
+    });
+    this.#pendingTimer = setTimeout(() => {
+      this.pieces.forEach((p) => p.setExploding(false));
+      done?.();
+    }, SHUFFLE_MS);
+  }
+
+  #cancelPending() {
+    if (this.#pendingTimer) {
+      clearTimeout(this.#pendingTimer);
+      this.#pendingTimer = 0;
+    }
+  }
+
+  // Give each piece a fresh scatter target (shuffled, so a re-jumble looks new).
+  #assignScatter() {
+    shuffle(this.pieces).forEach((p, k, arr) => {
+      const [tx, ty] = scatterTranslate(p.geom, k, arr.length, this.vbH);
+      p.scatterTx = tx;
+      p.scatterTy = ty;
     });
   }
 
@@ -167,20 +214,6 @@ export class Board {
     if (zoomable) this.pieces.forEach((p) => p.markZoomable());
     this.cbs.onSolved?.(zoomable);
     if (withToast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
-  }
-
-  // Debug: jump straight to solved. `instant` skips the toast/celebration.
-  forceSolve() {
-    if (this.phase === 'solved') return;
-    this.#snapAll();
-    this.#enterSolved(false);
-  }
-
-  // Debug: auto-solve only if we're already in play (mirrors the old "Solve").
-  solveAll() {
-    if (this.phase !== 'play') return;
-    this.#snapAll();
-    this.#refresh();
   }
 
   // --- dragging ------------------------------------------------------------

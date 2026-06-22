@@ -12,38 +12,30 @@ import { ROOT, NODES, pathIds } from './tree.js';
 import { Board } from './board.js';
 import { breadcrumb, statusBanner, showToast } from './ui.js';
 
-// Debug toggle, shared across levels: skip the explode intro (start solved).
-let skipExplode = false;
-
 export function mountJigsaw(app, { back }) {
   renderNode(app, { back }, ROOT, {});
 }
 
 function renderNode(app, ctx, nodeId, opts) {
   const node = NODES[nodeId];
-  const assembled = opts.assembled || skipExplode;
 
-  // --- navigation ---
+  // --- navigation --- (every level arrives already assembled)
   const goUp = () =>
     node.parent
-      ? renderNode(app, ctx, node.parent, { assembled: true, zoomOutFrom: nodeId })
+      ? renderNode(app, ctx, node.parent, { zoomOutFrom: nodeId })
       : ctx.back();
   const goTo = (id) => {
     if (id === nodeId) return;
     const childToward = pathIds(nodeId)[pathIds(id).length];
-    renderNode(app, ctx, id, { assembled: true, zoomOutFrom: childToward });
+    renderNode(app, ctx, id, { zoomOutFrom: childToward });
   };
   const zoomInto = (childId) => renderNode(app, ctx, childId, {});
 
   // --- chrome ---
   const bannerUi = statusBanner({
     onUp: goUp,
-    onSolve: () => board.solveAll(),
-    skip: skipExplode,
-    onSkipToggle: (on) => {
-      skipExplode = on;
-      if (on) board.forceSolve();
-    },
+    onJumble: () => board.jumble(),
+    onSolve: () => board.solve(),
   });
   const boardWrap = el('div', { class: 'jig-board' });
 

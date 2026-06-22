@@ -187,11 +187,13 @@ body {
 }
 .jig-hint {
   color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
 }
 .jig-banner-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   flex: none;
 }
 .jig-count {
@@ -201,38 +203,29 @@ body {
 .jig-banner.done .jig-count {
   color: var(--good);
 }
-.jig-debug,
-.jig-up {
+.jig-btn {
   appearance: none;
   border: 1px solid var(--line);
   background: var(--surface-2);
-  color: var(--text-dim);
-  font-size: 12px;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.jig-up {
   color: var(--text);
-}
-.jig-skip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text-dim);
-  cursor: pointer;
-  user-select: none;
-}
-.jig-skip input {
-  margin: 0;
+  padding: 7px 12px;
+  border-radius: 9px;
   cursor: pointer;
 }
-.jig-debug:active,
-.jig-up:active {
+.jig-btn:active {
   background: var(--line);
+}
+/* Jumble is the call to action on an assembled board — make it pop. */
+.jig-jumble {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.jig-jumble:active {
+  filter: brightness(0.94);
+  background: var(--accent);
 }
 .jig-board {
   position: relative;
