@@ -348,6 +348,14 @@ body {
   stroke-width: calc(3px + 7px * var(--glow, 0));
   filter: drop-shadow(0 0 calc(11px * var(--glow, 0)) rgba(245, 158, 11, var(--glow, 0)));
 }
+/* A faint dashed tether between the two glowing edges as they near. */
+.jig-connector {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 5 8;
+  opacity: calc(0.55 * var(--glow, 0));
+}
 /* Labels render in their own layer above every piece; they never intercept
    pointer events (you grab the shape underneath). */
 .jig-labels {

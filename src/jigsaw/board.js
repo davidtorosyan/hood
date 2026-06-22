@@ -23,7 +23,7 @@ import { labelOf } from './tree.js';
 import { layoutLabels } from './labels.js';
 
 const SNAP = 150; // connection radius, in board user units
-const MAGNET = 440; // distance at which a piece starts to "feel" its connection
+const MAGNET = 290; // distance at which a piece starts to "feel" its connection
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
@@ -88,6 +88,10 @@ export class Board {
     // Connection-edge glow sits above the pieces; labels above everything, so a
     // label is never painted over by a neighbouring piece's fill.
     this.glowLayer = svgEl('g', { class: 'jig-glows' });
+    // A faint dashed line drawn between the two glowing edges as they near.
+    this.connectorEl = svgEl('line', { class: 'jig-connector' });
+    this.connectorEl.style.display = 'none';
+    this.glowLayer.append(this.connectorEl);
     this.labelLayer = svgEl('g', { class: 'jig-labels' });
     this.fxLayer = svgEl('g', { class: 'jig-fx' }); // snap sparks, above everything
     svg.append(this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer);
@@ -599,6 +603,7 @@ export class Board {
 
   #updateGlow(piece) {
     const next = new Map();
+    let connector = null;
     const m = this.#glowTarget(piece);
     if (m && m.dist < MAGNET) {
       const glow = Math.max(0, Math.min(1, (MAGNET - m.dist) / (MAGNET - SNAP)));
@@ -606,18 +611,42 @@ export class Board {
       // it will SNAP (the target's translate), not where it's currently dragged,
       // so only the correct edge glows however you approach.
       const connectT = [m.target.tx, m.target.ty];
-      const bT = [m.target.tx, m.target.ty];
-      next.set(piece, { glow, d: facingInfo(piece.geom.ring, connectT, m.target.geom.ring, bT).d });
-      next.set(m.target, { glow, d: facingInfo(m.target.geom.ring, bT, piece.geom.ring, connectT).d });
+      const aInfo = facingInfo(piece.geom.ring, connectT, m.target.geom.ring, connectT);
+      const bInfo = facingInfo(m.target.geom.ring, connectT, piece.geom.ring, connectT);
+      next.set(piece, { glow, d: aInfo.d });
+      next.set(m.target, { glow, d: bInfo.d });
+      // A faint line joining the two glowing edges (in board world coords).
+      if (aInfo.mid && bInfo.mid) {
+        connector = {
+          glow,
+          x1: aInfo.mid[0] + piece.tx, y1: aInfo.mid[1] + piece.ty,
+          x2: bInfo.mid[0] + m.target.tx, y2: bInfo.mid[1] + m.target.ty,
+        };
+      }
     }
     for (const p of this.glowing) if (!next.has(p)) p.setGlow(0, '');
     for (const [p, v] of next) p.setGlow(v.glow, v.d);
     this.glowing = new Set(next.keys());
+    this.#setConnector(connector);
+  }
+
+  #setConnector(c) {
+    if (c) {
+      this.connectorEl.setAttribute('x1', c.x1.toFixed(1));
+      this.connectorEl.setAttribute('y1', c.y1.toFixed(1));
+      this.connectorEl.setAttribute('x2', c.x2.toFixed(1));
+      this.connectorEl.setAttribute('y2', c.y2.toFixed(1));
+      this.connectorEl.style.setProperty('--glow', c.glow.toFixed(3));
+      this.connectorEl.style.display = '';
+    } else {
+      this.connectorEl.style.display = 'none';
+    }
   }
 
   #clearGlow() {
     for (const p of this.glowing) p.setGlow(0, '');
     this.glowing.clear();
+    this.#setConnector(null);
   }
 
   // --- camera zoom ---------------------------------------------------------

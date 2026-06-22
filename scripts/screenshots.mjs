@@ -204,7 +204,7 @@ await checkSolve('when scrambled', true);
 // Connection glow: drop one region in place, bring an adjacent one close and
 // hold — only the shared edge should light up on both.
 await pressDragTo('San Fernando Valley', 0, 0, true);
-await pressDragTo('Central LA', 165, 165, false); // held, just outside the snap
+await pressDragTo('Central LA', 135, 135, false); // held within the glow range
 await page.waitForTimeout(120);
 if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
 await shot('connection-glow');
