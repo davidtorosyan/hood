@@ -126,7 +126,8 @@ async function pressDragTo(name, tx, ty, release = true) {
   if (release) await page.mouse.up();
 }
 
-// Scramble a solved map by grabbing it and shaking — rapid back-and-forth pan.
+// Scramble a solved map by grabbing it and shaking. Shake VERTICALLY to prove
+// shake works in any direction, not just side-to-side.
 async function shakeScramble() {
   const box = await page.locator('svg.jig').boundingBox();
   const u2px = box.width / 1000;
@@ -134,7 +135,7 @@ async function shakeScramble() {
   const cy = box.y + box.height / 2;
   await page.mouse.move(cx, cy);
   await page.mouse.down();
-  for (let i = 0; i < 8; i++) await page.mouse.move(cx + (i % 2 ? 250 : -250) * u2px, cy);
+  for (let i = 0; i < 8; i++) await page.mouse.move(cx, cy + (i % 2 ? 230 : -230) * u2px);
   await page.mouse.up();
   await page.waitForTimeout(900); // explode → play
 }
@@ -201,13 +202,19 @@ await shot('regions-jumbled');
 await checkSolve('when scrambled', true);
 
 // Connection glow: drop one region in place, bring an adjacent one close and
-// hold — only the facing edge should light up on both.
+// hold — only the shared edge should light up on both.
 await pressDragTo('San Fernando Valley', 0, 0, true);
 await pressDragTo('Central LA', 165, 165, false); // held, just outside the snap
 await page.waitForTimeout(120);
 if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
 await shot('connection-glow');
 await page.mouse.up();
+
+// Now pull it in to snap, and grab a quick frame of the snap-spark burst.
+await pressDragTo('Central LA', 22, 22, true); // within snap → snaps + sparks
+await page.waitForTimeout(60);
+await page.screenshot({ path: `${OUT}/${String(++step).padStart(2, '0')}-snap-spark.png` });
+console.log('shot snap-spark');
 
 await solveBoard(() => shot('regions-midway'));
 {

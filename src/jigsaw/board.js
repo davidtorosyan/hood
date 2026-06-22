@@ -15,7 +15,7 @@ import {
   pieceBox,
   projectChildren,
   scatterTranslate,
-  facingPath,
+  facingInfo,
   ringContains,
 } from './geometry.js';
 import { Piece } from './piece.js';
@@ -27,33 +27,39 @@ const MAGNET = 440; // distance at which a piece starts to "feel" its connection
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
+const SNAP_MS = 150; // the "click" pull-in when a piece connects
 const TAP_SLOP = 22; // movement under this (user units) counts as a tap, not a drag
 const PINCH_IN = 0.72; // pinch ratio that triggers zoom out
 const PINCH_OUT = 1.34; // spread ratio that triggers zoom in
 
-// Detects a shake from a stream of pointer positions: enough quick back-and-forth
-// reversals within a short window. Units are board user-space.
+// Detects a shake from a stream of pointer positions: enough quick changes of
+// direction within a short window, in ANY direction (a reversal is when the
+// velocity flips by more than ~115°). Units are board user-space.
 class ShakeDetector {
   constructor() {
     this.samples = [];
   }
   push(x, y, t) {
-    this.samples.push({ x, t });
+    this.samples.push({ x, y, t });
     const cut = t - 450;
     while (this.samples.length && this.samples[0].t < cut) this.samples.shift();
   }
   shaking() {
-    let reversals = 0;
-    let lastDir = 0;
-    let amp = 0;
     const s = this.samples;
+    let reversals = 0;
+    let amp = 0;
+    let pvx = 0;
+    let pvy = 0;
     for (let i = 1; i < s.length; i++) {
-      const dx = s[i].x - s[i - 1].x;
-      if (Math.abs(dx) < 18) continue;
-      amp += Math.abs(dx);
-      const dir = Math.sign(dx);
-      if (lastDir && dir !== lastDir) reversals += 1;
-      lastDir = dir;
+      const vx = s[i].x - s[i - 1].x;
+      const vy = s[i].y - s[i - 1].y;
+      const mag = Math.hypot(vx, vy);
+      if (mag < 14) continue;
+      amp += mag;
+      const pmag = Math.hypot(pvx, pvy);
+      if (pmag && (vx * pvx + vy * pvy) / (mag * pmag) < -0.4) reversals += 1;
+      pvx = vx;
+      pvy = vy;
     }
     return reversals >= 3 && amp > 480;
   }
@@ -83,7 +89,8 @@ export class Board {
     // label is never painted over by a neighbouring piece's fill.
     this.glowLayer = svgEl('g', { class: 'jig-glows' });
     this.labelLayer = svgEl('g', { class: 'jig-labels' });
-    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer);
+    this.fxLayer = svgEl('g', { class: 'jig-fx' }); // snap sparks, above everything
+    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer);
     // All gestures (piece drag, pan, pinch) are driven from the SVG root so we
     // can track multiple pointers; pieces are hit-tested from the event target.
     svg.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
@@ -241,11 +248,52 @@ export class Board {
   }
 
   #place(piece, res) {
+    // Where do the pieces join? Use the shared-edge midpoint for the snap spark.
+    const m = this.#glowTarget(piece);
+    let spark = null;
+    if (m) {
+      const info = facingInfo(piece.geom.ring, [res.tx, res.ty], m.target.geom.ring, [m.target.tx, m.target.ty]);
+      if (info.mid) spark = [info.mid[0] + res.tx, info.mid[1] + res.ty];
+    }
+    // Pull it the last bit into place with a quick eased "click", then lock.
+    piece.setSnapping(true);
+    this.svg.getBoundingClientRect(); // commit current position as the start
     piece.moveTo(res.tx, res.ty);
     piece.lock();
     if (res.seed) res.seed.lock();
+    setTimeout(() => piece.setSnapping(false), SNAP_MS + 40);
+    if (spark) this.#snapBurst(spark);
     store.markSeen(piece.id);
     this.#refresh();
+  }
+
+  // A burst of lines radiating from the join, plus a quick expanding ring — the
+  // satisfying "snap".
+  #snapBurst([px, py]) {
+    const g = svgEl('g', { class: 'jig-burst' });
+    const ring = svgEl('circle', { class: 'jig-burst-ring', cx: 0, cy: 0, r: 30 });
+    g.append(ring);
+    const N = 10;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      g.append(svgEl('line', {
+        x1: (Math.cos(a) * 18).toFixed(1), y1: (Math.sin(a) * 18).toFixed(1),
+        x2: (Math.cos(a) * 64).toFixed(1), y2: (Math.sin(a) * 64).toFixed(1),
+      }));
+    }
+    this.fxLayer.append(g);
+    const t0 = performance.now();
+    const dur = 420;
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+    const frame = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      const s = 0.45 + ease(k) * 1.45;
+      g.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) scale(${s.toFixed(3)})`;
+      g.style.opacity = (1 - k * k).toFixed(3);
+      if (k < 1) requestAnimationFrame(frame);
+      else g.remove();
+    };
+    requestAnimationFrame(frame);
   }
 
   #snapAll() {
@@ -554,10 +602,13 @@ export class Board {
     const m = this.#glowTarget(piece);
     if (m && m.dist < MAGNET) {
       const glow = Math.max(0, Math.min(1, (MAGNET - m.dist) / (MAGNET - SNAP)));
-      const aT = [piece.tx, piece.ty];
+      // Light up the TRUE shared border: compute it with the piece placed where
+      // it will SNAP (the target's translate), not where it's currently dragged,
+      // so only the correct edge glows however you approach.
+      const connectT = [m.target.tx, m.target.ty];
       const bT = [m.target.tx, m.target.ty];
-      next.set(piece, { glow, d: facingPath(piece.geom.ring, aT, m.target.geom.ring, bT) });
-      next.set(m.target, { glow, d: facingPath(m.target.geom.ring, bT, piece.geom.ring, aT) });
+      next.set(piece, { glow, d: facingInfo(piece.geom.ring, connectT, m.target.geom.ring, bT).d });
+      next.set(m.target, { glow, d: facingInfo(m.target.geom.ring, bT, piece.geom.ring, connectT).d });
     }
     for (const p of this.glowing) if (!next.has(p)) p.setGlow(0, '');
     for (const [p, v] of next) p.setGlow(v.glow, v.d);

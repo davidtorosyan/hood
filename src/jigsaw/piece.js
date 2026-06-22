@@ -128,6 +128,12 @@ export class Piece {
     this.labelEl.classList.toggle('settling', on);
   }
 
+  // The quick eased "click" as a piece pulls the last bit into place.
+  setSnapping(on) {
+    this.g.classList.toggle('snapping', on);
+    this.labelEl.classList.toggle('snapping', on);
+  }
+
   setExploding(on) {
     this.g.classList.toggle('exploding', on);
     this.labelEl.classList.toggle('exploding', on);

@@ -86,26 +86,34 @@ function distToRing(p, ring) {
   return best;
 }
 
-// The stretch of ring A that faces ring B — the edge that will mate when the two
-// pieces snap. Each ring is at its own translate. Returns an SVG path string in
-// A's LOCAL coords (so it rides A's transform): the A edges whose endpoints are
-// near B (within a band of A's closest approach to B).
-export function facingPath(aRing, aT, bRing, bT) {
+// The stretch of ring A that mates with ring B — the SHARED border. `aT` should
+// be the translate A will sit at when SNAPPED (so the result is the true shared
+// edge, independent of how A is currently being dragged), `bT` is B's translate.
+// Returns { d, mid }: an SVG path of the shared A edges in A's LOCAL coords (so
+// it rides A's transform), and the midpoint of those edges (also A-local), or
+// null mid if nothing is close enough.
+export function facingInfo(aRing, aT, bRing, bT) {
   const bWorld = bRing.map((q) => [q[0] + bT[0], q[1] + bT[1]]);
   const dist = aRing.map((q) => distToRing([q[0] + aT[0], q[1] + aT[1]], bWorld));
   const minD = Math.min(...dist);
-  if (!Number.isFinite(minD)) return '';
-  const band = minD + 75; // how much of the facing arc to light up
+  if (!Number.isFinite(minD)) return { d: '', mid: null };
+  const band = minD + 70; // how much of the shared arc to light up
   let d = '';
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
   for (let i = 0; i < aRing.length; i++) {
     const j = (i + 1) % aRing.length;
     if (dist[i] <= band && dist[j] <= band) {
       const a = aRing[i];
       const b = aRing[j];
       d += `M${a[0].toFixed(1)},${a[1].toFixed(1)}L${b[0].toFixed(1)},${b[1].toFixed(1)}`;
+      sx += (a[0] + b[0]) / 2;
+      sy += (a[1] + b[1]) / 2;
+      n += 1;
     }
   }
-  return d;
+  return { d, mid: n ? [sx / n, sy / n] : null };
 }
 
 // Is local point (x,y) inside ring (even-odd / ray cast)? Used for pinch hit-test.
