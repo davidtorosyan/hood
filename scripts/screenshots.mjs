@@ -110,6 +110,31 @@ async function solveBoard(onMidway) {
   }
 }
 
+// Press a piece and drag it so its translate becomes (tx,ty); optionally hold
+// the press open (release=false) to capture a mid-drag state.
+async function pressDragTo(name, tx, ty, release = true) {
+  const g = await grabPoint(name);
+  const p = (await readPieces()).find((x) => x.name === name);
+  const box = await page.locator('svg.jig').boundingBox();
+  const u2px = box.width / 1000;
+  const toX = g.sx + (tx - p.tx) * u2px;
+  const toY = g.sy + (ty - p.ty) * u2px;
+  await page.mouse.move(g.sx, g.sy);
+  await page.mouse.down();
+  await page.mouse.move(toX, toY, { steps: 20 });
+  await page.mouse.move(toX, toY);
+  if (release) await page.mouse.up();
+}
+
+const btnDisabled = (sel) => page.locator(sel).isDisabled();
+const checkControls = async (where, wantJumble, wantSolve) => {
+  const j = await btnDisabled('.jig-jumble');
+  const s = await btnDisabled('.jig-solve');
+  if (j !== !wantJumble || s !== !wantSolve) {
+    errors.push(`BUG: controls wrong ${where} (jumbleEnabled=${!j}, solveEnabled=${!s})`);
+  }
+};
+
 await page.goto(URL, { waitUntil: 'networkidle' });
 await shot('home');
 
@@ -117,17 +142,32 @@ await shot('home');
 await page.getByRole('button', { name: 'Play' }).click();
 await page.waitForTimeout(800);
 await shot('regions-assembled');
+await checkControls('when solved', true, false); // can Jumble, can't Solve
 
 // Jumble, then assemble by hand (exercises real drag + snap).
 await page.locator('.jig-jumble').click();
 await page.waitForTimeout(900); // explode animation → play
 await shot('regions-jumbled');
+await checkControls('when fully jumbled', false, true); // can Solve, can't Jumble
+
+// Magnetic glow: drop one region in place, then bring an adjacent one close and
+// hold — both should glow along their border before snapping.
+await pressDragTo('San Fernando Valley', 0, 0, true);
+await pressDragTo('Central LA', 165, 165, false); // held, just outside the snap
+await page.waitForTimeout(120);
+if (!(await page.locator('.jig-piece.jig-magnet').count())) {
+  errors.push('BUG: no magnet glow as a piece nears its connection');
+}
+await shot('magnet-glow');
+await page.mouse.up();
+
 await solveBoard(() => shot('regions-midway'));
 {
   const left = (await readPieces()).filter((p) => !p.placed);
   if (left.length) console.log('UNPLACED after solve:', JSON.stringify(left));
 }
 await shot('regions-solved');
+await checkControls('back when solved', true, false);
 
 // Zoom into the first zoomable region (assembled boards are tap-to-zoom).
 {

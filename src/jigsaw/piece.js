@@ -87,19 +87,28 @@ export class Piece {
   lock() {
     this.locked = true;
     this.g.classList.add('placed');
-    this.g.classList.remove('jig-near', 'exploding', 'dragging');
+    this.g.classList.remove('jig-magnet', 'exploding', 'dragging');
+    this.g.style.removeProperty('--glow');
     this.labelEl.classList.remove('exploding');
   }
 
   // Return to a loose state (used when the player jumbles an assembled map).
   unlock() {
     this.locked = false;
-    this.g.classList.remove('placed', 'zoomable', 'selectable', 'jig-near', 'dragging');
+    this.g.classList.remove('placed', 'zoomable', 'selectable', 'jig-magnet', 'dragging');
+    this.g.style.removeProperty('--glow');
   }
 
   // --- transient visual state ---------------------------------------------
-  setNear(on) {
-    this.g.classList.toggle('jig-near', on && !this.locked);
+  // Magnet glow strength, 0..1, as a loose piece nears its connection.
+  setGlow(g) {
+    if (g > 0) {
+      this.g.classList.add('jig-magnet');
+      this.g.style.setProperty('--glow', g.toFixed(3));
+    } else {
+      this.g.classList.remove('jig-magnet');
+      this.g.style.removeProperty('--glow');
+    }
   }
 
   setDragging(on) {

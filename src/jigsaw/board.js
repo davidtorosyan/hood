@@ -21,6 +21,7 @@ import { labelOf } from './tree.js';
 import { layoutLabels } from './labels.js';
 
 const SNAP = 150; // connection radius, in board user units
+const MAGNET = 440; // distance at which a piece starts to "feel" its connection
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 
@@ -28,13 +29,14 @@ export class Board {
   #pendingTimer = 0; // a scheduled end-of-animation callback we may need to cancel
 
   // cbs: { onRemaining(n,total), onHint(text), onSolved(zoomable),
-  //        onZoomInto(childId), onToast(msg) }
+  //        onZoomInto(childId), onToast(msg), onSelectLeaf(id), onControls(j,s) }
   constructor(nodeId, cbs = {}) {
     this.nodeId = nodeId;
     this.cbs = cbs;
     this.pieces = [];
     this.phase = 'building';
     this.drag = null;
+    this.glowing = new Set(); // pieces currently showing a magnet glow
     this.vbH = VB_W;
     this.svg = this.#initSvg();
   }
@@ -100,6 +102,7 @@ export class Board {
     this.phase = 'jumbling';
     this.pieces.forEach((p) => p.unlock());
     this.#emitRemaining();
+    this.#emitControls(); // mid-animation: both controls off
     this.cbs.onHint?.('Drag the neighbors together.');
     // Animate from assembled (0,0) out to the scatter spots.
     this.#animatePieces(
@@ -107,6 +110,7 @@ export class Board {
       (p) => [p.scatterTx, p.scatterTy],
       () => {
         this.phase = 'play';
+        this.#emitControls();
       },
     );
   }
@@ -117,6 +121,7 @@ export class Board {
     if (this.phase === 'solved' || this.phase === 'building') return;
     this.#cancelPending();
     this.phase = 'solving';
+    this.#emitControls(); // mid-animation: both controls off
     // Fly every piece in to its true position, then lock + mark solved.
     this.#animatePieces(null, () => [0, 0], () => {
       this.#snapAll();
@@ -215,6 +220,8 @@ export class Board {
     this.#emitRemaining();
     if (this.pieces.every((p) => p.locked) && this.phase !== 'solved') {
       this.#enterSolved(true);
+    } else {
+      this.#emitControls();
     }
   }
 
@@ -223,12 +230,27 @@ export class Board {
     this.cbs.onRemaining?.(remaining, this.pieces.length);
   }
 
+  // Tell the host which controls make sense now: you can't Jumble an already-
+  // fully-jumbled board (nothing placed), nor Solve an already-solved one.
+  #emitControls() {
+    const locked = this.pieces.filter((p) => p.locked).length;
+    let canJumble = false;
+    let canSolve = false;
+    if (this.phase === 'solved') canJumble = true;
+    else if (this.phase === 'play') {
+      canJumble = locked > 0;
+      canSolve = true;
+    }
+    this.cbs.onControls?.(canJumble, canSolve);
+  }
+
   #enterSolved(withToast) {
     this.phase = 'solved';
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Groups become zoom targets; leaves become tap-for-info targets.
     this.pieces.forEach((p) => (p.zoomable ? p.markZoomable() : p.markSelectable()));
     this.cbs.onSolved?.(zoomable);
+    this.#emitControls();
     if (withToast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
   }
 
@@ -278,7 +300,7 @@ export class Board {
     if (this.drag.mode === 'free') {
       const piece = this.drag.piece;
       piece.moveTo(this.drag.tx + dx, this.drag.ty + dy);
-      piece.setNear(!!this.#wouldConnect(piece));
+      this.#updateMagnet(piece);
     } else {
       for (const s of this.drag.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
     }
@@ -289,13 +311,71 @@ export class Board {
     if (this.drag.mode === 'free') {
       const piece = this.drag.piece;
       piece.setDragging(false);
-      piece.setNear(false);
+      this.#clearGlow();
       const res = this.#wouldConnect(piece);
       if (res) this.#place(piece, res);
     } else {
       this.drag.starts.forEach((s) => s.p.setDragging(false));
     }
     this.drag = null;
+  }
+
+  // --- magnetic glow -------------------------------------------------------
+  // As a loose piece nears the spot where it would connect, it and the piece
+  // it's joining glow along their border — stronger the closer they get, full
+  // at the snap radius — so you can feel the connection before releasing.
+
+  // The piece this one would connect to, and how far (in the same metric the
+  // snap uses), or null if there's no eligible neighbour to home in on.
+  #magnetTarget(piece) {
+    const locked = this.#lockedPieces();
+    if (locked.length) {
+      const neighbours = locked.filter((l) => isAdjacent(piece.id, l.id));
+      if (!neighbours.length) return null;
+      const anchor = locked[0]; // all locked pieces share one translate
+      const dist = Math.hypot(piece.tx - anchor.tx, piece.ty - anchor.ty);
+      // Glow the adjacent placed piece whose shape is nearest right now.
+      let target = neighbours[0];
+      let best = Infinity;
+      for (const l of neighbours) {
+        const d = Math.hypot(piece.centerX - l.centerX, piece.centerY - l.centerY);
+        if (d < best) {
+          best = d;
+          target = l;
+        }
+      }
+      return { target, dist };
+    }
+    // No pieces placed yet: home toward the nearest adjacent loose neighbour.
+    let target = null;
+    let dist = Infinity;
+    for (const other of this.pieces) {
+      if (other === piece || other.locked || !isAdjacent(piece.id, other.id)) continue;
+      const d = Math.hypot(piece.tx - other.tx, piece.ty - other.ty);
+      if (d < dist) {
+        dist = d;
+        target = other;
+      }
+    }
+    return target ? { target, dist } : null;
+  }
+
+  #updateMagnet(piece) {
+    const next = new Map();
+    const m = this.#magnetTarget(piece);
+    if (m && m.dist < MAGNET) {
+      const glow = Math.max(0, Math.min(1, (MAGNET - m.dist) / (MAGNET - SNAP)));
+      next.set(piece, glow);
+      if (m.target) next.set(m.target, glow);
+    }
+    for (const p of this.glowing) if (!next.has(p)) p.setGlow(0);
+    for (const [p, g] of next) p.setGlow(g);
+    this.glowing = new Set(next.keys());
+  }
+
+  #clearGlow() {
+    for (const p of this.glowing) p.setGlow(0);
+    this.glowing.clear();
   }
 
   // --- camera zoom ---------------------------------------------------------

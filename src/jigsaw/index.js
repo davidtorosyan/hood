@@ -48,6 +48,7 @@ function renderNode(app, ctx, nodeId, opts) {
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
     onSelectLeaf: (id) => showCard(app, id),
+    onControls: (canJumble, canSolve) => bannerUi.setControls(canJumble, canSolve),
   });
   boardWrap.append(board.svg);
 

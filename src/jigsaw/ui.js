@@ -28,11 +28,14 @@ export function statusBanner({ onUp, onJumble, onSolve }) {
   const hint = el('span', { class: 'jig-hint' }, '');
   const counter = el('span', { class: 'jig-count' }, '');
 
+  const jumbleBtn = el('button', { class: 'jig-btn jig-jumble', onClick: onJumble, title: 'Scatter the pieces' }, 'Jumble');
+  const solveBtn = el('button', { class: 'jig-btn jig-solve', onClick: onSolve, title: 'Snap the pieces back together' }, 'Solve');
+
   const banner = el('div', { class: 'jig-banner' }, [
     hint,
     el('div', { class: 'jig-banner-right' }, [
-      el('button', { class: 'jig-btn jig-jumble', onClick: onJumble, title: 'Scatter the pieces' }, 'Jumble'),
-      el('button', { class: 'jig-btn jig-solve', onClick: onSolve, title: 'Snap the pieces back together' }, 'Solve'),
+      jumbleBtn,
+      solveBtn,
       el('button', { class: 'jig-btn jig-up', onClick: onUp, title: 'Zoom out one level', 'aria-label': 'Zoom out' }, '↑'),
       counter,
     ]),
@@ -41,6 +44,10 @@ export function statusBanner({ onUp, onJumble, onSolve }) {
   return {
     banner,
     setHint: (t) => (hint.textContent = t),
+    setControls: (canJumble, canSolve) => {
+      jumbleBtn.disabled = !canJumble;
+      solveBtn.disabled = !canSolve;
+    },
     setCounter: (remaining) => {
       if (remaining > 0) banner.classList.remove('done');
       counter.textContent = remaining === 0 ? 'Done!' : `${remaining} left`;

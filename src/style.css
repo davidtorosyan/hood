@@ -217,6 +217,10 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
+.jig-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
 /* Jumble is the call to action on an assembled board — make it pop. */
 .jig-jumble {
   background: var(--accent);
@@ -302,18 +306,23 @@ body {
 .jig-piece.placed .jig-inner {
   stroke: rgba(20, 30, 50, 0.16);
 }
+/* The held piece lifts off the board (its colour stays, so a magnet glow on its
+   border reads). A near connection replaces this filter with the glow below. */
 .jig-piece.dragging .jig-shape {
-  fill: var(--accent);
-}
-/* Glow when a loose piece is in a connectable spot. */
-.jig-piece.jig-near:not(.placed) .jig-shape {
-  stroke: var(--accent);
-  stroke-width: 5;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
 }
 .jig-piece.placed .jig-shape {
   fill: var(--fill, #9bdcc1);
   stroke: #ffffff;
   stroke-width: 2.5;
+}
+/* Magnetic glow: a loose piece and the piece it's joining light up along their
+   border, intensifying (via --glow, 0..1) the closer they get to snapping. The
+   rule sits after .placed so it wins the stroke on an already-placed target. */
+.jig-piece.jig-magnet .jig-shape {
+  stroke: var(--accent);
+  stroke-width: calc(2.5px + 5px * var(--glow, 0));
+  filter: drop-shadow(0 0 calc(13px * var(--glow, 0)) rgba(245, 158, 11, var(--glow, 0)));
 }
 /* Labels render in their own layer above every piece; they never intercept
    pointer events (you grab the shape underneath). */
