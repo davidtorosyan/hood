@@ -16,8 +16,11 @@ import booleanIntersects from '@turf/boolean-intersects';
 import { featureCollection } from '@turf/helpers';
 import rewind from '@mapbox/geojson-rewind';
 import { REGION_GROUPS } from '../src/data/regions.js';
+import { PLACES } from '../src/data/places.js';
 
-const CAP = 6; // hard cap on pieces per puzzle
+// Every puzzle (a node you assemble) must have between MIN and MAX pieces.
+const MIN = 3;
+const MAX = 7;
 const TOLERANCE = 0.0006;
 const PRECISION = 5;
 const round = (n) => Number(n.toFixed(PRECISION));
@@ -91,84 +94,209 @@ function farthestFirst(members, k) {
   return chosen;
 }
 
+// How many child pieces (k, in [MIN,MAX]) to split M areas into. Requires every
+// resulting group size to be a valid puzzle size — in [MIN,MAX] (a leaf puzzle)
+// or >= MIN+MAX+2 = 9 (recurses further) — i.e. never 1, 2, or 8 (sizes that
+// can't form a valid sub-tree). Prefers splits whose children are leaf-puzzles
+// (shallower) and well balanced.
+function chooseK(M) {
+  const cands = [];
+  for (let k = MIN; k <= Math.min(MAX, M); k++) {
+    const lo = Math.floor(M / k);
+    const hi = Math.ceil(M / k);
+    const ok = [lo, hi].every((s) => (s >= MIN && s <= MAX) || s >= 9);
+    if (ok) cands.push({ k, spread: hi - lo, leafable: hi <= MAX ? 0 : 1 });
+  }
+  if (!cands.length) return MIN; // unreachable for M>=9 (M=8 never reaches here)
+  // Prefer shallower (leaf-able) splits, then fuller puzzles (~6 pieces, so a
+  // big region doesn't open into just 3 big chunks), then well balanced.
+  cands.sort((a, b) => a.leafable - b.leafable || Math.abs(a.k - 6) - Math.abs(b.k - 6) || a.spread - b.spread);
+  return cands[0].k;
+}
+
+// Partition members into k CONNECTED, balanced groups: seed with farthest-first
+// points, then repeatedly grow the smallest group that can still reach an
+// unassigned neighbour. Growing the smallest keeps sizes within ±1, so they land
+// in chooseK's valid band (no stray 1/2/8-piece groups).
 function partition(members, k) {
+  const pool = new Set(members);
   const seeds = farthestFirst(members, k);
-  const assign = new Map();
-  const groups = seeds.map((s, i) => {
-    assign.set(s, i);
-    return [s];
-  });
-  // Grow groups one neighbour at a time along real borders (round-robin keeps
-  // them roughly balanced). No size cap here — a connected group is mandatory
-  // (you must be able to attach every piece); over-cap groups are split again
-  // one level down. The region graph is connected, so nothing is left over.
-  let progress = true;
-  while (assign.size < members.length && progress) {
-    progress = false;
+  const groups = seeds.map((s) => [s]);
+  const assigned = new Set(seeds);
+
+  while (assigned.size < members.length) {
+    let pick = -1;
+    let pickMember = null;
+    let pickSize = Infinity;
+    let pickDist = Infinity;
     for (let i = 0; i < k; i++) {
-      let best = null;
-      let bd = Infinity;
-      for (const n of members) {
-        if (assign.has(n)) continue;
-        if (groups[i].some((m) => adj[m].has(n))) {
-          const d = dist(n, seeds[i]);
-          if (d < bd) {
-            bd = d;
-            best = n;
-          }
+      let bestM = null;
+      let bestD = Infinity;
+      for (const m of groups[i]) {
+        for (const nb of adj[m]) {
+          if (assigned.has(nb) || !pool.has(nb)) continue;
+          const d = dist(nb, seeds[i]);
+          if (d < bestD) { bestD = d; bestM = nb; }
         }
       }
-      if (best != null) {
-        assign.set(best, i);
-        groups[i].push(best);
-        progress = true;
+      if (bestM == null) continue;
+      if (groups[i].length < pickSize || (groups[i].length === pickSize && bestD < pickDist)) {
+        pick = i; pickMember = bestM; pickSize = groups[i].length; pickDist = bestD;
       }
     }
+    if (pick < 0) break; // remaining members are disconnected from every group
+    groups[pick].push(pickMember);
+    assigned.add(pickMember);
   }
-  // Any straggler (only if the set were disconnected) → an adjacent group.
-  for (const n of members) {
-    if (assign.has(n)) continue;
-    let bi = groups.findIndex((g) => g.some((m) => adj[m].has(n)));
+  // Stragglers (only if the set were disconnected): drop into an adjacent group.
+  for (const m of members) {
+    if (assigned.has(m)) continue;
+    let bi = groups.findIndex((g) => g.some((x) => adj[x].has(m)));
     if (bi < 0) {
       let bd = Infinity;
-      groups.forEach((g, i) => { const d = dist(n, seeds[i]); if (d < bd) { bd = d; bi = i; } });
+      groups.forEach((g, i) => { const d = dist(m, seeds[i]); if (d < bd) { bd = d; bi = i; } });
     }
-    groups[bi].push(n);
-    assign.set(n, bi);
+    groups[bi].push(m);
+    assigned.add(m);
   }
+  // Seed-growth can starve a cornered group (size 2) while another balloons
+  // (size 8). Rebalance so every group lands in [lo, hi] — moving boundary
+  // members between adjacent groups, never disconnecting the donor.
+  rebalance(groups, Math.floor(members.length / k), Math.ceil(members.length / k));
   return groups;
+}
+
+// Is `group` still one connected piece if `drop` is removed from it?
+function stillConnected(group, drop) {
+  const set = new Set(group);
+  set.delete(drop);
+  if (set.size <= 1) return true;
+  const [start] = set;
+  const seen = new Set([start]);
+  const stack = [start];
+  while (stack.length) {
+    const x = stack.pop();
+    for (const nb of adj[x]) if (set.has(nb) && !seen.has(nb)) { seen.add(nb); stack.push(nb); }
+  }
+  return seen.size === set.size;
+}
+
+function rebalance(groups, lo, hi) {
+  const indexOf = new Map();
+  groups.forEach((g, i) => g.forEach((m) => indexOf.set(m, i)));
+  const move = (m, from, to) => {
+    groups[from].splice(groups[from].indexOf(m), 1);
+    groups[to].push(m);
+    indexOf.set(m, to);
+  };
+  for (let guard = 0; guard < 2000; guard++) {
+    let changed = false;
+    for (let i = 0; i < groups.length; i++) {
+      // too small → pull a removable boundary member from a larger adjacent group
+      if (groups[i].length < lo) {
+        for (const m of groups[i]) {
+          let take = null;
+          let donor = -1;
+          for (const nb of adj[m]) {
+            const j = indexOf.get(nb);
+            if (j === undefined || j === i || groups[j].length <= lo) continue;
+            if (stillConnected(groups[j], nb)) { take = nb; donor = j; break; }
+          }
+          if (take != null) { move(take, donor, i); changed = true; break; }
+        }
+      }
+      // too big → push a removable boundary member to a smaller adjacent group
+      if (groups[i].length > hi) {
+        for (const m of groups[i]) {
+          let to = -1;
+          for (const nb of adj[m]) {
+            const j = indexOf.get(nb);
+            if (j !== undefined && j !== i && groups[j].length < hi) { to = j; break; }
+          }
+          if (to >= 0 && stillConnected(groups[i], m)) { move(m, i, to); changed = true; break; }
+        }
+      }
+    }
+    if (!changed) break;
+  }
+}
+
+// --- naming -----------------------------------------------------------------
+const TOP_REGIONS = Object.keys(REGION_GROUPS);
+const RESERVED = new Set(TOP_REGIONS); // never name a group after a region
+const usedLabels = new Set();
+// Prominence for picking a group's name: by population (recognizable), then by
+// geographic size as a tiebreaker.
+const prominence = (name) => [PLACES[name]?.pop ?? 0, ringArea(ringOf(name))];
+const moreProminent = (a, b) => {
+  const [pa, ra] = prominence(a);
+  const [pb, rb] = prominence(b);
+  return pb - pa || rb - ra;
+};
+
+// Name a group after its most prominent member ("<name> area"), skipping any
+// name already used or that collides with a region — so names are unique and
+// never read as a region. Falls back to joining the two most prominent members.
+function nameGroup(members) {
+  const ranked = [...members].sort(moreProminent);
+  for (const anchor of ranked) {
+    const label = `${anchor} area`;
+    if (!usedLabels.has(label) && !RESERVED.has(anchor) && !RESERVED.has(label)) {
+      usedLabels.add(label);
+      return label;
+    }
+  }
+  let label = `${ranked[0]} & ${ranked[1]}`;
+  let n = 2;
+  while (usedLabels.has(label)) label = `${ranked[0]} & ${ranked[1]} ${++n}`;
+  usedLabels.add(label);
+  return label;
 }
 
 // --- build the tree --------------------------------------------------------
 const nodes = {};
 const nodeHoods = new Map(); // id -> [neighborhood names]
 
-function build(id, label, parent, members, used = new Set()) {
+const leaf = (id, name, parent) => {
+  nodes[name] = { id: name, label: name, parent, leaf: true };
+  nodeHoods.set(name, [name]);
+};
+
+// Build the puzzle for `members` under node `id`. Every node ends up with
+// MIN..MAX children: a small set becomes a leaf puzzle (each member a piece);
+// a larger set splits into balanced connected groups. A lone leftover member is
+// attached directly as a leaf piece (mixing) so we never make a 1-piece group.
+function build(id, label, parent, members) {
   const node = { id, label, parent, children: [] };
   nodes[id] = node;
   nodeHoods.set(id, members);
-  if (members.length <= CAP) {
+
+  if (members.length <= MAX) {
     for (const name of members) {
-      nodes[name] = { id: name, label: name, parent: id, leaf: true };
-      nodeHoods.set(name, [name]);
+      leaf(id, name, id);
       node.children.push(name);
     }
-  } else {
-    const k = Math.min(CAP, Math.ceil(members.length / CAP));
-    for (const g of partition(members, k)) {
-      const sorted = [...g].sort((a, b) => ringArea(ringOf(b)) - ringArea(ringOf(a)));
-      const anchor = sorted.find((n) => !used.has(n)) || sorted[0];
-      // A group is named for its most prominent neighborhood, but suffixed so it
-      // never reads as one of the neighborhoods it contains (which is confusing
-      // — e.g. a "Glassell Park" group holding the Glassell Park hood).
-      const gid = `${id} › ${anchor}`;
-      build(gid, `${anchor} area`, id, g, new Set([...used, anchor]));
+    return;
+  }
+
+  const groups = partition(members, chooseK(members.length));
+  for (const g of groups) {
+    if (g.length <= 2) {
+      // Too small to be its own puzzle — its area(s) ride along as individual
+      // leaf pieces of THIS puzzle (mixing groups and lone areas), so we never
+      // make a 1- or 2-piece sub-puzzle.
+      for (const name of g) {
+        leaf(id, name, id);
+        node.children.push(name);
+      }
+    } else {
+      const childLabel = nameGroup(g);
+      const gid = `${id} › ${childLabel}`;
+      build(gid, childLabel, id, g);
       node.children.push(gid);
     }
   }
 }
-
-const TOP_REGIONS = Object.keys(REGION_GROUPS);
 
 nodes.la = { id: 'la', label: 'LA County', parent: null, children: [] };
 nodeHoods.set('la', TOP_REGIONS.flatMap((r) => REGION_GROUPS[r]));
@@ -223,12 +351,16 @@ writeFileSync('src/data/puzzle-adjacency.json', JSON.stringify(adjacency));
 // --- report ----------------------------------------------------------------
 console.log(`Nodes: ${Object.keys(nodes).length} | shapes: ${Object.keys(shapes).length}`);
 console.log(`Shapes size: ${(readFileSync('src/data/puzzle-shapes.json').length / 1024).toFixed(1)}KB\n`);
+let problems = 0;
 function show(id, depth) {
   const n = nodes[id];
   const kids = n.children || [];
   const isolated = kids.filter((k) => kids.length > 1 && !kids.some((o) => o !== k && adjacency[k].includes(o)));
-  const over = kids.length > CAP ? '  ⚠ OVER CAP' : '';
-  console.log(`${'  '.repeat(depth)}${n.label} (${kids.length})${over}${isolated.length ? `  ⚠ isolated: ${isolated.join(', ')}` : ''}`);
+  const badSize = kids.length < MIN || kids.length > MAX;
+  const flags = `${badSize ? `  ⚠ ${kids.length} PIECES` : ''}${isolated.length ? `  ⚠ isolated: ${isolated.join(', ')}` : ''}`;
+  if (badSize || isolated.length) problems += 1;
+  console.log(`${'  '.repeat(depth)}${n.label} (${kids.length})${flags}`);
   for (const k of kids) if (!nodes[k].leaf) show(k, depth + 1);
 }
 show('la', 0);
+console.log(problems ? `\n⚠ ${problems} node(s) violate the 3–7 / connected rule` : '\n✓ every puzzle has 3–7 connected pieces');

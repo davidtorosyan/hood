@@ -48,12 +48,12 @@ export function statusBanner({ onUp, onSolve }) {
       solveBtn.style.display = canSolve ? '' : 'none';
     },
     setCounter: (remaining) => {
-      if (remaining > 0) banner.classList.remove('done');
-      counter.textContent = remaining === 0 ? 'Done!' : `${remaining} left`;
+      // No "Done!" badge (it read like a button) — the hint conveys the solved
+      // state. Just the pieces-left count while assembling.
+      counter.textContent = remaining > 0 ? `${remaining} left` : '';
     },
     setSolved: (zoomable) => {
-      banner.classList.add('done');
-      counter.textContent = 'Done!';
+      counter.textContent = '';
       hint.textContent = zoomable
         ? '👆 Tap to zoom in · 🤙 shake to scramble'
         : '👆 Tap for info · 🤙 shake to scramble';
