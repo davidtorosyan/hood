@@ -234,21 +234,103 @@ const moreProminent = (a, b) => {
   return pb - pa || rb - ra;
 };
 
-// Name a group after its most prominent member ("<name> area"), skipping any
-// name already used or that collides with a region — so names are unique and
-// never read as a region. Falls back to joining the two most prominent members.
-function nameGroup(members) {
-  const ranked = [...members].sort(moreProminent);
-  for (const anchor of ranked) {
-    const label = `${anchor} area`;
-    if (!usedLabels.has(label) && !RESERVED.has(anchor) && !RESERVED.has(label)) {
-      usedLabels.add(label);
-      return label;
-    }
+// Hand-authored, evocative names for every generated group, keyed by the exact
+// set of areas it contains (stable regardless of the auto-label). If the
+// partition ever changes, build:shapes warns about any group not covered here so
+// it can be renamed. `{ name: [areas...] }` for readability; inverted below.
+const GROUP_NAMES = {
+  // --- San Gabriel Valley (first zoom) ---
+  'Glendale & Northeast L.A.': ['Atwater Village', 'Cypress Park', 'Eagle Rock', 'Elysian Valley', 'Glassell Park', 'Glendale', 'Highland Park', 'La Cañada Flintridge', 'La Crescenta-Montrose', 'Lincoln Heights', 'Mount Washington'],
+  'The Foothill Cities': ['Arcadia', 'East Pasadena', 'East San Gabriel', 'Irwindale', 'Mayflower Village', 'Monrovia', 'North El Monte', 'San Marino', 'San Pasqual', 'Sierra Madre', 'Temple City'],
+  'The East Foothills': ['Azusa', 'Bradbury', 'Charter Oak', 'Citrus', 'Covina', 'Duarte', 'Glendora', 'Ramona', 'San Dimas', 'West San Dimas'],
+  'Pasadena & the Eastside': ['Alhambra', 'Altadena', 'Boyle Heights', 'East Los Angeles', 'El Sereno', 'Montecito Heights', 'Monterey Park', 'Pasadena', 'San Gabriel', 'South Pasadena', 'South San Gabriel'],
+  'The Puente Valley': ['Baldwin Park', 'El Monte', 'La Puente', 'Rosemead', 'South El Monte', 'South San Jose Hills', 'Valinda', 'West Covina', 'West Puente Valley', 'Whittier Narrows'],
+  'The Pomona Valley': ['Avocado Heights', 'Claremont', 'Diamond Bar', 'Hacienda Heights', 'Industry', 'La Verne', 'Pomona', 'Rowland Heights', 'South Diamond Bar', 'Walnut'],
+  // SGV deeper
+  'The Verdugos': ['Glendale', 'La Cañada Flintridge', 'La Crescenta-Montrose'],
+  'Eagle Rock & Atwater Village': ['Atwater Village', 'Eagle Rock', 'Elysian Valley', 'Glassell Park'],
+  'Highland Park & Lincoln Heights': ['Cypress Park', 'Highland Park', 'Lincoln Heights', 'Mount Washington'],
+  'Monrovia & Irwindale': ['Irwindale', 'Mayflower Village', 'Monrovia'],
+  'Arcadia & Sierra Madre': ['Arcadia', 'East Pasadena', 'North El Monte', 'Sierra Madre'],
+  'San Marino & Temple City': ['East San Gabriel', 'San Marino', 'San Pasqual', 'Temple City'],
+  'Azusa & Duarte': ['Azusa', 'Bradbury', 'Duarte'],
+  'Covina & Citrus': ['Citrus', 'Covina', 'Ramona'],
+  'Glendora & San Dimas': ['Charter Oak', 'Glendora', 'San Dimas', 'West San Dimas'],
+  'Alhambra & San Gabriel': ['Alhambra', 'Monterey Park', 'San Gabriel', 'South San Gabriel'],
+  'Pasadena & Altadena': ['Altadena', 'Pasadena', 'South Pasadena'],
+  'The Eastside': ['Boyle Heights', 'East Los Angeles', 'El Sereno', 'Montecito Heights'],
+  'Baldwin Park & La Puente': ['Baldwin Park', 'La Puente', 'West Puente Valley'],
+  'El Monte & Rosemead': ['El Monte', 'Rosemead', 'South El Monte', 'Whittier Narrows'],
+  'West Covina & Valinda': ['South San Jose Hills', 'Valinda', 'West Covina'],
+  'Pomona & Claremont': ['Claremont', 'La Verne', 'Pomona'],
+  'Diamond Bar & Rowland Heights': ['Diamond Bar', 'Rowland Heights', 'South Diamond Bar'],
+  'Hacienda Heights & Walnut': ['Avocado Heights', 'Hacienda Heights', 'Industry', 'Walnut'],
+  // --- San Fernando Valley ---
+  'The Northeast Valley': ['Burbank', 'Hansen Dam', 'Lake View Terrace', 'Shadow Hills', 'Sun Valley', 'Sunland', 'Tujunga'],
+  'The Western Hills': ['Agoura Hills', 'Calabasas', 'Hidden Hills', 'Westlake Village'],
+  'The Southeast Valley': ['North Hollywood', 'Sherman Oaks', 'Studio City', 'Toluca Lake', 'Universal City', 'Valley Glen', 'Valley Village'],
+  'The North Valley': ['Arleta', 'Granada Hills', 'Mission Hills', 'North Hills', 'Pacoima', 'Panorama City', 'San Fernando', 'Sylmar'],
+  'The Central Valley': ['Encino', 'Lake Balboa', 'Northridge', 'Reseda', 'Sepulveda Basin', 'Van Nuys', 'Winnetka'],
+  'The West Valley': ['Canoga Park', 'Chatsworth', 'Chatsworth Reservoir', 'Porter Ranch', 'Tarzana', 'West Hills', 'Woodland Hills'],
+  'Granada Hills & Mission Hills': ['Granada Hills', 'Mission Hills', 'North Hills'],
+  'Pacoima & Panorama City': ['Arleta', 'Pacoima', 'Panorama City'],
+  // --- Central L.A. ---
+  'Downtown & Chinatown': ['Chinatown', 'Downtown', 'Elysian Park'],
+  'Hollywood & Los Feliz': ['Griffith Park', 'Hollywood', 'Hollywood Hills', 'Los Feliz'],
+  'Koreatown & Pico-Union': ['Koreatown', 'Larchmont', 'Pico-Union', 'Windsor Square'],
+  'The Wilshire District': ['Carthay', 'Hancock Park', 'Mid-City', 'Mid-Wilshire'],
+  'West Hollywood & Fairfax': ['Beverly Grove', 'Fairfax', 'Hollywood Hills West', 'West Hollywood'],
+  'Echo Park & Silver Lake': ['East Hollywood', 'Echo Park', 'Silver Lake', 'Westlake'],
+  // --- Westside & Coast ---
+  'West L.A. & Brentwood': ['Bel-Air', 'Brentwood', 'Mar Vista', 'Sawtelle', 'Veterans Administration'],
+  'Century City & Palms': ['Beverlywood', 'Century City', 'Cheviot Hills', 'Palms', 'Pico-Robertson'],
+  'Santa Monica & the Coast': ['Culver City', 'Pacific Palisades', 'Santa Monica', 'Venice'],
+  'Playa & the Marina': ['Del Rey', 'Marina del Rey', 'Playa Vista', 'Playa del Rey', 'Westchester'],
+  'Westwood & Beverly Hills': ['Beverly Crest', 'Beverly Hills', 'Rancho Park', 'West Los Angeles', 'Westwood'],
+  // --- South Bay & Harbor ---
+  'Carson & Gardena': ['Carson', 'Gardena', 'Harbor Gateway', 'West Carson'],
+  'Inglewood & Hawthorne': ['Alondra Park', 'Hawthorne', 'Inglewood', 'Lennox'],
+  'El Segundo & Manhattan Beach': ['Del Aire', 'El Segundo', 'Manhattan Beach'],
+  'The Palos Verdes Peninsula': ['Palos Verdes Estates', 'Rancho Palos Verdes', 'Rolling Hills', 'Rolling Hills Estates'],
+  'The Harbor': ['Harbor City', 'Lomita', 'San Pedro', 'Wilmington'],
+  'The Beach Cities': ['Hermosa Beach', 'Lawndale', 'Redondo Beach', 'Torrance'],
+  // --- South L.A. ---
+  'The Crenshaw District': ['Baldwin Hills/Crenshaw', 'Jefferson Park', 'Ladera Heights', 'Leimert Park', 'View Park-Windsor Hills', 'West Adams'],
+  'Bell & Maywood': ['Bell', 'Cudahy', 'Maywood', 'Vernon'],
+  'Huntington Park & Florence': ['Central-Alameda', 'Florence-Firestone', 'Green Meadows', 'Huntington Park', 'Walnut Park', 'Watts'],
+  'The Vermont Corridor': ['Chesterfield Square', 'Gramercy Park', 'Harvard Park', 'Hyde Park', 'Manchester Square', 'Vermont Square', 'Vermont-Slauson'],
+  'Exposition Park & USC': ['Adams-Normandie', 'Arlington Heights', 'Exposition Park', 'Harvard Heights', 'Historic South-Central', 'South Park', 'University Park'],
+  'Willowbrook & Athens': ['Athens', 'Broadway-Manchester', 'Florence', 'Vermont Knolls', 'Vermont Vista', 'Westmont', 'Willowbrook'],
+  // --- Gateway Cities ---
+  'Greater Compton': ['Compton', 'East Compton', 'Rancho Dominguez', 'West Compton'],
+  'The Southeast Cities': ['Bellflower', 'Downey', 'Lynwood', 'Paramount', 'South Gate'],
+  'Long Beach & Lakewood': ['Cerritos', 'Hawaiian Gardens', 'Lakewood', 'Long Beach', 'Signal Hill'],
+  'Norwalk & Santa Fe Springs': ['Artesia', 'Norwalk', 'Santa Fe Springs', 'South Whittier', 'West Whittier-Los Nietos'],
+  'Montebello & Pico Rivera': ['Bell Gardens', 'Commerce', 'Montebello', 'North Whittier', 'Pico Rivera'],
+  'Whittier & La Mirada': ['East La Mirada', 'La Habra Heights', 'La Mirada', 'Whittier'],
+};
+// Invert to a member-set key → name lookup, and flag accidental duplicate names.
+const keyToName = new Map();
+{
+  const seen = new Set();
+  for (const [name, areas] of Object.entries(GROUP_NAMES)) {
+    if (seen.has(name)) throw new Error(`duplicate group name: ${name}`);
+    seen.add(name);
+    keyToName.set([...areas].sort().join('|'), name);
   }
-  let label = `${ranked[0]} & ${ranked[1]}`;
+}
+const uncovered = [];
+
+// Name a group: prefer its hand-authored name (by member set); otherwise fall
+// back to "<most prominent> area" (and record it so build:shapes can warn).
+function nameGroup(members) {
+  const hand = keyToName.get([...members].sort().join('|'));
+  if (hand) return hand;
+  const ranked = [...members].sort(moreProminent);
+  uncovered.push(`${ranked[0]} area [${members.length}]: ${[...members].sort().join(', ')}`);
+  let label = `${ranked[0]} area`;
   let n = 2;
-  while (usedLabels.has(label)) label = `${ranked[0]} & ${ranked[1]} ${++n}`;
+  while (usedLabels.has(label)) label = `${ranked[0]} area ${++n}`;
   usedLabels.add(label);
   return label;
 }
@@ -364,3 +446,5 @@ function show(id, depth) {
 }
 show('la', 0);
 console.log(problems ? `\n⚠ ${problems} node(s) violate the 3–7 / connected rule` : '\n✓ every puzzle has 3–7 connected pieces');
+if (uncovered.length) console.log(`\n⚠ ${uncovered.length} group(s) without a hand-name (rename in GROUP_NAMES):\n  ${uncovered.join('\n  ')}`);
+else console.log('✓ every group has a hand-authored name');
