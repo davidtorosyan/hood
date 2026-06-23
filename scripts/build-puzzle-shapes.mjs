@@ -234,87 +234,94 @@ const moreProminent = (a, b) => {
   return pb - pa || rb - ra;
 };
 
-// Hand-authored, evocative names for every generated group, keyed by the exact
-// set of areas it contains (stable regardless of the auto-label). If the
-// partition ever changes, build:shapes warns about any group not covered here so
-// it can be renamed. `{ name: [areas...] }` for readability; inverted below.
+// Hand-authored names for every generated group, keyed by the exact set of areas
+// it contains (stable regardless of the auto-label). Rules (enforced below):
+// a single name (no "&"), at most NAME_CAP chars, never a region name, and never
+// one of the group's own member areas (so it doesn't read like "X area"). Real
+// district/area names where they exist; geographic coinages for the rest. If the
+// partition ever changes, build:shapes warns about any uncovered group.
+const NAME_CAP = 18;
 const GROUP_NAMES = {
-  // --- San Gabriel Valley (first zoom) ---
-  'Glendale & Northeast L.A.': ['Atwater Village', 'Cypress Park', 'Eagle Rock', 'Elysian Valley', 'Glassell Park', 'Glendale', 'Highland Park', 'La Cañada Flintridge', 'La Crescenta-Montrose', 'Lincoln Heights', 'Mount Washington'],
-  'The Foothill Cities': ['Arcadia', 'East Pasadena', 'East San Gabriel', 'Irwindale', 'Mayflower Village', 'Monrovia', 'North El Monte', 'San Marino', 'San Pasqual', 'Sierra Madre', 'Temple City'],
+  // --- San Fernando Valley ---
+  'Las Virgenes': ['Agoura Hills', 'Calabasas', 'Hidden Hills', 'Westlake Village'],
+  'Sunland-Tujunga': ['Burbank', 'Hansen Dam', 'Lake View Terrace', 'Shadow Hills', 'Sun Valley', 'Sunland', 'Tujunga'],
+  'Central Valley': ['Encino', 'Lake Balboa', 'Northridge', 'Reseda', 'Sepulveda Basin', 'Van Nuys', 'Winnetka'],
+  'North Valley': ['Arleta', 'Granada Hills', 'Mission Hills', 'North Hills', 'Pacoima', 'Panorama City', 'San Fernando', 'Sylmar'],
+  'South Valley': ['North Hollywood', 'Sherman Oaks', 'Studio City', 'Toluca Lake', 'Universal City', 'Valley Glen', 'Valley Village'],
+  'West Valley': ['Canoga Park', 'Chatsworth', 'Chatsworth Reservoir', 'Porter Ranch', 'Tarzana', 'West Hills', 'Woodland Hills'],
+  'Northwest Valley': ['Granada Hills', 'Mission Hills', 'North Hills'],
+  'Northeast Valley': ['Arleta', 'Pacoima', 'Panorama City'],
+  // --- San Gabriel Valley ---
+  'Northeast L.A.': ['Atwater Village', 'Cypress Park', 'Eagle Rock', 'Elysian Valley', 'Glassell Park', 'Glendale', 'Highland Park', 'La Cañada Flintridge', 'La Crescenta-Montrose', 'Lincoln Heights', 'Mount Washington'],
+  'Foothill Cities': ['Arcadia', 'East Pasadena', 'East San Gabriel', 'Irwindale', 'Mayflower Village', 'Monrovia', 'North El Monte', 'San Marino', 'San Pasqual', 'Sierra Madre', 'Temple City'],
   'The East Foothills': ['Azusa', 'Bradbury', 'Charter Oak', 'Citrus', 'Covina', 'Duarte', 'Glendora', 'Ramona', 'San Dimas', 'West San Dimas'],
-  'Pasadena & the Eastside': ['Alhambra', 'Altadena', 'Boyle Heights', 'East Los Angeles', 'El Sereno', 'Montecito Heights', 'Monterey Park', 'Pasadena', 'San Gabriel', 'South Pasadena', 'South San Gabriel'],
+  'West San Gabriel': ['Alhambra', 'Altadena', 'Boyle Heights', 'East Los Angeles', 'El Sereno', 'Montecito Heights', 'Monterey Park', 'Pasadena', 'San Gabriel', 'South Pasadena', 'South San Gabriel'],
   'The Puente Valley': ['Baldwin Park', 'El Monte', 'La Puente', 'Rosemead', 'South El Monte', 'South San Jose Hills', 'Valinda', 'West Covina', 'West Puente Valley', 'Whittier Narrows'],
   'The Pomona Valley': ['Avocado Heights', 'Claremont', 'Diamond Bar', 'Hacienda Heights', 'Industry', 'La Verne', 'Pomona', 'Rowland Heights', 'South Diamond Bar', 'Walnut'],
-  // SGV deeper
   'The Verdugos': ['Glendale', 'La Cañada Flintridge', 'La Crescenta-Montrose'],
-  'Eagle Rock & Atwater Village': ['Atwater Village', 'Eagle Rock', 'Elysian Valley', 'Glassell Park'],
-  'Highland Park & Lincoln Heights': ['Cypress Park', 'Highland Park', 'Lincoln Heights', 'Mount Washington'],
-  'Monrovia & Irwindale': ['Irwindale', 'Mayflower Village', 'Monrovia'],
-  'Arcadia & Sierra Madre': ['Arcadia', 'East Pasadena', 'North El Monte', 'Sierra Madre'],
-  'San Marino & Temple City': ['East San Gabriel', 'San Marino', 'San Pasqual', 'Temple City'],
-  'Azusa & Duarte': ['Azusa', 'Bradbury', 'Duarte'],
-  'Covina & Citrus': ['Citrus', 'Covina', 'Ramona'],
-  'Glendora & San Dimas': ['Charter Oak', 'Glendora', 'San Dimas', 'West San Dimas'],
-  'Alhambra & San Gabriel': ['Alhambra', 'Monterey Park', 'San Gabriel', 'South San Gabriel'],
-  'Pasadena & Altadena': ['Altadena', 'Pasadena', 'South Pasadena'],
+  'Arroyo Seco': ['Atwater Village', 'Eagle Rock', 'Elysian Valley', 'Glassell Park'],
+  'Figueroa Corridor': ['Cypress Park', 'Highland Park', 'Lincoln Heights', 'Mount Washington'],
+  'Santa Fe Dam': ['Irwindale', 'Mayflower Village', 'Monrovia'],
+  'Santa Anita': ['Arcadia', 'East Pasadena', 'North El Monte', 'Sierra Madre'],
+  'The Huntington': ['East San Gabriel', 'San Marino', 'San Pasqual', 'Temple City'],
+  'Canyon Cities': ['Azusa', 'Bradbury', 'Duarte'],
+  'Covina Hills': ['Citrus', 'Covina', 'Ramona'],
+  'Glendora Hills': ['Charter Oak', 'Glendora', 'San Dimas', 'West San Dimas'],
+  'The Mission': ['Alhambra', 'Monterey Park', 'San Gabriel', 'South San Gabriel'],
+  'Crown City': ['Altadena', 'Pasadena', 'South Pasadena'],
   'The Eastside': ['Boyle Heights', 'East Los Angeles', 'El Sereno', 'Montecito Heights'],
-  'Baldwin Park & La Puente': ['Baldwin Park', 'La Puente', 'West Puente Valley'],
-  'El Monte & Rosemead': ['El Monte', 'Rosemead', 'South El Monte', 'Whittier Narrows'],
-  'West Covina & Valinda': ['South San Jose Hills', 'Valinda', 'West Covina'],
-  'Pomona & Claremont': ['Claremont', 'La Verne', 'Pomona'],
-  'Diamond Bar & Rowland Heights': ['Diamond Bar', 'Rowland Heights', 'South Diamond Bar'],
-  'Hacienda Heights & Walnut': ['Avocado Heights', 'Hacienda Heights', 'Industry', 'Walnut'],
-  // --- San Fernando Valley ---
-  'The Northeast Valley': ['Burbank', 'Hansen Dam', 'Lake View Terrace', 'Shadow Hills', 'Sun Valley', 'Sunland', 'Tujunga'],
-  'The Western Hills': ['Agoura Hills', 'Calabasas', 'Hidden Hills', 'Westlake Village'],
-  'The Southeast Valley': ['North Hollywood', 'Sherman Oaks', 'Studio City', 'Toluca Lake', 'Universal City', 'Valley Glen', 'Valley Village'],
-  'The North Valley': ['Arleta', 'Granada Hills', 'Mission Hills', 'North Hills', 'Pacoima', 'Panorama City', 'San Fernando', 'Sylmar'],
-  'The Central Valley': ['Encino', 'Lake Balboa', 'Northridge', 'Reseda', 'Sepulveda Basin', 'Van Nuys', 'Winnetka'],
-  'The West Valley': ['Canoga Park', 'Chatsworth', 'Chatsworth Reservoir', 'Porter Ranch', 'Tarzana', 'West Hills', 'Woodland Hills'],
-  'Granada Hills & Mission Hills': ['Granada Hills', 'Mission Hills', 'North Hills'],
-  'Pacoima & Panorama City': ['Arleta', 'Pacoima', 'Panorama City'],
+  'West Puente': ['Baldwin Park', 'La Puente', 'West Puente Valley'],
+  'Rio Hondo': ['El Monte', 'Rosemead', 'South El Monte', 'Whittier Narrows'],
+  'San Jose Hills': ['South San Jose Hills', 'Valinda', 'West Covina'],
+  'The Colleges': ['Claremont', 'La Verne', 'Pomona'],
+  'Brea Canyon': ['Diamond Bar', 'Rowland Heights', 'South Diamond Bar'],
+  'Puente Hills': ['Avocado Heights', 'Hacienda Heights', 'Industry', 'Walnut'],
   // --- Central L.A. ---
-  'Downtown & Chinatown': ['Chinatown', 'Downtown', 'Elysian Park'],
-  'Hollywood & Los Feliz': ['Griffith Park', 'Hollywood', 'Hollywood Hills', 'Los Feliz'],
-  'Koreatown & Pico-Union': ['Koreatown', 'Larchmont', 'Pico-Union', 'Windsor Square'],
-  'The Wilshire District': ['Carthay', 'Hancock Park', 'Mid-City', 'Mid-Wilshire'],
-  'West Hollywood & Fairfax': ['Beverly Grove', 'Fairfax', 'Hollywood Hills West', 'West Hollywood'],
-  'Echo Park & Silver Lake': ['East Hollywood', 'Echo Park', 'Silver Lake', 'Westlake'],
+  'Bunker Hill': ['Chinatown', 'Downtown', 'Elysian Park'],
+  'Hollywoodland': ['Griffith Park', 'Hollywood', 'Hollywood Hills', 'Los Feliz'],
+  'Wilshire Center': ['Koreatown', 'Larchmont', 'Pico-Union', 'Windsor Square'],
+  'Miracle Mile': ['Carthay', 'Hancock Park', 'Mid-City', 'Mid-Wilshire'],
+  'The Sunset Strip': ['Beverly Grove', 'Fairfax', 'Hollywood Hills West', 'West Hollywood'],
+  'Sunset Junction': ['East Hollywood', 'Echo Park', 'Silver Lake', 'Westlake'],
   // --- Westside & Coast ---
-  'West L.A. & Brentwood': ['Bel-Air', 'Brentwood', 'Mar Vista', 'Sawtelle', 'Veterans Administration'],
-  'Century City & Palms': ['Beverlywood', 'Century City', 'Cheviot Hills', 'Palms', 'Pico-Robertson'],
-  'Santa Monica & the Coast': ['Culver City', 'Pacific Palisades', 'Santa Monica', 'Venice'],
-  'Playa & the Marina': ['Del Rey', 'Marina del Rey', 'Playa Vista', 'Playa del Rey', 'Westchester'],
-  'Westwood & Beverly Hills': ['Beverly Crest', 'Beverly Hills', 'Rancho Park', 'West Los Angeles', 'Westwood'],
+  'West L.A.': ['Bel-Air', 'Brentwood', 'Mar Vista', 'Sawtelle', 'Veterans Administration'],
+  'Westside Village': ['Beverlywood', 'Century City', 'Cheviot Hills', 'Palms', 'Pico-Robertson'],
+  'Santa Monica Bay': ['Culver City', 'Pacific Palisades', 'Santa Monica', 'Venice'],
+  'Silicon Beach': ['Del Rey', 'Marina del Rey', 'Playa Vista', 'Playa del Rey', 'Westchester'],
+  'Holmby Hills': ['Beverly Crest', 'Beverly Hills', 'Rancho Park', 'West Los Angeles', 'Westwood'],
   // --- South Bay & Harbor ---
-  'Carson & Gardena': ['Carson', 'Gardena', 'Harbor Gateway', 'West Carson'],
-  'Inglewood & Hawthorne': ['Alondra Park', 'Hawthorne', 'Inglewood', 'Lennox'],
-  'El Segundo & Manhattan Beach': ['Del Aire', 'El Segundo', 'Manhattan Beach'],
-  'The Palos Verdes Peninsula': ['Palos Verdes Estates', 'Rancho Palos Verdes', 'Rolling Hills', 'Rolling Hills Estates'],
+  'Dominguez': ['Carson', 'Gardena', 'Harbor Gateway', 'West Carson'],
+  'Centinela Valley': ['Alondra Park', 'Hawthorne', 'Inglewood', 'Lennox'],
+  'North Beaches': ['Del Aire', 'El Segundo', 'Manhattan Beach'],
+  'Palos Verdes': ['Palos Verdes Estates', 'Rancho Palos Verdes', 'Rolling Hills', 'Rolling Hills Estates'],
   'The Harbor': ['Harbor City', 'Lomita', 'San Pedro', 'Wilmington'],
   'The Beach Cities': ['Hermosa Beach', 'Lawndale', 'Redondo Beach', 'Torrance'],
   // --- South L.A. ---
-  'The Crenshaw District': ['Baldwin Hills/Crenshaw', 'Jefferson Park', 'Ladera Heights', 'Leimert Park', 'View Park-Windsor Hills', 'West Adams'],
-  'Bell & Maywood': ['Bell', 'Cudahy', 'Maywood', 'Vernon'],
-  'Huntington Park & Florence': ['Central-Alameda', 'Florence-Firestone', 'Green Meadows', 'Huntington Park', 'Walnut Park', 'Watts'],
-  'The Vermont Corridor': ['Chesterfield Square', 'Gramercy Park', 'Harvard Park', 'Hyde Park', 'Manchester Square', 'Vermont Square', 'Vermont-Slauson'],
-  'Exposition Park & USC': ['Adams-Normandie', 'Arlington Heights', 'Exposition Park', 'Harvard Heights', 'Historic South-Central', 'South Park', 'University Park'],
-  'Willowbrook & Athens': ['Athens', 'Broadway-Manchester', 'Florence', 'Vermont Knolls', 'Vermont Vista', 'Westmont', 'Willowbrook'],
+  Crenshaw: ['Baldwin Hills/Crenshaw', 'Jefferson Park', 'Ladera Heights', 'Leimert Park', 'View Park-Windsor Hills', 'West Adams'],
+  'Industrial Belt': ['Bell', 'Cudahy', 'Maywood', 'Vernon'],
+  'Alameda Corridor': ['Central-Alameda', 'Florence-Firestone', 'Green Meadows', 'Huntington Park', 'Walnut Park', 'Watts'],
+  'Vermont Corridor': ['Chesterfield Square', 'Gramercy Park', 'Harvard Park', 'Hyde Park', 'Manchester Square', 'Vermont Square', 'Vermont-Slauson'],
+  'South Central': ['Adams-Normandie', 'Arlington Heights', 'Exposition Park', 'Harvard Heights', 'Historic South-Central', 'South Park', 'University Park'],
+  'Athens-Westmont': ['Athens', 'Broadway-Manchester', 'Florence', 'Vermont Knolls', 'Vermont Vista', 'Westmont', 'Willowbrook'],
   // --- Gateway Cities ---
   'Greater Compton': ['Compton', 'East Compton', 'Rancho Dominguez', 'West Compton'],
-  'The Southeast Cities': ['Bellflower', 'Downey', 'Lynwood', 'Paramount', 'South Gate'],
-  'Long Beach & Lakewood': ['Cerritos', 'Hawaiian Gardens', 'Lakewood', 'Long Beach', 'Signal Hill'],
-  'Norwalk & Santa Fe Springs': ['Artesia', 'Norwalk', 'Santa Fe Springs', 'South Whittier', 'West Whittier-Los Nietos'],
-  'Montebello & Pico Rivera': ['Bell Gardens', 'Commerce', 'Montebello', 'North Whittier', 'Pico Rivera'],
-  'Whittier & La Mirada': ['East La Mirada', 'La Habra Heights', 'La Mirada', 'Whittier'],
+  'Southeast Cities': ['Bellflower', 'Downey', 'Lynwood', 'Paramount', 'South Gate'],
+  'Los Cerritos': ['Cerritos', 'Hawaiian Gardens', 'Lakewood', 'Long Beach', 'Signal Hill'],
+  'Los Nietos': ['Artesia', 'Norwalk', 'Santa Fe Springs', 'South Whittier', 'West Whittier-Los Nietos'],
+  'Montebello Hills': ['Bell Gardens', 'Commerce', 'Montebello', 'North Whittier', 'Pico Rivera'],
+  'Whittier Hills': ['East La Mirada', 'La Habra Heights', 'La Mirada', 'Whittier'],
 };
-// Invert to a member-set key → name lookup, and flag accidental duplicate names.
+// Invert to a member-set key → name lookup, validating each name against the
+// rules so a bad name fails the build loudly instead of slipping through.
 const keyToName = new Map();
 {
   const seen = new Set();
   for (const [name, areas] of Object.entries(GROUP_NAMES)) {
     if (seen.has(name)) throw new Error(`duplicate group name: ${name}`);
+    if (name.length > NAME_CAP) throw new Error(`group name too long (>${NAME_CAP}): ${name}`);
+    if (name.includes('&')) throw new Error(`group name has an ampersand: ${name}`);
+    if (RESERVED.has(name)) throw new Error(`group name collides with a region: ${name}`);
+    if (areas.includes(name)) throw new Error(`group named after a member area: ${name}`);
     seen.add(name);
     keyToName.set([...areas].sort().join('|'), name);
   }
