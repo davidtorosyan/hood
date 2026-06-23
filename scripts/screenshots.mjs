@@ -149,9 +149,15 @@ async function pressDragTo(name, tx, ty, release = true) {
   if (release) await page.mouse.up();
 }
 
-// Scramble a solved map by grabbing it and shaking. Shake VERTICALLY to prove
-// shake works in any direction, not just side-to-side.
+// Scramble a solved map via the Scramble button (the discoverable, primary path).
 async function shakeScramble() {
+  await page.locator('.jig-scramble').click();
+  await page.waitForTimeout(900); // explode → play
+}
+
+// The bonus gesture: grab the solved map and shake it (vertically, to prove any
+// direction works). Returns whether it scrambled.
+async function dragShake() {
   const box = await page.locator('svg.jig').boundingBox();
   const u2px = box.width / 1000;
   const cx = box.x + box.width / 2;
@@ -160,7 +166,8 @@ async function shakeScramble() {
   await page.mouse.down();
   for (let i = 0; i < 8; i++) await page.mouse.move(cx, cy + (i % 2 ? 230 : -230) * u2px);
   await page.mouse.up();
-  await page.waitForTimeout(900); // explode → play
+  await page.waitForTimeout(900);
+  return (await readPieces()).some((p) => p.csize === 1); // some piece came loose
 }
 
 // Two-finger pinch via synthetic pointer events. spread=true zooms in (fingers
@@ -187,9 +194,9 @@ async function pinch(spread) {
   return (await page.locator('.jig-crumb').count()) - before;
 }
 
-const solveVisible = () => page.locator('.jig-solve').isVisible();
-const checkSolve = async (where, want) => {
-  if ((await solveVisible()) !== want) errors.push(`BUG: Solve visibility wrong ${where} (want ${want})`);
+const checkButtons = async (where, solve, scramble) => {
+  if ((await page.locator('.jig-solve').isVisible()) !== solve) errors.push(`BUG: Solve visibility wrong ${where}`);
+  if ((await page.locator('.jig-scramble').isVisible()) !== scramble) errors.push(`BUG: Scramble visibility wrong ${where}`);
 };
 const anyGlow = () =>
   page.evaluate(() =>
@@ -203,7 +210,12 @@ await shot('home');
 await page.getByRole('button', { name: 'Play' }).click();
 await page.waitForTimeout(800);
 await shot('regions-assembled');
-await checkSolve('when solved', false); // nothing to solve → Solve hidden
+await checkButtons('when solved', false, true); // Scramble shown, Solve hidden
+
+// Bonus gesture: grabbing the map and shaking it should also scramble.
+if (!(await dragShake())) errors.push('BUG: drag-shake gesture did not scramble');
+await page.locator('.jig-solve').click(); // re-solve to continue from a clean state
+await page.waitForTimeout(800);
 
 // Pan the solved map (a plain drag, no shake), then release — it should spring
 // back to centre.
@@ -222,7 +234,7 @@ await checkSolve('when solved', false); // nothing to solve → Solve hidden
 // Scramble by shaking, then assemble by hand (exercises real drag + snap).
 await shakeScramble();
 await shot('regions-jumbled');
-await checkSolve('when scrambled', true);
+await checkButtons('when scrambled', true, false);
 
 // Connection glow: drop one region in place, bring an adjacent one close and
 // hold — only the shared edge should light up on both.
@@ -247,7 +259,7 @@ await solveBoard(() => shot('regions-midway'));
   if (left.length) console.log('UNPLACED after solve:', JSON.stringify(left.map((p) => p.name)));
 }
 await shot('regions-solved');
-await checkSolve('back when solved', false);
+await checkButtons('back when solved', false, true);
 
 // Multiple independent sub-clusters: build two away from the origin, confirm
 // they stay separate, then bring one over to merge with the other.

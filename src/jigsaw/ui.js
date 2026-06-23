@@ -22,18 +22,21 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// The status banner: a hint, a Solve shortcut (shown only while there's a
-// scramble to solve), the up control, and a pieces-left counter. There's no
-// Jumble button — you scramble a solved map by grabbing and shaking it.
-export function statusBanner({ onUp, onSolve }) {
+// The status banner: a hint, the primary action (Scramble when solved, Solve
+// while assembling — they swap), the up control, and a pieces-left counter.
+// Scramble is an explicit button because the shake gesture proved undiscoverable
+// in playtesting (people shook the phone); shaking still works as a bonus.
+export function statusBanner({ onUp, onSolve, onScramble }) {
   const hint = el('span', { class: 'jig-hint' }, '');
   const counter = el('span', { class: 'jig-count' }, '');
 
+  const scrambleBtn = el('button', { class: 'jig-btn jig-scramble', onClick: onScramble, title: 'Break the map apart to play' }, '🔀 Scramble');
   const solveBtn = el('button', { class: 'jig-btn jig-solve', onClick: onSolve, title: 'Snap the pieces back together' }, 'Solve');
 
   const banner = el('div', { class: 'jig-banner' }, [
     hint,
     el('div', { class: 'jig-banner-right' }, [
+      scrambleBtn,
       solveBtn,
       el('button', { class: 'jig-btn jig-up', onClick: onUp, title: 'Zoom out one level', 'aria-label': 'Zoom out' }, '↑'),
       counter,
@@ -43,20 +46,18 @@ export function statusBanner({ onUp, onSolve }) {
   return {
     banner,
     setHint: (t) => (hint.textContent = t),
-    // Solve is only shown when there's actually something to solve.
-    setControls: (canSolve) => {
+    // Scramble shows on a solved board, Solve while assembling — never both.
+    setControls: (canSolve, canScramble) => {
       solveBtn.style.display = canSolve ? '' : 'none';
+      scrambleBtn.style.display = canScramble ? '' : 'none';
     },
     setCounter: (remaining) => {
-      // No "Done!" badge (it read like a button) — the hint conveys the solved
-      // state. Just the pieces-left count while assembling.
+      // No "Done!" badge (it read like a button); just the pieces-left count.
       counter.textContent = remaining > 0 ? `${remaining} left` : '';
     },
     setSolved: (zoomable) => {
       counter.textContent = '';
-      hint.textContent = zoomable
-        ? '👆 Tap to zoom in · 🤙 shake to scramble'
-        : '👆 Tap for info · 🤙 shake to scramble';
+      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a neighborhood for info';
     },
   };
 }

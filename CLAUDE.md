@@ -97,9 +97,10 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
     (adjacent pieces, within snap of their true offset) and `#settleClusters` merges
     everything that lines up. Gestures: one-finger drag moves a cluster (with a true-shared-
     edge connection glow + a faint tether, and a snap "click" + spark on join); on a solved
-    map a tap zooms in / opens a leaf card, a one-finger drag pans (springs back), and
-    shaking scrambles it (no Jumble button — `index.js` also wires a best-effort devicemotion
-    shake); two-finger pinch zooms in (into the region under the pinch) / out.
+    map a tap zooms in / opens a leaf card, a one-finger drag pans (springs back), and a
+    prominent **Scramble** button (or, as a bonus, grabbing + shaking the map — playtesters
+    couldn't discover the gesture alone; `index.js` also wires a best-effort devicemotion
+    phone-shake) breaks it apart to play; two-finger pinch zooms in / out.
   - `piece.js` — `Piece`: one SVG group + its placement state; small methods for visual
     state (near/dragging/placed/zoomable) so DOM bookkeeping lives in one place.
   - `geometry.js` — pure, no DOM: projects a node's children to the board, piece boxes,

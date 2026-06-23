@@ -380,11 +380,10 @@ export class Board {
     this.cbs.onRemaining?.(this.pieces.length - biggest, this.pieces.length);
   }
 
-  // Tell the host whether a Solve shortcut makes sense — only while assembling
-  // (an already-solved board has nothing to solve). Scrambling is by shake, so
-  // there's no Jumble control to manage.
+  // Tell the host which primary action to show: Solve while assembling, Scramble
+  // on a solved board (they swap). Transient phases show neither.
   #emitControls() {
-    this.cbs.onControls?.(this.phase === 'play');
+    this.cbs.onControls?.(this.phase === 'play', this.phase === 'solved');
   }
 
   #enterSolved(withToast) {

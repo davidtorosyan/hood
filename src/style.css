@@ -217,6 +217,16 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
+/* Scramble is the primary call-to-action on a solved board — make it pop. */
+.jig-scramble {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.jig-scramble:active {
+  background: var(--accent);
+  filter: brightness(0.94);
+}
 .jig-board {
   position: relative;
   background: radial-gradient(circle at 50% 42%, #ffffff 0%, #e7ecf4 82%);

@@ -72,6 +72,7 @@ function renderNode(app, ctx, nodeId, opts) {
   const bannerUi = statusBanner({
     onUp: goUp,
     onSolve: () => board.solve(),
+    onScramble: () => board.jumble(),
   });
   const boardWrap = el('div', { class: 'jig-board' });
 
@@ -84,7 +85,7 @@ function renderNode(app, ctx, nodeId, opts) {
     onZoomInto: zoomInto,
     onZoomOut: goUp,
     onSelectLeaf: (id) => showCard(app, id),
-    onControls: (canSolve) => bannerUi.setControls(canSolve),
+    onControls: (canSolve, canScramble) => bannerUi.setControls(canSolve, canScramble),
   });
   currentBoard = board;
   boardWrap.append(board.svg);
