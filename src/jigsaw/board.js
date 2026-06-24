@@ -69,7 +69,7 @@ export class Board {
   #pendingTimer = 0; // a scheduled end-of-animation callback we may need to cancel
 
   // cbs: { onRemaining(n,total), onHint(text), onSolved(zoomable),
-  //        onZoomInto(childId), onToast(msg), onSelectLeaf(id), onControls(j,s) }
+  //        onZoomInto(childId), onToast(msg), onSelectLeaf(id), onAction(mode) }
   constructor(nodeId, cbs = {}) {
     this.nodeId = nodeId;
     this.cbs = cbs;
@@ -137,7 +137,7 @@ export class Board {
   // when to scramble. `zoomOutFrom` reverse-zooms from the child we arrived from.
   start({ zoomOutFrom = null } = {}) {
     this.#snapAll();
-    this.#enterSolved(false);
+    this.#enterSolved({ played: false }); // loaded assembled — not "solved by you"
     if (zoomOutFrom) {
       const from = this.pieces.find((p) => p.id === zoomOutFrom);
       if (from) this.#animateZoom(this.#boxFor(from), fullVB(this.vbH));
@@ -173,11 +173,12 @@ export class Board {
     if (this.phase === 'solved' || this.phase === 'building') return;
     this.#cancelPending();
     this.phase = 'solving';
-    this.#emitControls(); // mid-animation: both controls off
-    // Fly every piece in to its true position, then lock + mark solved.
+    this.#emitControls();
+    // Fly every piece in to its true position, then lock + mark solved. The Solve
+    // button counts as the player solving it, so cue the next step.
     this.#animatePieces(null, () => [0, 0], () => {
       this.#snapAll();
-      this.#enterSolved(false);
+      this.#enterSolved({ played: true });
     });
   }
 
@@ -363,7 +364,7 @@ export class Board {
   #refresh() {
     this.#emitProgress();
     for (const p of this.pieces) p.setPlaced(p.cluster.size > 1);
-    if (this.#allClusters().size === 1 && this.phase === 'play') this.#enterSolved(true);
+    if (this.#allClusters().size === 1 && this.phase === 'play') this.#enterSolved({ played: true, toast: true });
     else this.#emitControls();
   }
 
@@ -380,20 +381,23 @@ export class Board {
     this.cbs.onRemaining?.(this.pieces.length - biggest, this.pieces.length);
   }
 
-  // Tell the host which primary action to show: Solve while assembling, Scramble
-  // on a solved board (they swap). Transient phases show neither.
+  // Tell the host which label the one action button wears: Solve while assembling
+  // (or about to), Scramble otherwise.
   #emitControls() {
-    this.cbs.onControls?.(this.phase === 'play', this.phase === 'solved');
+    const mode = this.phase === 'play' || this.phase === 'jumbling' ? 'solve' : 'scramble';
+    this.cbs.onAction?.(mode);
   }
 
-  #enterSolved(withToast) {
+  // `played` = the player actually solved this board this visit (vs. it loading
+  // already assembled); the host only cues "tap to zoom" once they've played.
+  #enterSolved({ played = false, toast = false } = {}) {
     this.phase = 'solved';
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Groups become zoom targets; leaves become tap-for-info targets.
     this.pieces.forEach((p) => (p.zoomable ? p.markZoomable() : p.markSelectable()));
-    this.cbs.onSolved?.(zoomable);
+    this.cbs.onSolved?.(zoomable, played);
     this.#emitControls();
-    if (withToast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
+    if (toast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
   }
 
   // --- input / gestures ----------------------------------------------------

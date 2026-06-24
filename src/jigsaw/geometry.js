@@ -97,7 +97,10 @@ export function facingInfo(aRing, aT, bRing, bT) {
   const dist = aRing.map((q) => distToRing([q[0] + aT[0], q[1] + aT[1]], bWorld));
   const minD = Math.min(...dist);
   if (!Number.isFinite(minD)) return { d: '', mid: null };
-  const band = minD + 70; // how much of the shared arc to light up
+  // Only the edges that truly mate. At the snap position the shared border
+  // coincides (distance ≈ 0), so a tight band keeps the glow to the actual
+  // contact instead of spilling along the rest of the outline.
+  const band = minD + 22;
   let d = '';
   let sx = 0;
   let sy = 0;

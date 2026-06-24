@@ -217,6 +217,13 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
+/* The one action button (Scramble ⇆ Solve). Fixed width + first in the banner so
+   it stays put as the label swaps. */
+.jig-action {
+  flex: none;
+  min-width: 104px;
+  text-align: center;
+}
 /* Scramble is the primary call-to-action on a solved board — make it pop. */
 .jig-scramble {
   background: var(--accent);

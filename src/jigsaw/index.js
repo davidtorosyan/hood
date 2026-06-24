@@ -80,12 +80,12 @@ function renderNode(app, ctx, nodeId, opts) {
   const board = new Board(nodeId, {
     onRemaining: (remaining) => bannerUi.setCounter(remaining),
     onHint: (text) => bannerUi.setHint(text),
-    onSolved: (zoomable) => bannerUi.setSolved(zoomable),
+    onSolved: (zoomable, played) => bannerUi.setSolved(zoomable, played),
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
     onZoomOut: goUp,
     onSelectLeaf: (id) => showCard(app, id),
-    onControls: (canSolve, canScramble) => bannerUi.setControls(canSolve, canScramble),
+    onAction: (mode) => bannerUi.setAction(mode),
   });
   currentBoard = board;
   boardWrap.append(board.svg);

@@ -194,9 +194,14 @@ async function pinch(spread) {
   return (await page.locator('.jig-crumb').count()) - before;
 }
 
-const checkButtons = async (where, solve, scramble) => {
-  if ((await page.locator('.jig-solve').isVisible()) !== solve) errors.push(`BUG: Solve visibility wrong ${where}`);
-  if ((await page.locator('.jig-scramble').isVisible()) !== scramble) errors.push(`BUG: Scramble visibility wrong ${where}`);
+// Verify the one action button's label and whether the "tap to zoom/info" hint
+// is showing (it only appears after the player has solved a board).
+const checkState = async (where, wantLabel, wantZoomHint) => {
+  const label = await page.locator('.jig-action').textContent();
+  if (!label.includes(wantLabel)) errors.push(`BUG: action button is "${label}" ${where} (want ${wantLabel})`);
+  const hint = (await page.locator('.jig-hint').textContent()) || '';
+  const hasZoomHint = /zoom|info/.test(hint);
+  if (hasZoomHint !== wantZoomHint) errors.push(`BUG: zoom hint ${hasZoomHint ? 'shown' : 'missing'} ${where} (want ${wantZoomHint})`);
 };
 const anyGlow = () =>
   page.evaluate(() =>
@@ -210,12 +215,13 @@ await shot('home');
 await page.getByRole('button', { name: 'Play' }).click();
 await page.waitForTimeout(800);
 await shot('regions-assembled');
-await checkButtons('when solved', false, true); // Scramble shown, Solve hidden
+await checkState('on a fresh assembled board', 'Scramble', false); // no zoom hint yet
 
 // Bonus gesture: grabbing the map and shaking it should also scramble.
 if (!(await dragShake())) errors.push('BUG: drag-shake gesture did not scramble');
-await page.locator('.jig-solve').click(); // re-solve to continue from a clean state
+await page.locator('.jig-action').click(); // now reads "Solve" → re-solve
 await page.waitForTimeout(800);
+await checkState('after solving by button', 'Scramble', true); // now the hint appears
 
 // Pan the solved map (a plain drag, no shake), then release — it should spring
 // back to centre.
@@ -234,7 +240,7 @@ await page.waitForTimeout(800);
 // Scramble by shaking, then assemble by hand (exercises real drag + snap).
 await shakeScramble();
 await shot('regions-jumbled');
-await checkButtons('when scrambled', true, false);
+await checkState('while assembling', 'Solve', false);
 
 // Connection glow: drop one region in place, bring an adjacent one close and
 // hold — only the shared edge should light up on both.
@@ -259,7 +265,7 @@ await solveBoard(() => shot('regions-midway'));
   if (left.length) console.log('UNPLACED after solve:', JSON.stringify(left.map((p) => p.name)));
 }
 await shot('regions-solved');
-await checkButtons('back when solved', false, true);
+await checkState('after solving by hand', 'Scramble', true);
 
 // Multiple independent sub-clusters: build two away from the origin, confirm
 // they stay separate, then bring one over to merge with the other.
@@ -284,7 +290,7 @@ await shot('two-subgroups');
   if (A0.cluster === C0.cluster) errors.push('BUG: independent subgroups merged unexpectedly');
 }
 // Back to a clean solved board for the rest of the flow.
-await page.locator('.jig-solve').click();
+await page.locator('.jig-action').click();
 await page.waitForTimeout(800);
 
 // Pinch to zoom in (into the region under the pinch), then pinch to zoom out.
@@ -307,7 +313,7 @@ const crumbDepth = () => page.locator('.jig-crumb').count();
 const depthBefore = await crumbDepth();
 await shakeScramble();
 await shot('region-jumbled');
-await page.locator('.jig-solve').click();
+await page.locator('.jig-action').click();
 await page.waitForTimeout(800); // let the snap-together animation finish
 await shot('region-solved-by-button');
 {

@@ -22,22 +22,25 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// The status banner: a hint, the primary action (Scramble when solved, Solve
-// while assembling — they swap), the up control, and a pieces-left counter.
-// Scramble is an explicit button because the shake gesture proved undiscoverable
-// in playtesting (people shook the phone); shaking still works as a bonus.
+// The status banner. On the LEFT, one ACTION button that stays put and swaps its
+// label/behaviour: "Scramble" on a solved board, "Solve" while assembling. Then
+// the hint, then the up control and a pieces-left counter. (Scramble is an
+// explicit button because the shake gesture proved undiscoverable in playtests;
+// shaking still works as a bonus.)
 export function statusBanner({ onUp, onSolve, onScramble }) {
   const hint = el('span', { class: 'jig-hint' }, '');
   const counter = el('span', { class: 'jig-count' }, '');
 
-  const scrambleBtn = el('button', { class: 'jig-btn jig-scramble', onClick: onScramble, title: 'Break the map apart to play' }, '🔀 Scramble');
-  const solveBtn = el('button', { class: 'jig-btn jig-solve', onClick: onSolve, title: 'Snap the pieces back together' }, 'Solve');
+  let mode = 'scramble';
+  const actionBtn = el('button', {
+    class: 'jig-btn jig-action jig-scramble',
+    onClick: () => (mode === 'solve' ? onSolve() : onScramble()),
+  }, '🔀 Scramble');
 
   const banner = el('div', { class: 'jig-banner' }, [
+    actionBtn,
     hint,
     el('div', { class: 'jig-banner-right' }, [
-      scrambleBtn,
-      solveBtn,
       el('button', { class: 'jig-btn jig-up', onClick: onUp, title: 'Zoom out one level', 'aria-label': 'Zoom out' }, '↑'),
       counter,
     ]),
@@ -46,18 +49,21 @@ export function statusBanner({ onUp, onSolve, onScramble }) {
   return {
     banner,
     setHint: (t) => (hint.textContent = t),
-    // Scramble shows on a solved board, Solve while assembling — never both.
-    setControls: (canSolve, canScramble) => {
-      solveBtn.style.display = canSolve ? '' : 'none';
-      scrambleBtn.style.display = canScramble ? '' : 'none';
+    // mode: 'scramble' (solved board) or 'solve' (assembling). Same button.
+    setAction: (m) => {
+      mode = m;
+      actionBtn.textContent = m === 'solve' ? 'Solve' : '🔀 Scramble';
+      actionBtn.classList.toggle('jig-scramble', m === 'scramble');
+      actionBtn.title = m === 'solve' ? 'Snap the pieces back together' : 'Break the map apart to play';
     },
     setCounter: (remaining) => {
-      // No "Done!" badge (it read like a button); just the pieces-left count.
       counter.textContent = remaining > 0 ? `${remaining} left` : '';
     },
-    setSolved: (zoomable) => {
+    // `played` = the player actually solved it this visit; only then do we cue the
+    // next step (tap to zoom / for info). A fresh assembled board shows no hint.
+    setSolved: (zoomable, played) => {
       counter.textContent = '';
-      hint.textContent = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a neighborhood for info';
+      hint.textContent = !played ? '' : zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a neighborhood for info';
     },
   };
 }
