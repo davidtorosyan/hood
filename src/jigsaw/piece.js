@@ -49,7 +49,7 @@ export class Piece {
         x2: plan.x.toFixed(1), y2: plan.y.toFixed(1),
       }));
       wrap.append(svgEl('circle', {
-        class: 'jig-dot', cx: plan.anchorX.toFixed(1), cy: plan.anchorY.toFixed(1), r: 3.5,
+        class: 'jig-dot', cx: plan.anchorX.toFixed(1), cy: plan.anchorY.toFixed(1), r: 5,
       }));
     }
     const text = svgEl('text', { class: 'jig-label', 'text-anchor': 'middle' });

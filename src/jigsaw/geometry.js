@@ -52,20 +52,59 @@ export function projectChildren(nodeId, vbW, vbH) {
     const inner = hasChildren(id)
       ? childrenOf(id).map((gid) => ringToPath(projectRing(shapeOf(gid))))
       : null;
+    const [cx, cy] = visualCenter(ring); // a point reliably INSIDE the shape
     return {
       id,
       zoomable: hasChildren(id),
       inner,
       ring, // projected local points [x,y][], for the facing-edge glow + hit tests
       d: ringToPath(ring),
-      cx: ring.reduce((s, p) => s + p[0], 0) / ring.length,
-      cy: ring.reduce((s, p) => s + p[1], 0) / ring.length,
+      cx,
+      cy,
       minX,
       minY,
       w: Math.max(...xs) - minX,
       h: Math.max(...ys) - minY,
     };
   });
+}
+
+// The "pole of inaccessibility": the interior point farthest from the boundary.
+// Used to center a piece's label anchor — unlike the vertex-average centroid, it
+// always lands inside the shape (concave LA pieces can put the centroid outside).
+function visualCenter(ring) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  let best = [(minX + maxX) / 2, (minY + maxY) / 2];
+  let bestD = ringContains(ring, best[0], best[1]) ? distToRing(best, ring) : -Infinity;
+  const consider = (x, y) => {
+    if (!ringContains(ring, x, y)) return;
+    const d = distToRing([x, y], ring);
+    if (d > bestD) {
+      bestD = d;
+      best = [x, y];
+    }
+  };
+  const N = 14; // coarse grid over the bbox, then hill-climb to refine
+  for (let i = 0; i <= N; i++)
+    for (let j = 0; j <= N; j++)
+      consider(minX + ((maxX - minX) * i) / N, minY + ((maxY - minY) * j) / N);
+  let step = Math.max(maxX - minX, maxY - minY) / N;
+  for (let iter = 0; iter < 6; iter++) {
+    const [cx, cy] = best;
+    for (const [ox, oy] of [[step, 0], [-step, 0], [0, step], [0, -step], [step, step], [-step, -step], [step, -step], [-step, step]])
+      consider(cx + ox, cy + oy);
+    step /= 2;
+  }
+  return best;
 }
 
 // Shortest distance from point p to the polyline `ring` (treated as closed).

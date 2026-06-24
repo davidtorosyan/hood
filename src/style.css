@@ -400,9 +400,9 @@ body {
   stroke-width: 1.6;
 }
 .jig-dot {
-  fill: rgba(20, 28, 46, 0.7);
+  fill: rgba(20, 28, 46, 0.88);
   stroke: #ffffff;
-  stroke-width: 1.2;
+  stroke-width: 1.5;
 }
 /* After solving, pieces become tap targets — groups zoom in, leaves open a card. */
 .jig-piece.zoomable,
