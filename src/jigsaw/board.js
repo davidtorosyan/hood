@@ -23,7 +23,7 @@ import { labelOf } from './tree.js';
 import { layoutLabels } from './labels.js';
 
 const SNAP = 150; // connection radius, in board user units
-const MAGNET = 290; // distance at which a piece starts to "feel" its connection
+const MAGNET = 200; // distance at which a piece starts to "feel" its connection
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
@@ -155,7 +155,7 @@ export class Board {
     this.#initClusters(); // every piece back to its own loose cluster
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
-    this.cbs.onHint?.('Drag the neighbors together.');
+    this.cbs.onHint?.('Drag pieces together');
     // Animate from assembled (0,0) out to the scatter spots.
     this.#animatePieces(
       (p) => [0, 0],

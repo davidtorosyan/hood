@@ -29,4 +29,13 @@ export const store = {
   seenCount(id) {
     return state.seen[id] || 0;
   },
+  // Has the player ever solved a puzzle? Once they have, the "tap to zoom" cue
+  // sticks around on every solved board (they've learned the loop).
+  learnedZoom() {
+    return !!state.learnedZoom;
+  },
+  markLearnedZoom() {
+    state.learnedZoom = true;
+    save(state);
+  },
 };

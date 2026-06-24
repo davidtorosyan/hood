@@ -200,7 +200,7 @@ const checkState = async (where, wantLabel, wantZoomHint) => {
   const label = await page.locator('.jig-action').textContent();
   if (!label.includes(wantLabel)) errors.push(`BUG: action button is "${label}" ${where} (want ${wantLabel})`);
   const hint = (await page.locator('.jig-hint').textContent()) || '';
-  const hasZoomHint = /zoom|info/.test(hint);
+  const hasZoomHint = /zoom|card/.test(hint);
   if (hasZoomHint !== wantZoomHint) errors.push(`BUG: zoom hint ${hasZoomHint ? 'shown' : 'missing'} ${where} (want ${wantZoomHint})`);
 };
 const anyGlow = () =>
@@ -245,7 +245,7 @@ await checkState('while assembling', 'Solve', false);
 // Connection glow: drop one region in place, bring an adjacent one close and
 // hold — only the shared edge should light up on both.
 await pressDragTo(PAIR_A[0], 0, 0, true);
-await pressDragTo(PAIR_A[1], 135, 135, false); // held within the glow range
+await pressDragTo(PAIR_A[1], 112, 112, false); // held just inside the (tighter) glow range
 await page.waitForTimeout(120);
 if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
 await shot('connection-glow');

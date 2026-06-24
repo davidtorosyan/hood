@@ -12,6 +12,7 @@ import { ROOT, NODES, pathIds } from './tree.js';
 import { Board } from './board.js';
 import { breadcrumb, statusBanner, showToast } from './ui.js';
 import { showCard } from './card.js';
+import { store } from '../store.js';
 
 // The board currently on screen — the target for a device shake.
 let currentBoard = null;
@@ -80,7 +81,11 @@ function renderNode(app, ctx, nodeId, opts) {
   const board = new Board(nodeId, {
     onRemaining: (remaining) => bannerUi.setCounter(remaining),
     onHint: (text) => bannerUi.setHint(text),
-    onSolved: (zoomable, played) => bannerUi.setSolved(zoomable, played),
+    onSolved: (zoomable, played) => {
+      if (played) store.markLearnedZoom();
+      // Once they've solved anything, the cue sticks around on every solved board.
+      bannerUi.setSolved(zoomable, store.learnedZoom());
+    },
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
     onZoomOut: goUp,

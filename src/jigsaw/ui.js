@@ -59,11 +59,11 @@ export function statusBanner({ onUp, onSolve, onScramble }) {
     setCounter: (remaining) => {
       counter.textContent = remaining > 0 ? `${remaining} left` : '';
     },
-    // `played` = the player actually solved it this visit; only then do we cue the
-    // next step (tap to zoom / for info). A fresh assembled board shows no hint.
-    setSolved: (zoomable, played) => {
+    // `showTip` = the player has solved a puzzle before, so cue the next step.
+    // Kept short so it never wraps to a second line.
+    setSolved: (zoomable, showTip) => {
       counter.textContent = '';
-      hint.textContent = !played ? '' : zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a neighborhood for info';
+      hint.textContent = !showTip ? '' : zoomable ? '👆 Tap to zoom in' : '👆 Tap for its card';
     },
   };
 }
