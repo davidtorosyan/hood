@@ -26,3 +26,23 @@ export function pathIds(id) {
   for (let cur = id; cur; cur = NODES[cur].parent) out.unshift(cur);
   return out;
 }
+
+// The top-level region that contains `id` (for search: jumping to a place lands
+// you in its region). For a region it's the region itself; path is [la, region…].
+export const topRegionOf = (id) => pathIds(id)[1] ?? id;
+
+// Flat index of everything searchable: regions, groups, and individual places.
+// `kind` distinguishes them; `regionId/regionLabel` is the jump target + subtitle.
+// (Nodes are keyed by id in the hierarchy — the key IS the id; there's no id field.)
+export const SEARCH_ITEMS = Object.entries(NODES)
+  .filter(([id]) => id !== ROOT)
+  .map(([id, n]) => {
+    const regionId = topRegionOf(id);
+    return {
+      id,
+      label: n.label,
+      kind: n.parent === ROOT ? 'region' : (n.children?.length ? 'group' : 'place'),
+      regionId,
+      regionLabel: NODES[regionId].label,
+    };
+  });

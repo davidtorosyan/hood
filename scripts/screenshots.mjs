@@ -361,6 +361,25 @@ await shot('neighborhood-card');
 await page.locator('.card-close').click();
 await page.waitForTimeout(300);
 
+// Search: type a place, pick it from autocomplete, land in its region.
+await page.locator('.search-btn').click();
+await page.waitForTimeout(250);
+await page.locator('.search-input').fill('Pasadena');
+await page.waitForTimeout(250);
+if ((await page.locator('.search-item').count()) === 0) {
+  errors.push('BUG: search gave no autocomplete results for "Pasadena"');
+}
+await shot('search-autocomplete');
+await page.locator('.search-item').first().click();
+await page.waitForTimeout(900);
+{
+  const crumbs = await page.locator('.jig-crumb').allTextContents();
+  if (!crumbs.some((c) => /San Gabriel Valley/.test(c))) {
+    errors.push(`BUG: search for Pasadena did not land in San Gabriel Valley (crumbs: ${crumbs.join(' › ')})`);
+  }
+}
+await shot('search-landed');
+
 await browser.close();
 
 if (errors.length) {

@@ -92,6 +92,120 @@ body {
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
+.topbar-action {
+  margin-left: auto;
+}
+
+/* ---- Search overlay ------------------------------------------------------ */
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(16, 22, 34, 0.42);
+  backdrop-filter: blur(2px);
+  display: flex;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 12px) 12px 12px;
+}
+.search-panel {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 100%;
+}
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 8px 10px 8px 12px;
+  box-shadow: 0 8px 30px rgba(16, 22, 34, 0.18);
+}
+.search-icon {
+  font-size: 15px;
+  opacity: 0.7;
+}
+.search-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: none;
+  background: none;
+  font-size: 16px; /* ≥16px so iOS doesn't zoom the page on focus */
+  color: var(--text);
+  outline: none;
+}
+.search-cancel {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 6px;
+  cursor: pointer;
+  flex: none;
+}
+.search-results {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.search-results.has-results {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 6px;
+  box-shadow: 0 8px 30px rgba(16, 22, 34, 0.18);
+}
+.search-item {
+  appearance: none;
+  border: none;
+  background: none;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.search-item:active {
+  background: var(--surface-2);
+}
+.search-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-tag {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px 9px;
+  max-width: 48%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-tag.tag-region {
+  color: var(--accent-text);
+  background: rgba(245, 158, 11, 0.16);
+}
 .screen-body {
   flex: 1;
   min-height: 0;

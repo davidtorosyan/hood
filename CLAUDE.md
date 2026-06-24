@@ -113,7 +113,11 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
     boxes (not one padded rectangle) so a wide line + narrow line don't false-positive.
     Labels render in a **top layer** (`board` `labelLayer`) above all pieces, so a name is
     never painted over by a shape; each label shares its piece's transform.
-  - `tree.js` — read-only access to the generated `hierarchy/shapes/adjacency` JSON.
+  - `tree.js` — read-only access to the generated `hierarchy/shapes/adjacency` JSON, plus
+    `topRegionOf(id)` and a flat `SEARCH_ITEMS` index (regions/groups/places) for search.
+  - `search.js` — the top-bar search overlay: type a place/region, live autocomplete, pick
+    one to jump to its **region** (a place flashes a "X is in <region>" toast — the thing
+    being learned). Wired in `index.js`; the 🔍 button rides the chrome's top-bar `action`.
   - `ui.js` — presentational chrome: breadcrumb, status banner, toast.
   - `card.js` — the tap-a-neighborhood info card (modal): name, type, region,
     approximate population, a boundary-outline thumbnail, and a fun fact. On a solved

@@ -12,6 +12,7 @@ import { ROOT, NODES, pathIds } from './tree.js';
 import { Board } from './board.js';
 import { breadcrumb, statusBanner, showToast } from './ui.js';
 import { showCard } from './card.js';
+import { openSearch } from './search.js';
 import { store } from '../store.js';
 
 // The board currently on screen — the target for a device shake.
@@ -69,6 +70,18 @@ function renderNode(app, ctx, nodeId, opts) {
   };
   const zoomInto = (childId) => renderNode(app, ctx, childId, {});
 
+  // Search jumps to the region holding the chosen place (or the region itself);
+  // for a place we flash which region it's in — that's the thing being learned.
+  const onSearchPick = (it) =>
+    renderNode(app, ctx, it.regionId, {
+      toast: it.kind === 'region' ? null : `${it.label} is in ${it.regionLabel}`,
+    });
+  const searchBtn = el(
+    'button',
+    { class: 'icon-btn search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
+    '🔍',
+  );
+
   // --- chrome ---
   const bannerUi = statusBanner({
     onUp: goUp,
@@ -99,6 +112,7 @@ function renderNode(app, ctx, nodeId, opts) {
   app.append(
     screen('Jigsaw', goUp, [breadcrumb(nodeId, goTo), bannerUi.banner, boardWrap], {
       bodyClass: 'jig-body',
+      action: searchBtn,
     }),
   );
 
@@ -110,5 +124,6 @@ function renderNode(app, ctx, nodeId, opts) {
     const vbH = Math.round((1000 * h) / w);
     board.build(vbH);
     board.start(opts);
+    if (opts.toast) showToast(boardWrap, opts.toast);
   });
 }
