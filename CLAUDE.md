@@ -105,12 +105,14 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
     state (near/dragging/placed/zoomable) so DOM bookkeeping lives in one place.
   - `geometry.js` — pure, no DOM: projects a node's children to the board, piece boxes,
     scatter positions. `palette.js` — piece fills.
-  - `labels.js` — `layoutLabels` plans a level's labels together: wrap + auto-size to fit
-    inside each piece, but a label that's too tight or that would collide with another
-    becomes a **callout** (text pushed to open space with a leader line). Collisions use
-    per-line boxes (not one padded rectangle) so a wide line + narrow line don't false-
-    positive. Labels render in a **top layer** (`board` `labelLayer`) above all pieces, so
-    a label is never painted over by a neighbour; each label shares its piece's transform.
+  - `labels.js` — `layoutLabels` plans a level's labels together: EVERY label is a
+    **callout** at one uniform font size (`UNIFORM_FS`) — wrapped to ≤2 lines, pushed off
+    its own piece into open space (away from board centre, trying angles/distances) with a
+    leader line back, and de-collided against the other labels. The centre is clamped by the
+    label's own half-size so wide names don't clip at the board edge. Collisions use per-line
+    boxes (not one padded rectangle) so a wide line + narrow line don't false-positive.
+    Labels render in a **top layer** (`board` `labelLayer`) above all pieces, so a name is
+    never painted over by a shape; each label shares its piece's transform.
   - `tree.js` — read-only access to the generated `hierarchy/shapes/adjacency` JSON.
   - `ui.js` — presentational chrome: breadcrumb, status banner, toast.
   - `card.js` — the tap-a-neighborhood info card (modal): name, type, region,
