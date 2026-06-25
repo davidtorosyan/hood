@@ -15,6 +15,9 @@ import union from '@turf/union';
 import booleanIntersects from '@turf/boolean-intersects';
 import { featureCollection } from '@turf/helpers';
 import rewind from '@mapbox/geojson-rewind';
+import { topology } from 'topojson-server';
+import { presimplify, simplify as topoSimplify } from 'topojson-simplify';
+import { merge } from 'topojson-client';
 import { REGION_GROUPS } from '../src/data/regions.js';
 import { PLACES } from '../src/data/places.js';
 
@@ -23,6 +26,11 @@ const MIN = 3;
 const MAX = 7;
 const TOLERANCE = 0.0006;
 const PRECISION = 5;
+// "Simple" view mode: an absolute Visvalingam area threshold (deg²) for the
+// topology simplifier — a vertex goes if its triangle is smaller than this, so
+// every piece reduces to a few big sides regardless of how dense it was. Bigger
+// = blockier; too big and tiny hoods collapse, so this is tuned to keep them.
+const SIMPLE_MIN_WEIGHT = 0.0005;
 const round = (n) => Number(n.toFixed(PRECISION));
 
 const boundaries = JSON.parse(readFileSync('src/data/boundaries.json', 'utf8'));
@@ -401,13 +409,43 @@ function unionHoods(hoods) {
   return u;
 }
 const shapes = {};
+const fullPoly = {}; // unsimplified largest-ring per node (for the sibling topology)
 for (const id of Object.keys(nodes)) {
   if (id === 'la') continue;
   const feat = unionHoods(nodeHoods.get(id));
   const single = { type: 'Feature', properties: {}, geometry: structuredClone(largestRingGeometry(feat.geometry)) };
   rewind(single, true);
+  fullPoly[id] = structuredClone(single.geometry);
   const s = simplify(single, { tolerance: TOLERANCE, highQuality: true, mutate: true });
   shapes[id] = s.geometry.coordinates[0].map(([x, y]) => [round(x), round(y)]);
+}
+
+// --- simplified shapes (topology-preserving, for the "simple" view mode) -----
+// For each PUZZLE (a parent + its sibling pieces) build a topology over just
+// those siblings' full shapes, so the only points pinned are where SIBLINGS meet
+// — not every leaf border (which is what kept the regions jagged). Drop most of
+// the rest and re-extract each sibling: a level's pieces get a real low-poly look
+// yet still tile exactly. (Pieces are simplified per parent, so a parent outline
+// needn't equal its children's union — fine, "simple" hides the inner lines.)
+const simpleShapes = {};
+for (const parentId of Object.keys(nodes)) {
+  const kids = nodes[parentId].children || [];
+  if (!kids.length) continue;
+  const fc = {
+    type: 'FeatureCollection',
+    features: kids.map((kid) => ({ type: 'Feature', properties: { id: kid }, geometry: fullPoly[kid] })),
+  };
+  let t = presimplify(topology({ kids: fc }));
+  t = topoSimplify(t, SIMPLE_MIN_WEIGHT);
+  const gById = new Map(t.objects.kids.geometries.map((g) => [g.properties.id, g]));
+  for (const kid of kids) {
+    const merged = merge(t, [gById.get(kid)]); // this sibling's simplified polygon
+    const single = { type: 'Feature', properties: {}, geometry: structuredClone(largestRingGeometry(merged)) };
+    rewind(single, true);
+    const ring = single.geometry.coordinates[0];
+    // Guard: if a piece collapsed under simplification, keep its full shape.
+    simpleShapes[kid] = ring.length >= 4 ? ring.map(([x, y]) => [round(x), round(y)]) : shapes[kid];
+  }
 }
 
 // --- sibling adjacency -----------------------------------------------------
@@ -435,7 +473,13 @@ const hierarchy = {
 };
 writeFileSync('src/data/hierarchy.json', JSON.stringify(hierarchy));
 writeFileSync('src/data/puzzle-shapes.json', JSON.stringify(shapes));
+writeFileSync('src/data/puzzle-shapes-simple.json', JSON.stringify(simpleShapes));
 writeFileSync('src/data/puzzle-adjacency.json', JSON.stringify(adjacency));
+
+const totalSides = (set) => Object.values(set).reduce((s, r) => s + r.length, 0);
+const normalSides = totalSides(shapes);
+const simpleSides = totalSides(simpleShapes);
+console.log(`Sides: normal ${normalSides} → simple ${simpleSides} (${Math.round((100 * simpleSides) / normalSides)}%)`);
 
 // --- report ----------------------------------------------------------------
 console.log(`Nodes: ${Object.keys(nodes).length} | shapes: ${Object.keys(shapes).length}`);

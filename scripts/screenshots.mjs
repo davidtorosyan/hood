@@ -380,6 +380,25 @@ await page.waitForTimeout(900);
 }
 await shot('search-landed');
 
+// View modes: jump to the full county, then compare Normal / Clean / Simple.
+await page.locator('.jig-crumb').first().click(); // breadcrumb → LA County
+await page.waitForTimeout(900);
+for (const m of ['clean', 'simple', 'normal']) {
+  await page.selectOption('.mode-select', m);
+  await page.waitForTimeout(900);
+  if (m === 'simple') {
+    // Simple swaps geometry but keeps every piece — count must be unchanged.
+    const n = await page.locator('.jig-piece').count();
+    if (n !== 7) errors.push(`BUG: simple mode shows ${n} pieces at the county level (want 7)`);
+  }
+  if (m !== 'normal') {
+    if (await page.locator('.jig-label-wrap').first().isVisible()) {
+      errors.push(`BUG: ${m} mode still shows name labels`);
+    }
+  }
+  await shot(`mode-${m}`);
+}
+
 await browser.close();
 
 if (errors.length) {

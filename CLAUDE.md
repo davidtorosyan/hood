@@ -122,10 +122,20 @@ Stack: **Vite** + **vanilla JS**, **d3-geo** for projection, **vite-plugin-pwa**
   - `card.js` — the tap-a-neighborhood info card (modal): name, type, region,
     approximate population, a boundary-outline thumbnail, and a fun fact. On a solved
     board a leaf tap fires `onSelectLeaf`; a group tap still zooms.
-- `src/ui/` — `dom.js` (`el`/`svgEl`/`shuffle`), `chrome.js` (screen + top bar shell).
-- `src/store.js` — minimal localStorage (which pieces have been placed).
+- `src/ui/` — `dom.js` (`el`/`svgEl`/`shuffle`), `chrome.js` (screen + top bar shell, with
+  an optional right-side `action` slot the Jigsaw fills with the mode toggle + 🔍 search).
+- **View modes** (top-bar dropdown, persisted in `store`): **Normal** (labels + inner
+  subdivision lines + true geometry), **Clean** (hide labels + inner lines via the
+  `mode-clean`/`mode-simple` class on `.jig-board`, so each piece is flat colour), **Simple**
+  (Clean + swap in low-poly geometry). `index.js` reads `store.mode()` and passes it to
+  `board.build` → `projectChildren` → `shapeOf(id, mode)`.
+- `src/store.js` — minimal localStorage (placed pieces, `learnedZoom`, view `mode`).
 - `src/data/` — generated geometry + `regions.js` (the partition). Regenerate with
-  `npm run build:shapes` after editing `regions.js`. `places.js` holds the per-neighborhood
+  `npm run build:shapes` after editing `regions.js`. `puzzle-shapes-simple.json` is the
+  low-poly geometry for Simple mode: built per-puzzle from a topojson topology over just the
+  sibling pieces (so only sibling junctions are pinned), Visvalingam-simplified
+  (`SIMPLE_MIN_WEIGHT`) so pieces stay blocky-but-tiling. (Restart `npm run dev` after a
+  `build:shapes` — Vite doesn't HMR changed JSON imports.) `places.js` holds the per-neighborhood
   card content (approximate `pop`, `type`, optional `fact`), keyed by leaf name — figures are
   approximate (anchored to L.A. Almanac), so correct freely. `neighborhoods.js` is unused by
   the Jigsaw (kept as reference content for future modes / Phase 2).

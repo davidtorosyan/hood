@@ -57,6 +57,7 @@ export function mountJigsaw(app, { back }) {
 
 function renderNode(app, ctx, nodeId, opts) {
   const node = NODES[nodeId];
+  const mode = store.mode(); // 'normal' | 'clean' | 'simple'
 
   // --- navigation --- (every level arrives already assembled)
   const goUp = () =>
@@ -82,13 +83,32 @@ function renderNode(app, ctx, nodeId, opts) {
     '🔍',
   );
 
+  // A view-mode toggle (Normal / Clean / Simple) — re-renders the current node so
+  // the change is immediate. Persisted, so it sticks across navigation.
+  const modeSelect = el(
+    'select',
+    {
+      class: 'mode-select',
+      'aria-label': 'View mode',
+      onChange: (e) => {
+        store.setMode(e.target.value);
+        renderNode(app, ctx, nodeId, {});
+      },
+    },
+    [['normal', 'Normal'], ['clean', 'Clean'], ['simple', 'Simple']].map(([v, t]) =>
+      el('option', { value: v }, t),
+    ),
+  );
+  modeSelect.value = mode;
+  const tools = el('div', { class: 'topbar-tools' }, [modeSelect, searchBtn]);
+
   // --- chrome ---
   const bannerUi = statusBanner({
     onUp: goUp,
     onSolve: () => board.solve(),
     onScramble: () => board.jumble(),
   });
-  const boardWrap = el('div', { class: 'jig-board' });
+  const boardWrap = el('div', { class: `jig-board mode-${mode}` });
 
   // --- board ---
   const board = new Board(nodeId, {
@@ -112,7 +132,7 @@ function renderNode(app, ctx, nodeId, opts) {
   app.append(
     screen('Jigsaw', goUp, [breadcrumb(nodeId, goTo), bannerUi.banner, boardWrap], {
       bodyClass: 'jig-body',
-      action: searchBtn,
+      action: tools,
     }),
   );
 
@@ -122,7 +142,7 @@ function renderNode(app, ctx, nodeId, opts) {
     const w = boardWrap.clientWidth || 360;
     const h = boardWrap.clientHeight || 360;
     const vbH = Math.round((1000 * h) / w);
-    board.build(vbH);
+    board.build(vbH, mode);
     board.start(opts);
     if (opts.toast) showToast(boardWrap, opts.toast);
   });

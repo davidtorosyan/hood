@@ -23,14 +23,14 @@ const ringToPath = (ring) =>
 // FILL. Returns one geometry record per child (in sibling order): its path `d`,
 // centroid, bounding box, faint inner subdivisions (if it zooms further), and
 // whether it's zoomable. Label and colour are attached later by the caller.
-export function projectChildren(nodeId, vbW, vbH) {
+export function projectChildren(nodeId, vbW, vbH, mode) {
   const kids = childrenOf(nodeId);
   const fc = {
     type: 'FeatureCollection',
     features: kids.map((id) => ({
       type: 'Feature',
       properties: {},
-      geometry: { type: 'Polygon', coordinates: [shapeOf(id)] },
+      geometry: { type: 'Polygon', coordinates: [shapeOf(id, mode)] },
     })),
   };
   const bw = vbW * FILL;
@@ -42,7 +42,7 @@ export function projectChildren(nodeId, vbW, vbH) {
   const projectRing = (lnglat) => lnglat.map((c) => proj(c));
 
   return kids.map((id) => {
-    const ring = projectRing(shapeOf(id));
+    const ring = projectRing(shapeOf(id, mode));
     const xs = ring.map((p) => p[0]);
     const ys = ring.map((p) => p[1]);
     const minX = Math.min(...xs);
@@ -50,7 +50,7 @@ export function projectChildren(nodeId, vbW, vbH) {
     // Zoomable pieces carry faint outlines of their own children, so you can SEE
     // they break down (and tapping reveals exactly those sections).
     const inner = hasChildren(id)
-      ? childrenOf(id).map((gid) => ringToPath(projectRing(shapeOf(gid))))
+      ? childrenOf(id).map((gid) => ringToPath(projectRing(shapeOf(gid, mode))))
       : null;
     const [cx, cy] = visualCenter(ring); // a point reliably INSIDE the shape
     return {

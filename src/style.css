@@ -95,6 +95,31 @@ body {
 .topbar-action {
   margin-left: auto;
 }
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mode-select {
+  height: 38px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Clean & Simple modes drop the labels and the inner subdivision lines, leaving
+   each piece a flat colour. (Simple also swaps in low-poly geometry.) */
+.jig-board.mode-clean .jig-inner,
+.jig-board.mode-simple .jig-inner,
+.jig-board.mode-clean .jig-label-wrap,
+.jig-board.mode-simple .jig-label-wrap {
+  display: none;
+}
 
 /* ---- Search overlay ------------------------------------------------------ */
 .search-overlay {

@@ -38,4 +38,12 @@ export const store = {
     state.learnedZoom = true;
     save(state);
   },
+  // View mode: 'normal' | 'clean' | 'simple'.
+  mode() {
+    return state.mode || 'normal';
+  },
+  setMode(m) {
+    state.mode = m;
+    save(state);
+  },
 };

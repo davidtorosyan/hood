@@ -108,10 +108,10 @@ export class Board {
   // --- build & lifecycle ---------------------------------------------------
 
   // Create the pieces for `vbH` (the measured board aspect), placed assembled.
-  build(vbH) {
+  build(vbH, mode) {
     this.vbH = vbH;
     this.svg.setAttribute('viewBox', `0 0 ${VB_W} ${vbH}`);
-    const geoms = projectChildren(this.nodeId, VB_W, vbH);
+    const geoms = projectChildren(this.nodeId, VB_W, vbH, mode);
     const pieces = geoms.map(
       (geom, i) => new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) }),
     );

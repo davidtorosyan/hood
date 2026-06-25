@@ -4,6 +4,7 @@
 // scripts/build-puzzle-shapes.mjs from src/data/regions.js.
 import hierarchy from '../data/hierarchy.json';
 import shapes from '../data/puzzle-shapes.json';
+import shapesSimple from '../data/puzzle-shapes-simple.json';
 import adjacency from '../data/puzzle-adjacency.json';
 
 export const NODES = hierarchy.nodes;
@@ -14,7 +15,8 @@ export const labelOf = (id) => NODES[id].label;
 export const parentOf = (id) => NODES[id].parent;
 export const childrenOf = (id) => NODES[id].children || [];
 export const hasChildren = (id) => childrenOf(id).length > 0;
-export const shapeOf = (id) => shapes[id];
+// `mode === 'simple'` swaps in the low-poly, topology-simplified geometry.
+export const shapeOf = (id, mode) => (mode === 'simple' ? shapesSimple : shapes)[id];
 
 // True iff pieces a and b share a real border (so they're allowed to snap).
 export const isAdjacent = (a, b) => adjacency[a]?.includes(b) ?? false;
