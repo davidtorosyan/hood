@@ -272,22 +272,26 @@ await solveBoard(() => shot('regions-midway'));
 await shot('regions-solved');
 await checkState('after solving by hand', 'Scramble', true);
 
-// Loose pieces must NOT merge with each other — only with the resolved section.
-// Park two adjacent regions (neither the seed) together, well clear of the seed,
-// and confirm they stay separate singletons.
+// Loose pieces must NOT merge with each other — only with the resolved section —
+// and a piece dropped where it can't connect springs straight back to the tray.
 await shakeScramble();
 const seed2 = await seedName();
 const loosePair = adjPairs.find(([x, y]) => x !== seed2 && y !== seed2);
 if (loosePair) {
-  await pressDragTo(loosePair[0], -220, 180, true); // park one away from the seed
-  const l0 = (await readPieces()).find((p) => p.name === loosePair[0]);
-  await pressDragTo(loosePair[1], l0.tx, l0.ty, true); // try to stack its neighbour onto it
+  const before = await readPieces();
+  const a0 = before.find((p) => p.name === loosePair[0]);
+  const b0 = before.find((p) => p.name === loosePair[1]); // its tray home
+  await pressDragTo(loosePair[1], a0.tx, a0.ty, true); // try to stack onto its loose neighbour
+  await page.waitForTimeout(500); // let the spring-back settle
   await shot('loose-no-merge');
   const after = await readPieces();
   const A = after.find((p) => p.name === loosePair[0]);
   const B = after.find((p) => p.name === loosePair[1]);
   if (A.csize > 1 || B.csize > 1) {
     errors.push('BUG: two loose pieces merged with each other (only the resolved section is a magnet)');
+  }
+  if (Math.hypot(B.tx - b0.tx, B.ty - b0.ty) > 60) {
+    errors.push('BUG: a loose piece that failed to connect did not spring back to the tray');
   }
 }
 // Back to a clean solved board for the rest of the flow.

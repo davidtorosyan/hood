@@ -403,20 +403,20 @@ body {
   user-select: none;
   -webkit-touch-callout: none;
 }
-/* The build-area / loose-pile divider, shown while assembling: a dashed line with
-   a hint, so it's clear you lift pieces up out of the pile to build. */
-.jig-divider {
+/* While assembling, two recessed canvases with a clear gap between them: the upper
+   "build" panel (where the map comes together) and the lower "tray" of loose
+   pieces. A hint sits in the gap. */
+.jig-canvases {
   pointer-events: none;
 }
-.jig-divider-line {
-  stroke: rgba(27, 34, 48, 0.22);
+.jig-canvas {
+  fill: rgba(120, 137, 171, 0.12);
+  stroke: rgba(27, 34, 48, 0.12);
   stroke-width: 2;
-  stroke-dasharray: 10 12;
-  stroke-linecap: round;
 }
-.jig-divider-label {
-  fill: rgba(27, 34, 48, 0.38);
-  font-size: 26px;
+.jig-canvas-label {
+  fill: rgba(27, 34, 48, 0.4);
+  font-size: 23px;
   font-weight: 700;
   letter-spacing: 0.3px;
 }

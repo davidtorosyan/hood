@@ -171,34 +171,32 @@ export function ringContains(ring, x, y) {
   return inside;
 }
 
-// Where the loose pieces wait before assembly: a pile spread across the LOWER
-// part of the board (1–2 rows), jittered. Each piece is kept fully on the board —
-// big region pieces must never clip off an edge (you couldn't grab them, and it
-// looks broken) — and below the seed's perch up top. Returns the translate that
-// moves the piece's centroid to its slot (its solved translate is 0,0).
-export function bottomScatter(p, k, count, vbH) {
+// Where the loose pieces wait before assembly: a pile spread across the lower
+// "tray" canvas, between board y = trayTop and trayBot (1–2 rows), jittered. Each
+// piece is kept fully on the board — big region pieces must never clip off an edge
+// (you couldn't grab them, and it looks broken). Returns the translate that moves
+// the piece's centroid to its slot (its solved translate is 0,0).
+export function bottomScatter(p, k, count, trayTop, trayBot) {
   const cols = Math.min(count, 3);
   const rows = Math.ceil(count / cols);
   const col = k % cols;
   const row = Math.floor(k / cols);
   const jx = (Math.random() - 0.5) * VB_W * 0.04;
-  const jy = (Math.random() - 0.5) * vbH * 0.02;
-  const yTop = vbH * 0.6;
-  const yBot = vbH * 0.84;
+  const jy = (Math.random() - 0.5) * (trayBot - trayTop) * 0.06;
   const x = VB_W * ((col + 0.5) / cols) + jx;
-  const y = rows === 1 ? (yTop + yBot) / 2 : yTop + ((yBot - yTop) * row) / (rows - 1) + jy;
+  const y = rows === 1 ? (trayTop + trayBot) / 2 : trayTop + ((trayBot - trayTop) * row) / (rows - 1) + jy;
 
-  // Clamp the centroid so the piece's bounding box stays inside [margins]. The
-  // centroid (pole of inaccessibility) can sit off-centre in the bbox, so clamp
-  // against its real distance to each edge. If a piece is too big to fit the band,
-  // centre it in the available room.
-  const m = VB_W * 0.03;
+  // Clamp the centroid so the piece's bounding box stays on the board and, where
+  // it fits, inside the tray. The centroid (pole of inaccessibility) can sit
+  // off-centre in the bbox, so clamp against its real distance to each edge. If a
+  // piece is too big for the tray, centre it in the available room.
+  const m = VB_W * 0.025;
   const left = p.cx - p.minX + m;
   const right = p.minX + p.w - p.cx + m;
-  const top = p.cy - p.minY + m;
-  const bottom = p.minY + p.h - p.cy + m;
+  const top = p.cy - p.minY;
+  const bottom = p.minY + p.h - p.cy;
   const fit = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
   const cx = fit(x, left, VB_W - right);
-  const cy = fit(y, vbH * 0.42 + top, vbH * 0.98 - bottom);
+  const cy = fit(y, trayTop + top, trayBot - bottom);
   return [cx - p.cx, cy - p.cy];
 }
