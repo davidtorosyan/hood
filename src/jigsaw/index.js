@@ -23,8 +23,9 @@ let shakeInstalled = false;
 // then dive level by level to the searched place). Any manual navigation clears
 // it, so a stale fly step can't hijack the screen. See onSearchPick / the descent.
 let flyToken = null;
-const FLY_DWELL_TOP = 720; // pause on the whole-county view before diving in
-const FLY_DWELL_STEP = 360; // pause at each waypoint level on the way down
+const FLY_ZOOM_MS = 600; // matches the Board's camera zoom; a zoom-out step waits this out
+const FLY_DWELL_UP = 140; // extra pause after a zoom-OUT step settles
+const FLY_DWELL_DOWN = 220; // pause before each zoom-IN step
 
 // Best-effort: shaking the phone scrambles a solved map, the same as shaking it
 // by hand. iOS 13+ needs motion permission, which we request on the (user-
@@ -84,23 +85,30 @@ function renderNode(app, ctx, nodeId, opts) {
     renderNode(app, ctx, childId, {});
   };
 
-  // Search "flies" to the chosen place: it shows the WHOLE county, then dives down
-  // level by level to the smallest grouping that actually contains the place — so
-  // the place itself is a visible piece on the board you land on, and you've seen
-  // where it sits relative to everything. We render the picked item's PARENT (its
-  // children include the picked item) and flash the item once we arrive.
+  // Search "flies" to the chosen place: from where you are now it zooms OUT step
+  // by step to the nearest common ancestor, then back IN step by step to the
+  // smallest grouping that actually contains the place — so the place is a visible
+  // piece on the board you land on and you've watched how it relates to where you
+  // were. We render the picked item's PARENT (its children include the item) and
+  // flash the item on arrival.
   const onSearchPick = (it) => {
     const isRegion = it.kind === 'region';
     // A region: dive INTO it (its board shows its groups). A place/group: land on
-    // its PARENT, where the item is one of the visible pieces, and flash it.
+    // its PARENT, where the item is one of the visible pieces.
     const displayId = isRegion ? it.id : (NODES[it.id].parent ?? it.id);
-    const regionToward = pathIds(displayId)[1] ?? null; // the region under the county
+    const pCur = pathIds(nodeId);
+    const pTgt = pathIds(displayId);
+    let lca = 0; // index of the deepest shared ancestor on both paths
+    while (lca + 1 < pCur.length && lca + 1 < pTgt.length && pCur[lca + 1] === pTgt[lca + 1]) lca++;
+    const up = pCur.slice(lca, pCur.length - 1).reverse(); // current's parent … up to the LCA
+    const down = pTgt.slice(lca + 1); // the LCA's child … down to displayId
+    const route = [...up, ...down];
     const token = (flyToken = {});
-    renderNode(app, ctx, ROOT, {
-      descendTo: displayId,
+    // Re-render where we are with the fly attached; its step driver walks `route`.
+    renderNode(app, ctx, nodeId, {
+      flyRoute: route,
+      flyStep: 0,
       highlight: isRegion ? null : it.id,
-      toast: isRegion ? null : `${it.label} is in ${it.regionLabel}`,
-      zoomOutFrom: regionToward, // an explicit zoom-OUT from the target's region first
       fly: token,
     });
   };
@@ -155,32 +163,37 @@ function renderNode(app, ctx, nodeId, opts) {
     board.start({ zoomOutFrom: opts.zoomOutFrom });
 
     const flying = opts.fly && opts.fly === flyToken;
-    if (flying && nodeId !== opts.descendTo) {
-      // A waypoint on the way down: pause, then camera-zoom into the next child
-      // toward the target and re-render there (carrying the fly forward).
-      const next = pathIds(opts.descendTo)[pathIds(nodeId).length];
-      const dwell = opts.zoomOutFrom ? FLY_DWELL_TOP : FLY_DWELL_STEP;
+    if (!flying) return;
+    const arrivedByZoomOut = opts.zoomOutFrom != null; // this node played a reverse-zoom intro
+
+    if (opts.flyStep < opts.flyRoute.length) {
+      // Take the next hop along the route: a step UP zooms out (render the parent,
+      // which reverse-zooms from us); a step DOWN zooms the camera into the child.
+      const next = opts.flyRoute[opts.flyStep];
+      const goingUp = NODES[nodeId].parent === next;
+      const dwell = arrivedByZoomOut ? FLY_ZOOM_MS + FLY_DWELL_UP : FLY_DWELL_DOWN;
+      const nextOpts = {
+        flyRoute: opts.flyRoute,
+        flyStep: opts.flyStep + 1,
+        highlight: opts.highlight,
+        fly: opts.fly,
+      };
       setTimeout(() => {
         if (opts.fly !== flyToken) return; // cancelled by a manual move
-        board.zoomToChild(next, () => {
-          if (opts.fly !== flyToken) return;
-          renderNode(app, ctx, next, {
-            descendTo: opts.descendTo,
-            highlight: opts.highlight,
-            toast: opts.toast,
-            fly: opts.fly,
+        if (goingUp) {
+          renderNode(app, ctx, next, { ...nextOpts, zoomOutFrom: nodeId });
+        } else {
+          board.zoomToChild(next, () => {
+            if (opts.fly === flyToken) renderNode(app, ctx, next, nextOpts);
           });
-        });
+        }
       }, dwell);
     } else if (opts.highlight) {
-      // Arrived (or a region landed on the county): flash the found piece + toast,
-      // after any zoom-out intro has played.
-      setTimeout(() => {
-        board.flashPiece(opts.highlight);
-        if (opts.toast) showToast(boardWrap, opts.toast);
-      }, opts.zoomOutFrom ? 640 : 120);
-    } else if (opts.toast) {
-      showToast(boardWrap, opts.toast);
+      // Arrived: flash the found piece (after any reverse-zoom intro has played).
+      setTimeout(
+        () => opts.fly === flyToken && board.flashPiece(opts.highlight),
+        arrivedByZoomOut ? FLY_ZOOM_MS + 60 : 150,
+      );
     }
   });
 }

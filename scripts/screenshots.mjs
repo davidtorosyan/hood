@@ -15,25 +15,15 @@ const OUT = '.ui-review';
 // the target. Must match PADDLE_LIFT in src/jigsaw/board.js.
 const PADDLE_LIFT = 300;
 
-// Pick region pairs dynamically (so the tests don't depend on region names):
-// PAIR_A is an adjacent pair (for the glow/snap merge demo); PAIR_C is a second
-// adjacent pair that shares NO adjacency with PAIR_A, so the two can be built as
-// independent sub-clusters without accidentally snapping together.
+// Region adjacency, used to drive the glow/snap demo against the seed (the only
+// magnet) and to test that two loose pieces refuse to merge with each other.
 const hierarchy = JSON.parse(readFileSync('src/data/hierarchy.json', 'utf8'));
 const adjacency = JSON.parse(readFileSync('src/data/puzzle-adjacency.json', 'utf8'));
 const regions = hierarchy.nodes.la.children;
 const radj = (r) => (adjacency[r] || []).filter((x) => regions.includes(x));
 const adjPairs = [];
 for (const x of regions) for (const y of radj(x)) if (x < y) adjPairs.push([x, y]);
-let PAIR_A = null;
-let PAIR_C = null;
-outer: for (const A of adjPairs)
-  for (const C of adjPairs) {
-    if (new Set([...A, ...C]).size < 4) continue;
-    const cross = A.some((a) => radj(a).includes(C[0]) || radj(a).includes(C[1]));
-    if (!cross) { PAIR_A = A; PAIR_C = C; break outer; }
-  }
-if (!PAIR_A) throw new Error('could not find two non-adjacent region pairs');
+const seedName = () => page.evaluate(() => document.querySelector('.jig-piece.seed')?.dataset.name);
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -255,21 +245,20 @@ await shakeScramble();
 await shot('regions-jumbled');
 await checkState('while assembling', 'Solve', false);
 
-// Connection glow: drop one region near centre, bring an adjacent one close and
-// hold — only the shared edge should light up. Positions for the second piece are
-// taken relative to where the first ACTUALLY landed (it may have snapped onto the
-// seed), so the demo is robust to the seed's offset.
-await pressDragTo(PAIR_A[0], 0, 0, true);
-const a0 = (await readPieces()).find((p) => p.name === PAIR_A[0]);
-await pressDragTo(PAIR_A[1], a0.tx + 112, a0.ty + 112, false); // just inside the glow range
+// Connection glow: bring a loose region up to the SEED (the only magnet) and hold
+// just outside snap range — only the shared edge should light up on both.
+const seed = await seedName();
+const seedNbr = radj(seed)[0];
+if (!seedNbr) throw new Error(`seed ${seed} has no region neighbour on the board`);
+const seedP = (await readPieces()).find((p) => p.name === seed);
+await pressDragTo(seedNbr, seedP.tx + 120, seedP.ty + 120, false); // near the seed, in glow range, held
 await page.waitForTimeout(120);
-if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
+if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears the resolved section');
 await shot('connection-glow');
 await page.mouse.up();
 
-// Now pull it in to snap, and grab a quick frame of the snap-spark burst (this
-// is the piece→cluster merge).
-await pressDragTo(PAIR_A[1], a0.tx + 22, a0.ty + 22, true); // within snap → snaps + sparks
+// Pull it the last bit in to snap onto the seed, and grab a frame of the burst.
+await pressDragTo(seedNbr, seedP.tx + 22, seedP.ty + 22, true); // within snap → snaps + sparks
 await page.waitForTimeout(60);
 await page.screenshot({ path: `${OUT}/${String(++step).padStart(2, '0')}-snap-spark.png` });
 console.log('shot snap-spark');
@@ -283,30 +272,26 @@ await solveBoard(() => shot('regions-midway'));
 await shot('regions-solved');
 await checkState('after solving by hand', 'Scramble', true);
 
-// Multiple independent sub-clusters: build two away from the origin, confirm
-// they stay separate, then bring one over to merge with the other.
+// Loose pieces must NOT merge with each other — only with the resolved section.
+// Park two adjacent regions (neither the seed) together, well clear of the seed,
+// and confirm they stay separate singletons.
 await shakeScramble();
-// Subgroup A, off-origin (upper-left): place the 2nd piece onto wherever the
-// 1st actually landed, so it merges even if the 1st snapped to a stray neighbor.
-await pressDragTo(PAIR_A[0], -250, -320, true);
-let la = (await readPieces()).find((p) => p.name === PAIR_A[0]);
-await pressDragTo(PAIR_A[1], la.tx, la.ty, true);
-// Subgroup C, a non-adjacent pair, off in the upper-right.
-await pressDragTo(PAIR_C[0], 280, -320, true);
-let lc = (await readPieces()).find((p) => p.name === PAIR_C[0]);
-await pressDragTo(PAIR_C[1], lc.tx, lc.ty, true);
-await shot('two-subgroups');
-{
-  const ps = await readPieces();
-  const A0 = ps.find((p) => p.name === PAIR_A[0]);
-  const C0 = ps.find((p) => p.name === PAIR_C[0]);
-  if (A0.csize < 2) errors.push('BUG: subgroup A did not form off-origin');
-  if (Math.hypot(A0.tx, A0.ty) < 60) errors.push('BUG: subgroup A snapped back to the origin');
-  if (C0.csize < 2) errors.push('BUG: a second independent subgroup did not form');
-  if (A0.cluster === C0.cluster) errors.push('BUG: independent subgroups merged unexpectedly');
+const seed2 = await seedName();
+const loosePair = adjPairs.find(([x, y]) => x !== seed2 && y !== seed2);
+if (loosePair) {
+  await pressDragTo(loosePair[0], -220, 180, true); // park one away from the seed
+  const l0 = (await readPieces()).find((p) => p.name === loosePair[0]);
+  await pressDragTo(loosePair[1], l0.tx, l0.ty, true); // try to stack its neighbour onto it
+  await shot('loose-no-merge');
+  const after = await readPieces();
+  const A = after.find((p) => p.name === loosePair[0]);
+  const B = after.find((p) => p.name === loosePair[1]);
+  if (A.csize > 1 || B.csize > 1) {
+    errors.push('BUG: two loose pieces merged with each other (only the resolved section is a magnet)');
+  }
 }
 // Back to a clean solved board for the rest of the flow.
-await page.locator('.jig-action').click();
+await page.locator('.jig-action').click(); // "Solve"
 await page.waitForTimeout(800);
 
 // Pinch to zoom in (into the region under the pinch), then pinch to zoom out.
@@ -387,19 +372,21 @@ if ((await page.locator('.search-item').count()) === 0) {
 }
 await shot('search-autocomplete');
 await page.locator('.search-item').first().click();
-await page.waitForTimeout(3800); // let the fly-through zoom out to the county and dive back down
+// The fly zooms OUT to the common ancestor then back IN level by level, so it can
+// take a few seconds from a deep start — poll until it lands on the board that
+// actually shows Pasadena (the smallest grouping that contains it).
+const pieceNames = () =>
+  page.evaluate(() => [...document.querySelectorAll('.jig-piece')].map((g) => g.dataset.name));
+let landed = false;
+for (let i = 0; i < 44; i++) {
+  await page.waitForTimeout(250);
+  if ((await pieceNames()).includes('Pasadena')) { landed = true; break; }
+}
+if (!landed) errors.push('BUG: search for Pasadena never landed on a board showing Pasadena');
 {
   const crumbs = await page.locator('.jig-crumb').allTextContents();
   if (!crumbs.some((c) => /San Gabriel Valley/.test(c))) {
     errors.push(`BUG: search for Pasadena did not land under San Gabriel Valley (crumbs: ${crumbs.join(' › ')})`);
-  }
-  // It should land on the smallest grouping that CONTAINS Pasadena — i.e. Pasadena
-  // is one of the visible pieces, not buried levels down.
-  const names = await page.evaluate(() =>
-    [...document.querySelectorAll('.jig-piece')].map((g) => g.dataset.name),
-  );
-  if (!names.includes('Pasadena')) {
-    errors.push(`BUG: search for Pasadena did not land on a board showing Pasadena (pieces: ${names.join(', ')})`);
   }
 }
 await shot('search-landed');

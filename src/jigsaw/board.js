@@ -26,6 +26,7 @@ const SNAP = 150; // connection radius, in board user units
 const MAGNET = 200; // distance at which a piece starts to "feel" its connection
 const PADDLE_LIFT = 300; // how far above the finger a held piece floats (user units)
 const SEED_RISE = 0.1; // the seed sits this fraction of the board height above centre
+const DIVIDER_FRAC = 0.55; // the build-area / loose-pile divider, as a fraction of height
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
@@ -88,6 +89,14 @@ export class Board {
 
   #initSvg() {
     const svg = svgEl('svg', { class: 'jig', preserveAspectRatio: 'xMidYMid meet' });
+    // A guide line dividing the upper "build around the seed" area from the loose
+    // pile below. Behind everything; only shown while assembling.
+    this.dividerEl = svgEl('g', { class: 'jig-divider' });
+    this.dividerLine = svgEl('line', { class: 'jig-divider-line' });
+    this.dividerLabel = svgEl('text', { class: 'jig-divider-label', 'text-anchor': 'middle' });
+    this.dividerLabel.textContent = 'drag pieces up to build';
+    this.dividerEl.append(this.dividerLine, this.dividerLabel);
+    this.dividerEl.style.display = 'none';
     this.pieceLayer = svgEl('g');
     // Connection-edge glow sits above the pieces; labels above everything, so a
     // label is never painted over by a neighbouring piece's fill.
@@ -105,7 +114,7 @@ export class Board {
     this.paddleDot = svgEl('circle', { class: 'jig-paddle-dot', r: 30 });
     this.paddleEl.append(this.paddleLine, this.paddleDot);
     this.paddleEl.style.display = 'none';
-    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer, this.paddleEl);
+    svg.append(this.dividerEl, this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer, this.paddleEl);
     // All gestures (piece drag, pan, pinch) are driven from the SVG root so we
     // can track multiple pointers; pieces are hit-tested from the event target.
     svg.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
@@ -170,6 +179,7 @@ export class Board {
     // clearly the thing to build onto.
     this.seed.setPlaced(true);
     this.seed.g.classList.add('seed');
+    this.#showDivider();
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
     this.cbs.onHint?.('Drag pieces onto the map');
@@ -277,47 +287,56 @@ export class Board {
     return a;
   }
 
-  // Repeatedly merge any two clusters that are adjacent AND aligned (same
-  // translate) — so a piece dropped between several joins them all.
+  // The "resolved section": the cluster holding the seed — the part of the map
+  // already assembled. Loose pieces only ever join THIS, never each other.
+  #resolved() {
+    return this.seed?.cluster ?? null;
+  }
+
+  // Merge into the resolved section any cluster that's now adjacent AND aligned
+  // (same translate) with it. Only the resolved section is magnetic, so loose
+  // pieces never fuse with one another — you build outward from the seed.
   #settleClusters() {
+    const resolved = this.#resolved();
+    if (!resolved) return;
     let merged = true;
     while (merged) {
       merged = false;
-      const clusters = [...this.#allClusters()];
-      for (let i = 0; i < clusters.length && !merged; i++) {
-        for (let j = i + 1; j < clusters.length && !merged; j++) {
-          const A = clusters[i];
-          const B = clusters[j];
-          const [ax, ay] = this.#clusterTx(A);
-          const [bx, by] = this.#clusterTx(B);
-          if (Math.hypot(ax - bx, ay - by) > 1) continue; // not aligned
-          let adj = false;
-          for (const a of A) {
-            for (const b of B) if (isAdjacent(a.id, b.id)) { adj = true; break; }
-            if (adj) break;
-          }
-          if (adj) {
-            this.#mergeClusters(A, B);
-            merged = true;
-          }
+      const [ax, ay] = this.#clusterTx(resolved);
+      for (const c of this.#allClusters()) {
+        if (c === resolved) continue;
+        const [bx, by] = this.#clusterTx(c);
+        if (Math.hypot(ax - bx, ay - by) > 1) continue; // not aligned
+        let adj = false;
+        for (const a of resolved) {
+          for (const b of c) if (isAdjacent(a.id, b.id)) { adj = true; break; }
+          if (adj) break;
+        }
+        if (adj) {
+          this.#mergeClusters(resolved, c);
+          merged = true;
+          break;
         }
       }
     }
   }
 
-  // On drop: snap the dragged cluster onto the nearest cluster it can join
-  // (some pair of pieces adjacent, and within SNAP of their true offset), then
-  // merge everything that lines up.
+  // On drop: snap the dragged cluster onto the resolved section if it can join it
+  // (a dragged piece adjacent to a resolved piece, within SNAP of its true
+  // offset), then merge everything that lines up. Only the resolved section is a
+  // snap target — loose pieces don't join each other.
   #dropCluster(cluster, dragged) {
+    const resolved = this.#resolved();
     const [tx, ty] = this.#clusterTx(cluster);
     let best = null;
-    for (const c of this.pieces) {
-      if (cluster.has(c)) continue;
-      let adj = false;
-      for (const d of cluster) if (isAdjacent(d.id, c.id)) { adj = true; break; }
-      if (!adj) continue;
-      const dist = Math.hypot(tx - c.tx, ty - c.ty);
-      if (dist < SNAP && (!best || dist < best.dist)) best = { c, dist };
+    if (resolved && cluster !== resolved) {
+      for (const c of resolved) {
+        let adj = false;
+        for (const d of cluster) if (isAdjacent(d.id, c.id)) { adj = true; break; }
+        if (!adj) continue;
+        const dist = Math.hypot(tx - c.tx, ty - c.ty);
+        if (dist < SNAP && (!best || dist < best.dist)) best = { c, dist };
+      }
     }
     if (best) {
       const dx = best.c.tx - tx;
@@ -422,6 +441,7 @@ export class Board {
   // already assembled); the host only cues "tap to zoom" once they've played.
   #enterSolved({ played = false, toast = false } = {}) {
     this.phase = 'solved';
+    this.#hideDivider();
     if (played) this.#recenter(); // a map built around the raised seed settles home
     this.seed = null;
     const zoomable = this.pieces.some((p) => p.zoomable);
@@ -675,6 +695,21 @@ export class Board {
     setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
   }
 
+  #showDivider() {
+    const y = this.vbH * DIVIDER_FRAC;
+    this.dividerLine.setAttribute('x1', (VB_W * 0.05).toFixed(1));
+    this.dividerLine.setAttribute('x2', (VB_W * 0.95).toFixed(1));
+    this.dividerLine.setAttribute('y1', y.toFixed(1));
+    this.dividerLine.setAttribute('y2', y.toFixed(1));
+    this.dividerLabel.setAttribute('x', (VB_W / 2).toFixed(1));
+    this.dividerLabel.setAttribute('y', (y + 30).toFixed(1));
+    this.dividerEl.style.display = '';
+  }
+
+  #hideDivider() {
+    this.dividerEl.style.display = 'none';
+  }
+
   // The map is assembled at the seed's raised offset; on solving, glide the whole
   // thing back to centre so a solved board always sits balanced in the frame.
   #recenter() {
@@ -700,10 +735,11 @@ export class Board {
   // metric means the glow only appears when the shared borders are actually being
   // brought together, not when an (in-map) neighbour happens to sit elsewhere.
   #glowTarget(cluster) {
+    const resolved = this.#resolved();
+    if (!resolved || cluster === resolved) return null; // only loose → resolved glows
     const [tx, ty] = this.#clusterTx(cluster);
     let best = null;
-    for (const c of this.pieces) {
-      if (cluster.has(c)) continue;
+    for (const c of resolved) {
       let src = null;
       for (const d of cluster) if (isAdjacent(d.id, c.id)) { src = d; break; }
       if (!src) continue;
