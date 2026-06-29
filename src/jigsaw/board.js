@@ -5,12 +5,15 @@
 //
 // The Board talks to its host only through callbacks, so navigation, chrome, and
 // debug controls stay outside it.
-import { svgEl, shuffle } from '../ui/dom.js';
+import { el, svgEl, shuffle } from '../ui/dom.js';
 import { store } from '../store.js';
 import { isAdjacent } from './tree.js';
 import { colorForIndex } from './palette.js';
 import {
   VB_W,
+  CANVAS_INSET,
+  SPLIT_TOP,
+  SPLIT_BOT,
   fullVB,
   pieceBox,
   projectChildren,
@@ -25,12 +28,6 @@ import { layoutLabels } from './labels.js';
 const SNAP = 150; // connection radius, in board user units
 const MAGNET = 200; // distance at which a piece starts to "feel" its connection
 const PADDLE_LIFT = 300; // how far above the finger a held piece floats (user units)
-// While assembling, the board splits into two canvases with a visible gap: an
-// upper "build" canvas (the map assembles centred here) and a lower "tray" of
-// loose pieces. Fractions of board height.
-const CANVAS_INSET = 0.02; // canvases inset from the board edges
-const SPLIT_TOP = 0.52; // the build canvas ends here
-const SPLIT_BOT = 0.59; // the tray canvas starts here (gap = SPLIT_TOP … SPLIT_BOT)
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
@@ -86,23 +83,38 @@ export class Board {
     this.gesture = null; // current gesture: piece drag, pan, or pinch
     this.glowing = new Set(); // pieces currently showing a connection glow
     this.seed = null; // the anchor piece left in place to build around after a scramble
-    this.assemblyDy = 0; // vertical offset the map assembles at while playing (0 = centred)
     this.vbH = VB_W;
     this.svg = this.#initSvg();
+    this.root = this.#initStage(); // the two fixed canvas panels + the svg over them
+  }
+
+  // The board stage: two fixed CSS panels (the build canvas + the tray canvas,
+  // always present) with the transparent SVG layered over them. The panels are
+  // chrome — they don't zoom with the camera. Positions track the geometry split.
+  #initStage() {
+    const pct = (v) => `${(v * 100).toFixed(2)}%`;
+    this.buildPanel = el('div', { class: 'jig-canvas jig-canvas-build' });
+    this.trayPanel = el('div', { class: 'jig-canvas jig-canvas-tray' });
+    // Shown in the gap while assembling; the empty-tray prompt when solved.
+    this.trayHint = el('div', { class: 'jig-tray-hint' }, 'drag pieces up to build');
+    this.trayEmpty = el('div', { class: 'jig-tray-empty' }, 'Scramble to take it apart');
+    Object.assign(this.buildPanel.style, {
+      left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
+      top: pct(CANVAS_INSET), height: pct(SPLIT_TOP - CANVAS_INSET),
+    });
+    Object.assign(this.trayPanel.style, {
+      left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
+      top: pct(SPLIT_BOT), bottom: pct(CANVAS_INSET),
+    });
+    this.trayHint.style.top = pct((SPLIT_TOP + SPLIT_BOT) / 2);
+    this.trayHint.style.display = 'none';
+    this.trayEmpty.style.top = pct((SPLIT_BOT + (1 - CANVAS_INSET)) / 2);
+    this.trayEmpty.style.display = 'none';
+    return el('div', { class: 'jig-stage' }, [this.buildPanel, this.trayPanel, this.trayHint, this.trayEmpty, this.svg]);
   }
 
   #initSvg() {
     const svg = svgEl('svg', { class: 'jig', preserveAspectRatio: 'xMidYMid meet' });
-    // Two canvases — an upper "build" panel and a lower "tray" panel with a gap
-    // between — making the split between solved map and loose pieces visible.
-    // Behind everything; only shown while assembling.
-    this.canvasesEl = svgEl('g', { class: 'jig-canvases' });
-    this.canvasTop = svgEl('rect', { class: 'jig-canvas', rx: 22 });
-    this.canvasBot = svgEl('rect', { class: 'jig-canvas', rx: 22 });
-    this.canvasLabel = svgEl('text', { class: 'jig-canvas-label', 'text-anchor': 'middle' });
-    this.canvasLabel.textContent = 'drag pieces up to build';
-    this.canvasesEl.append(this.canvasTop, this.canvasBot, this.canvasLabel);
-    this.canvasesEl.style.display = 'none';
     this.pieceLayer = svgEl('g');
     // Connection-edge glow sits above the pieces; labels above everything, so a
     // label is never painted over by a neighbouring piece's fill.
@@ -120,7 +132,7 @@ export class Board {
     this.paddleDot = svgEl('circle', { class: 'jig-paddle-dot', r: 30 });
     this.paddleEl.append(this.paddleLine, this.paddleDot);
     this.paddleEl.style.display = 'none';
-    svg.append(this.canvasesEl, this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer, this.paddleEl);
+    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer, this.paddleEl);
     // All gestures (piece drag, pan, pinch) are driven from the SVG root so we
     // can track multiple pointers; pieces are hit-tested from the event target.
     svg.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
@@ -137,7 +149,7 @@ export class Board {
   build(vbH, mode) {
     this.vbH = vbH;
     this.svg.setAttribute('viewBox', `0 0 ${VB_W} ${vbH}`);
-    const geoms = projectChildren(this.nodeId, VB_W, vbH, mode);
+    const geoms = projectChildren(this.nodeId, vbH, mode);
     const pieces = geoms.map(
       (geom, i) => new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) }),
     );
@@ -171,9 +183,9 @@ export class Board {
   }
 
   // Burst the assembled map apart into loose pieces for the player to rebuild.
-  // One piece — the seed — is left in place (raised above centre) as the anchor
-  // to build around; the rest scatter into a pile across the bottom. Triggered by
-  // the Scramble button (or a shake) — there's no automatic scatter.
+  // One piece — the seed — is left in place (in the build canvas) as the anchor to
+  // build around; the rest scatter into the tray below. Triggered by the Scramble
+  // button (or a shake) — there's no automatic scatter.
   jumble() {
     if (this.phase !== 'solved' && this.phase !== 'play') return;
     this.#cancelPending();
@@ -185,10 +197,11 @@ export class Board {
     // clearly the thing to build onto.
     this.seed.setPlaced(true);
     this.seed.g.classList.add('seed');
-    this.#showCanvases();
+    this.trayHint.style.display = ''; // "drag up" between the panels while there are pieces
+    this.trayEmpty.style.display = 'none';
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
-    this.cbs.onHint?.('Drag pieces up to the map');
+    this.cbs.onHint?.('');
     // Animate from assembled (0,0) out to the scatter spots.
     this.#animatePieces(
       (p) => [0, 0],
@@ -245,20 +258,17 @@ export class Board {
     }
   }
 
-  // Choose the seed (the most central piece) and assign scatter targets: the seed
-  // rises so the map assembles centred in the UPPER build canvas; everyone else
-  // piles into the lower tray canvas. The whole map assembles at the seed's offset
-  // (others snap to its translate), and settles back to centre once solved.
+  // Choose the seed (the most central piece) and assign scatter targets. The map
+  // already lives in the build canvas (translate 0), so the seed stays put as the
+  // anchor; everyone else scatters down into the tray. Pieces snap to the seed's
+  // translate (0), so the map reassembles right where it sits.
   #assignSeedScatter() {
     const cx0 = VB_W / 2;
-    const cy0 = this.vbH / 2;
+    const cy0 = (CANVAS_INSET + SPLIT_TOP) / 2 * this.vbH; // build-canvas centre
     const dist2 = (p) => (p.geom.cx - cx0) ** 2 + (p.geom.cy - cy0) ** 2;
     this.seed = this.pieces.reduce((best, p) => (dist2(p) < dist2(best) ? p : best));
-    // Lift the assembly so its centre lands in the middle of the build canvas.
-    const buildCenter = ((CANVAS_INSET + SPLIT_TOP) / 2) * this.vbH;
-    this.assemblyDy = buildCenter - this.vbH / 2;
     this.seed.scatterTx = 0;
-    this.seed.scatterTy = this.assemblyDy;
+    this.seed.scatterTy = 0;
     const trayTop = SPLIT_BOT * this.vbH;
     const trayBot = (1 - CANVAS_INSET) * this.vbH;
     const loose = shuffle(this.pieces.filter((p) => p !== this.seed));
@@ -452,8 +462,8 @@ export class Board {
   // already assembled); the host only cues "tap to zoom" once they've played.
   #enterSolved({ played = false, toast = false } = {}) {
     this.phase = 'solved';
-    this.#hideCanvases();
-    if (played) this.#recenter(); // a map built around the raised seed settles home
+    this.trayHint.style.display = 'none'; // the tray is empty now; keep the panels...
+    this.trayEmpty.style.display = ''; // ...and prompt to take it apart again
     this.seed = null;
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Groups become zoom targets; leaves become tap-for-info targets.
@@ -715,41 +725,6 @@ export class Board {
   #springBack() {
     this.pieces.forEach((p) => p.setSettling(true));
     this.svg.getBoundingClientRect(); // reflow so the transition runs
-    this.pieces.forEach((p) => p.moveTo(0, 0));
-    setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
-  }
-
-  #showCanvases() {
-    const inset = CANVAS_INSET * VB_W;
-    const x = inset;
-    const w = VB_W - 2 * inset;
-    const top = CANVAS_INSET * this.vbH;
-    const splitTop = SPLIT_TOP * this.vbH;
-    const splitBot = SPLIT_BOT * this.vbH;
-    const bot = (1 - CANVAS_INSET) * this.vbH;
-    const set = (el, y, h) => {
-      el.setAttribute('x', x.toFixed(1));
-      el.setAttribute('y', y.toFixed(1));
-      el.setAttribute('width', w.toFixed(1));
-      el.setAttribute('height', h.toFixed(1));
-    };
-    set(this.canvasTop, top, splitTop - top);
-    set(this.canvasBot, splitBot, bot - splitBot);
-    this.canvasLabel.setAttribute('x', (VB_W / 2).toFixed(1));
-    this.canvasLabel.setAttribute('y', ((splitTop + splitBot) / 2 + 9).toFixed(1));
-    this.canvasesEl.style.display = '';
-  }
-
-  #hideCanvases() {
-    this.canvasesEl.style.display = 'none';
-  }
-
-  // The map is assembled at the seed's raised offset; on solving, glide the whole
-  // thing back to centre so a solved board always sits balanced in the frame.
-  #recenter() {
-    if (!this.pieces.some((p) => Math.abs(p.tx) > 0.5 || Math.abs(p.ty) > 0.5)) return;
-    this.pieces.forEach((p) => p.setSettling(true));
-    this.svg.getBoundingClientRect();
     this.pieces.forEach((p) => p.moveTo(0, 0));
     setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
   }

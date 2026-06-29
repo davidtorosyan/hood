@@ -5,9 +5,24 @@ import { geoMercator } from 'd3-geo';
 import { childrenOf, hasChildren, shapeOf } from './tree.js';
 
 export const VB_W = 1000; // user-space board width; height derived from aspect
-export const FILL = 0.84; // fraction of the board the assembled map fills
+export const FILL = 0.9; // fraction of the build canvas the assembled map fills
+
+// The board is permanently split into two stacked canvases: an upper "build"
+// canvas (where the map always lives) and a lower "tray" canvas (loose pieces),
+// with a gap between. Fractions of board height.
+export const CANVAS_INSET = 0.025; // canvases inset from the board edges
+export const SPLIT_TOP = 0.54; // the build canvas ends here
+export const SPLIT_BOT = 0.6; // the tray canvas starts here (gap = SPLIT_TOP … SPLIT_BOT)
 
 export const fullVB = (vbH) => [0, 0, VB_W, vbH];
+
+// The build-canvas rect [x0, y0, x1, y1] in board user units, for a given height.
+export const buildRect = (vbH) => [
+  CANVAS_INSET * VB_W,
+  CANVAS_INSET * vbH,
+  (1 - CANVAS_INSET) * VB_W,
+  SPLIT_TOP * vbH,
+];
 
 // A zoom-target box around a single piece, with breathing room, used as the
 // viewBox we animate to when zooming into that piece (and out of, in reverse).
@@ -23,7 +38,7 @@ const ringToPath = (ring) =>
 // FILL. Returns one geometry record per child (in sibling order): its path `d`,
 // centroid, bounding box, faint inner subdivisions (if it zooms further), and
 // whether it's zoomable. Label and colour are attached later by the caller.
-export function projectChildren(nodeId, vbW, vbH, mode) {
+export function projectChildren(nodeId, vbH, mode) {
   const kids = childrenOf(nodeId);
   const fc = {
     type: 'FeatureCollection',
@@ -33,10 +48,13 @@ export function projectChildren(nodeId, vbW, vbH, mode) {
       geometry: { type: 'Polygon', coordinates: [shapeOf(id, mode)] },
     })),
   };
-  const bw = vbW * FILL;
-  const bh = vbH * FILL;
+  // Fit the map into the upper build canvas (so the map always lives there, with
+  // the tray below), filling FILL of it.
+  const [x0, y0, x1, y1] = buildRect(vbH);
+  const padX = ((x1 - x0) * (1 - FILL)) / 2;
+  const padY = ((y1 - y0) * (1 - FILL)) / 2;
   const proj = geoMercator().fitExtent(
-    [[(vbW - bw) / 2, (vbH - bh) / 2], [(vbW + bw) / 2, (vbH + bh) / 2]],
+    [[x0 + padX, y0 + padY], [x1 - padX, y1 - padY]],
     fc,
   );
   const projectRing = (lnglat) => lnglat.map((c) => proj(c));

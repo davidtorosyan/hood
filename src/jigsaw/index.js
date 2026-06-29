@@ -143,7 +143,7 @@ function renderNode(app, ctx, nodeId, opts) {
     onAction: (mode) => bannerUi.setAction(mode),
   });
   currentBoard = board;
-  boardWrap.append(board.svg);
+  boardWrap.append(board.root);
 
   clear(app);
   app.append(

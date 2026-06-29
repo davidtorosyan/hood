@@ -174,14 +174,16 @@ async function dragShake() {
 }
 
 // Two-finger pinch via synthetic pointer events. spread=true zooms in (fingers
-// apart), false zooms out. Returns the change in breadcrumb depth.
-async function pinch(spread) {
+// apart, centred on `aroundName` so the pinch lands on the map, which lives in the
+// upper canvas), false zooms out. Returns the change in breadcrumb depth.
+async function pinch(spread, aroundName) {
   const before = await page.locator('.jig-crumb').count();
-  await page.evaluate((isSpread) => {
+  const at = aroundName ? await grabPoint(aroundName) : null;
+  await page.evaluate(({ isSpread, at }) => {
     const svg = document.querySelector('svg.jig');
     const r = svg.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
+    const cx = at ? at.sx : r.left + r.width / 2;
+    const cy = at ? at.sy : r.top + r.height / 2;
     const ev = (type, id, x) =>
       svg.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: cy, bubbles: true, cancelable: true }));
     const a = isSpread ? 30 : 150;
@@ -192,7 +194,7 @@ async function pinch(spread) {
     ev('pointermove', 2, cx + b);
     ev('pointerup', 1, cx - b);
     ev('pointerup', 2, cx + b);
-  }, spread);
+  }, { isSpread: spread, at });
   await page.waitForTimeout(1200);
   return (await page.locator('.jig-crumb').count()) - before;
 }
@@ -298,8 +300,10 @@ if (loosePair) {
 await page.locator('.jig-action').click(); // "Solve"
 await page.waitForTimeout(800);
 
-// Pinch to zoom in (into the region under the pinch), then pinch to zoom out.
-if ((await pinch(true)) <= 0) errors.push('BUG: pinch-out did not zoom in');
+// Pinch to zoom in (into the region under the pinch — centred on a piece, since
+// the map sits in the upper canvas), then pinch to zoom out.
+const zregion = (await readPieces()).find((p) => p.zoomable)?.name;
+if ((await pinch(true, zregion)) <= 0) errors.push('BUG: pinch-spread did not zoom in');
 await shot('pinch-zoomed-in');
 if ((await pinch(false)) >= 0) errors.push('BUG: pinch-in did not zoom out');
 
