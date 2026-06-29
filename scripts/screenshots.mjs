@@ -10,6 +10,11 @@ import { mkdirSync, rmSync, readFileSync } from 'node:fs';
 const URL = process.argv[2] ?? process.env.HOOD_URL ?? 'http://localhost:5173/hood/';
 const OUT = '.ui-review';
 
+// A held piece floats this many board user-units above the finger (the drag
+// "paddle"), so to land a piece's grab point we aim the pointer that far BELOW
+// the target. Must match PADDLE_LIFT in src/jigsaw/board.js.
+const PADDLE_LIFT = 300;
+
 // Pick region pairs dynamically (so the tests don't depend on region names):
 // PAIR_A is an adjacent pair (for the glow/snap merge demo); PAIR_C is a second
 // adjacent pair that shares NO adjacency with PAIR_A, so the two can be built as
@@ -100,25 +105,33 @@ const grabPoint = (name) =>
     return null;
   }, name);
 
-// Drag every loose piece to its TRUE position (translate 0). Grabbing a point on
-// the piece and dragging by exactly its current translate zeroes it. A
-// connection also requires adjacency to a placed piece, so repeat in passes
-// until everything locks (the adjacency graph is connected → this converges).
+// Drag every loose piece onto the growing assembly. The map assembles at the
+// seed's offset (a scramble leaves one placed seed raised above centre), so we
+// aim each piece at the ANCHOR translate — the placed cluster's position — not at
+// (0,0). Account for the paddle lift on Y. A connection also requires adjacency,
+// so repeat in passes until everything locks (the adjacency graph is connected).
 async function solveBoard(onMidway) {
   const svg = page.locator('svg.jig');
   const box = await svg.boundingBox();
   const u2px = box.width / 1000;
   let didMid = false;
   const solved = (ps) => ps.every((p) => p.csize === ps.length); // one cluster
-  for (let pass = 0; pass < 8; pass++) {
+  for (let pass = 0; pass < 12; pass++) {
     const ps = await readPieces();
     if (solved(ps)) break;
+    // Anchor = the biggest placed cluster (the growing assembly, which sits at the
+    // seed's offset). Drag everything NOT already in it onto it — including any
+    // pieces that snapped to a stray neighbour, so they get another chance.
+    const placed = ps.filter((p) => p.placed);
+    const anchor = placed.length ? placed.reduce((a, b) => (b.csize > a.csize ? b : a)) : null;
     for (const p of ps) {
-      if (p.csize > 1) continue; // already joined to a cluster
+      if (anchor && p.cluster === anchor.cluster) continue; // already in the main cluster
       const grab = await grabPoint(p.name);
       if (!grab) continue;
-      const toX = grab.sx - p.tx * u2px; // shift by -translate → true position
-      const toY = grab.sy - p.ty * u2px;
+      const aTx = anchor ? anchor.tx : 0;
+      const aTy = anchor ? anchor.ty : 0;
+      const toX = grab.sx + (aTx - p.tx) * u2px; // align with the assembly
+      const toY = grab.sy + (aTy - p.ty + PADDLE_LIFT) * u2px; // + paddle lift
       await page.mouse.move(grab.sx, grab.sy);
       await page.mouse.down();
       await page.mouse.move(toX, toY, { steps: 16 });
@@ -141,7 +154,7 @@ async function pressDragTo(name, tx, ty, release = true) {
   const box = await page.locator('svg.jig').boundingBox();
   const u2px = box.width / 1000;
   const toX = g.sx + (tx - p.tx) * u2px;
-  const toY = g.sy + (ty - p.ty) * u2px;
+  const toY = g.sy + (ty - p.ty + PADDLE_LIFT) * u2px; // aim below: the piece floats up
   await page.mouse.move(g.sx, g.sy);
   await page.mouse.down();
   await page.mouse.move(toX, toY, { steps: 20 });
@@ -242,10 +255,13 @@ await shakeScramble();
 await shot('regions-jumbled');
 await checkState('while assembling', 'Solve', false);
 
-// Connection glow: drop one region in place, bring an adjacent one close and
-// hold — only the shared edge should light up on both.
+// Connection glow: drop one region near centre, bring an adjacent one close and
+// hold — only the shared edge should light up. Positions for the second piece are
+// taken relative to where the first ACTUALLY landed (it may have snapped onto the
+// seed), so the demo is robust to the seed's offset.
 await pressDragTo(PAIR_A[0], 0, 0, true);
-await pressDragTo(PAIR_A[1], 112, 112, false); // held just inside the (tighter) glow range
+const a0 = (await readPieces()).find((p) => p.name === PAIR_A[0]);
+await pressDragTo(PAIR_A[1], a0.tx + 112, a0.ty + 112, false); // just inside the glow range
 await page.waitForTimeout(120);
 if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears its target');
 await shot('connection-glow');
@@ -253,7 +269,7 @@ await page.mouse.up();
 
 // Now pull it in to snap, and grab a quick frame of the snap-spark burst (this
 // is the piece→cluster merge).
-await pressDragTo(PAIR_A[1], 22, 22, true); // within snap → snaps + sparks
+await pressDragTo(PAIR_A[1], a0.tx + 22, a0.ty + 22, true); // within snap → snaps + sparks
 await page.waitForTimeout(60);
 await page.screenshot({ path: `${OUT}/${String(++step).padStart(2, '0')}-snap-spark.png` });
 console.log('shot snap-spark');
@@ -371,33 +387,32 @@ if ((await page.locator('.search-item').count()) === 0) {
 }
 await shot('search-autocomplete');
 await page.locator('.search-item').first().click();
-await page.waitForTimeout(900);
+await page.waitForTimeout(3800); // let the fly-through zoom out to the county and dive back down
 {
   const crumbs = await page.locator('.jig-crumb').allTextContents();
   if (!crumbs.some((c) => /San Gabriel Valley/.test(c))) {
-    errors.push(`BUG: search for Pasadena did not land in San Gabriel Valley (crumbs: ${crumbs.join(' › ')})`);
+    errors.push(`BUG: search for Pasadena did not land under San Gabriel Valley (crumbs: ${crumbs.join(' › ')})`);
+  }
+  // It should land on the smallest grouping that CONTAINS Pasadena — i.e. Pasadena
+  // is one of the visible pieces, not buried levels down.
+  const names = await page.evaluate(() =>
+    [...document.querySelectorAll('.jig-piece')].map((g) => g.dataset.name),
+  );
+  if (!names.includes('Pasadena')) {
+    errors.push(`BUG: search for Pasadena did not land on a board showing Pasadena (pieces: ${names.join(', ')})`);
   }
 }
 await shot('search-landed');
 
-// View modes: jump to the full county, then compare Normal / Clean / Simple.
+// Back to the full county via the breadcrumb, and confirm the top level shows its
+// 7 regions assembled.
 await page.locator('.jig-crumb').first().click(); // breadcrumb → LA County
 await page.waitForTimeout(900);
-for (const m of ['clean', 'simple', 'normal']) {
-  await page.selectOption('.mode-select', m);
-  await page.waitForTimeout(900);
-  if (m === 'simple') {
-    // Simple swaps geometry but keeps every piece — count must be unchanged.
-    const n = await page.locator('.jig-piece').count();
-    if (n !== 7) errors.push(`BUG: simple mode shows ${n} pieces at the county level (want 7)`);
-  }
-  if (m !== 'normal') {
-    if (await page.locator('.jig-label-wrap').first().isVisible()) {
-      errors.push(`BUG: ${m} mode still shows name labels`);
-    }
-  }
-  await shot(`mode-${m}`);
+{
+  const n = await page.locator('.jig-piece').count();
+  if (n !== 7) errors.push(`BUG: county level shows ${n} pieces (want 7)`);
 }
+await shot('county-top');
 
 await browser.close();
 

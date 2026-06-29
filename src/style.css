@@ -100,27 +100,6 @@ body {
   align-items: center;
   gap: 8px;
 }
-.mode-select {
-  height: 38px;
-  padding: 0 6px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-/* Clean & Simple modes drop the labels and the inner subdivision lines, leaving
-   each piece a flat colour. (Simple also swaps in low-poly geometry.) */
-.jig-board.mode-clean .jig-inner,
-.jig-board.mode-simple .jig-inner,
-.jig-board.mode-clean .jig-label-wrap,
-.jig-board.mode-simple .jig-label-wrap {
-  display: none;
-}
-
 /* ---- Search overlay ------------------------------------------------------ */
 .search-overlay {
   position: fixed;
@@ -440,35 +419,34 @@ body {
 .jig-shape {
   fill: #9fb0cb;
   stroke: #ffffff;
-  stroke-width: 2.5;
+  stroke-width: 3;
   stroke-linejoin: round;
 }
-/* Leaf pieces (terminal) read solid/flat; zoomable pieces a touch lighter so
-   their inner subdivisions show through. */
+/* Zoomability is shown by the piece's weight, not by inner lines: a terminal
+   (leaf) piece wears a heavier border so it reads as solid/final, while a
+   zoomable piece stays lighter — like there's more inside to open. */
 .jig-piece.zoomy .jig-shape {
   fill: #aebbd2;
 }
 .jig-piece.leaf .jig-shape {
   fill: #93a3c0;
-}
-.jig-inner {
-  fill: none;
-  stroke: rgba(22, 30, 48, 0.1);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  pointer-events: none;
-}
-.jig-piece.placed .jig-inner {
-  stroke: rgba(20, 30, 50, 0.16);
+  stroke-width: 6;
 }
 /* The held piece lifts off the board (its colour stays, so the edge glow reads). */
 .jig-piece.dragging .jig-shape {
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(0 6px 9px rgba(0, 0, 0, 0.32));
 }
+/* Placed pieces take their map colour; the per-type border weight is preserved. */
 .jig-piece.placed .jig-shape {
   fill: var(--fill, #9bdcc1);
-  stroke: #ffffff;
-  stroke-width: 2.5;
+}
+/* The seed: the anchor piece left in place after a scramble. It already stands
+   out as the one COLOURED piece among the grey loose ones; a soft shadow lifts it
+   so it reads as the thing to build onto. No accent outline — that colour is
+   reserved for the connection glow, and tracing the jagged border just adds
+   irrelevant highlight. */
+.jig-piece.seed .jig-shape {
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.22));
 }
 /* Spring a panned map back to centre. */
 .jig-piece.settling,
@@ -483,6 +461,21 @@ body {
 /* Snap spark — lines bursting from the join. */
 .jig-fx {
   pointer-events: none;
+}
+/* Drag paddle: a dot where the thumb is, and a stick up to the lifted piece, so a
+   held piece floats above the finger in full view. */
+.jig-paddle {
+  pointer-events: none;
+}
+.jig-paddle-line {
+  stroke: rgba(27, 34, 48, 0.5);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.jig-paddle-dot {
+  fill: rgba(27, 34, 48, 0.22);
+  stroke: rgba(27, 34, 48, 0.5);
+  stroke-width: 3;
 }
 .jig-burst line {
   stroke: var(--accent);
@@ -543,6 +536,21 @@ body {
   stroke: #ffffff;
   stroke-width: 1.5;
 }
+/* Search landing: pulse the found piece in the accent colour a few times so the
+   eye catches it. Transient, so it doesn't clash with the connection glow. */
+@keyframes jig-flash {
+  0%,
+  100% {
+    fill: var(--fill, #9bdcc1);
+  }
+  50% {
+    fill: var(--accent);
+  }
+}
+.jig-piece.flash .jig-shape {
+  animation: jig-flash 0.55s ease-in-out 3;
+}
+
 /* After solving, pieces become tap targets — groups zoom in, leaves open a card. */
 .jig-piece.zoomable,
 .jig-piece.selectable {

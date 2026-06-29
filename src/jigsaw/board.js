@@ -14,7 +14,7 @@ import {
   fullVB,
   pieceBox,
   projectChildren,
-  scatterTranslate,
+  bottomScatter,
   facingInfo,
   ringContains,
 } from './geometry.js';
@@ -24,6 +24,8 @@ import { layoutLabels } from './labels.js';
 
 const SNAP = 150; // connection radius, in board user units
 const MAGNET = 200; // distance at which a piece starts to "feel" its connection
+const PADDLE_LIFT = 300; // how far above the finger a held piece floats (user units)
+const SEED_RISE = 0.1; // the seed sits this fraction of the board height above centre
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
@@ -78,6 +80,8 @@ export class Board {
     this.pointers = new Map(); // active pointerId -> {x,y} in board user space
     this.gesture = null; // current gesture: piece drag, pan, or pinch
     this.glowing = new Set(); // pieces currently showing a connection glow
+    this.seed = null; // the anchor piece left in place to build around after a scramble
+    this.assemblyDy = 0; // vertical offset the map assembles at while playing (0 = centred)
     this.vbH = VB_W;
     this.svg = this.#initSvg();
   }
@@ -94,7 +98,14 @@ export class Board {
     this.glowLayer.append(this.connectorEl);
     this.labelLayer = svgEl('g', { class: 'jig-labels' });
     this.fxLayer = svgEl('g', { class: 'jig-fx' }); // snap sparks, above everything
-    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer);
+    // The drag "paddle": a dot at the finger and a stick up to the lifted piece,
+    // so a held piece floats clear of the thumb. Lives on top; hidden by default.
+    this.paddleEl = svgEl('g', { class: 'jig-paddle' });
+    this.paddleLine = svgEl('line', { class: 'jig-paddle-line' });
+    this.paddleDot = svgEl('circle', { class: 'jig-paddle-dot', r: 30 });
+    this.paddleEl.append(this.paddleLine, this.paddleDot);
+    this.paddleEl.style.display = 'none';
+    svg.append(this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer, this.paddleEl);
     // All gestures (piece drag, pan, pinch) are driven from the SVG root so we
     // can track multiple pointers; pieces are hit-tested from the event target.
     svg.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
@@ -145,17 +156,23 @@ export class Board {
   }
 
   // Burst the assembled map apart into loose pieces for the player to rebuild.
-  // Triggered by the Jumble button — there's no automatic scatter.
+  // One piece — the seed — is left in place (raised above centre) as the anchor
+  // to build around; the rest scatter into a pile across the bottom. Triggered by
+  // the Scramble button (or a shake) — there's no automatic scatter.
   jumble() {
     if (this.phase !== 'solved' && this.phase !== 'play') return;
     this.#cancelPending();
-    this.#assignScatter();
+    this.#assignSeedScatter();
     this.phase = 'jumbling';
     this.pieces.forEach((p) => p.reset());
     this.#initClusters(); // every piece back to its own loose cluster
+    // The seed reads as already-placed (its map colour + a highlight), so it's
+    // clearly the thing to build onto.
+    this.seed.setPlaced(true);
+    this.seed.g.classList.add('seed');
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
-    this.cbs.onHint?.('Drag pieces together');
+    this.cbs.onHint?.('Drag pieces onto the map');
     // Animate from assembled (0,0) out to the scatter spots.
     this.#animatePieces(
       (p) => [0, 0],
@@ -212,10 +229,21 @@ export class Board {
     }
   }
 
-  // Give each piece a fresh scatter target (shuffled, so a re-jumble looks new).
-  #assignScatter() {
-    shuffle(this.pieces).forEach((p, k, arr) => {
-      const [tx, ty] = scatterTranslate(p.geom, k, arr.length, this.vbH);
+  // Choose the seed (the most central piece) and assign scatter targets: the seed
+  // rises to its perch above centre; everyone else piles up across the bottom.
+  // The whole map then assembles at the seed's offset (others snap to its
+  // translate), and settles back to centre once solved.
+  #assignSeedScatter() {
+    const cx0 = VB_W / 2;
+    const cy0 = this.vbH / 2;
+    const dist2 = (p) => (p.geom.cx - cx0) ** 2 + (p.geom.cy - cy0) ** 2;
+    this.seed = this.pieces.reduce((best, p) => (dist2(p) < dist2(best) ? p : best));
+    this.assemblyDy = -this.vbH * SEED_RISE;
+    this.seed.scatterTx = 0;
+    this.seed.scatterTy = this.assemblyDy;
+    const loose = shuffle(this.pieces.filter((p) => p !== this.seed));
+    loose.forEach((p, k, arr) => {
+      const [tx, ty] = bottomScatter(p.geom, k, arr.length, this.vbH);
       p.scatterTx = tx;
       p.scatterTy = ty;
     });
@@ -363,7 +391,9 @@ export class Board {
 
   #refresh() {
     this.#emitProgress();
-    for (const p of this.pieces) p.setPlaced(p.cluster.size > 1);
+    // A piece shows its map colour once it's in a multi-piece cluster — or if it's
+    // the lone seed, which reads as placed from the start.
+    for (const p of this.pieces) p.setPlaced(p.cluster.size > 1 || p === this.seed);
     if (this.#allClusters().size === 1 && this.phase === 'play') this.#enterSolved({ played: true, toast: true });
     else this.#emitControls();
   }
@@ -392,6 +422,8 @@ export class Board {
   // already assembled); the host only cues "tap to zoom" once they've played.
   #enterSolved({ played = false, toast = false } = {}) {
     this.phase = 'solved';
+    if (played) this.#recenter(); // a map built around the raised seed settles home
+    this.seed = null;
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Groups become zoom targets; leaves become tap-for-info targets.
     this.pieces.forEach((p) => (p.zoomable ? p.markZoomable() : p.markSelectable()));
@@ -519,7 +551,11 @@ export class Board {
     const g = this.gesture;
     if (!g) return;
     if (g.type === 'piece') {
-      g.starts.forEach((s) => s.p.setDragging(false));
+      g.starts.forEach((s) => {
+        s.p.setDragging(false);
+        s.p.moveTo(s.tx, s.ty); // drop the paddle lift back to where the drag began
+      });
+      this.#hidePaddle();
       this.#clearGlow();
     } else if (g.type === 'pan' && g.moved && !g.exploded) {
       this.pieces.forEach((p) => p.setDragging(false));
@@ -530,30 +566,62 @@ export class Board {
 
   // --- single-pointer cluster drag (assembling) ---
   // Grab a piece and you drag its whole cluster — a lone piece or a sub-assembly.
+  // The cluster floats up by PADDLE_LIFT above the finger so you can see what
+  // you're holding; a paddle (dot + stick) marks the finger and the lift.
   #beginPieceDrag(piece, ux, uy) {
     const cluster = piece.cluster;
+    const starts = [...cluster].map((p) => ({ p, tx: p.tx, ty: p.ty }));
     for (const p of cluster) {
       this.pieceLayer.append(p.g); // raise the whole cluster above the rest
       this.glowLayer.append(p.glowEl);
       this.labelLayer.append(p.labelEl);
       p.setDragging(true);
+      p.moveTo(p.tx, p.ty - PADDLE_LIFT); // lift clear of the thumb
     }
-    return { type: 'piece', ux, uy, cluster, starts: [...cluster].map((p) => ({ p, tx: p.tx, ty: p.ty })) };
+    this.#showPaddle(ux, uy);
+    return { type: 'piece', ux, uy, cluster, starts, moved: false };
   }
 
   #movePieceDrag(ux, uy) {
     const g = this.gesture;
     const dx = ux - g.ux;
     const dy = uy - g.uy;
-    for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy);
+    if (!g.moved && Math.hypot(dx, dy) > 2) g.moved = true;
+    for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy - PADDLE_LIFT);
+    this.#updatePaddle(ux, uy);
     this.#updateGlow(g.cluster);
   }
 
   #endPieceDrag() {
     const g = this.gesture;
+    this.#hidePaddle();
     for (const s of g.starts) s.p.setDragging(false);
     this.#clearGlow();
+    // A tap with no real drag: just drop the lift and leave the piece where it was.
+    if (!g.moved) {
+      for (const s of g.starts) s.p.moveTo(s.tx, s.ty);
+      return;
+    }
     this.#dropCluster(g.cluster, g.starts.map((s) => s.p));
+  }
+
+  // --- the drag paddle ---
+  #showPaddle(ux, uy) {
+    this.paddleEl.style.display = '';
+    this.#updatePaddle(ux, uy);
+  }
+
+  #updatePaddle(ux, uy) {
+    this.paddleDot.setAttribute('cx', ux.toFixed(1));
+    this.paddleDot.setAttribute('cy', uy.toFixed(1));
+    this.paddleLine.setAttribute('x1', ux.toFixed(1));
+    this.paddleLine.setAttribute('y1', uy.toFixed(1));
+    this.paddleLine.setAttribute('x2', ux.toFixed(1));
+    this.paddleLine.setAttribute('y2', (uy - PADDLE_LIFT).toFixed(1));
+  }
+
+  #hidePaddle() {
+    this.paddleEl.style.display = 'none';
   }
 
   // --- solved-map press: tap, pan, or shake-to-scramble ---
@@ -603,6 +671,16 @@ export class Board {
   #springBack() {
     this.pieces.forEach((p) => p.setSettling(true));
     this.svg.getBoundingClientRect(); // reflow so the transition runs
+    this.pieces.forEach((p) => p.moveTo(0, 0));
+    setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
+  }
+
+  // The map is assembled at the seed's raised offset; on solving, glide the whole
+  // thing back to centre so a solved board always sits balanced in the frame.
+  #recenter() {
+    if (!this.pieces.some((p) => Math.abs(p.tx) > 0.5 || Math.abs(p.ty) > 0.5)) return;
+    this.pieces.forEach((p) => p.setSettling(true));
+    this.svg.getBoundingClientRect();
     this.pieces.forEach((p) => p.moveTo(0, 0));
     setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
   }
@@ -699,6 +777,23 @@ export class Board {
     this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () =>
       this.cbs.onZoomInto?.(piece.id),
     );
+  }
+
+  // Programmatic camera zoom into a child by id, then call `onArrived` — used by
+  // the search fly-through to descend level by level. Like a tap-zoom but with an
+  // explicit callback instead of the onZoomInto wiring.
+  zoomToChild(childId, onArrived) {
+    const piece = this.pieces.find((p) => p.id === childId);
+    if (!piece) return onArrived?.();
+    this.phase = 'zooming';
+    this.pieces.forEach((p) => p !== piece && p.fadeOut());
+    this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () => onArrived?.());
+  }
+
+  // Briefly pulse a piece to draw the eye — used when a search lands on the board
+  // that contains the searched place, so you can spot it.
+  flashPiece(id) {
+    this.pieces.find((p) => p.id === id)?.flash();
   }
 
   #animateZoom(from, to, onDone) {

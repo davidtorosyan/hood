@@ -19,6 +19,13 @@ import { store } from '../store.js';
 let currentBoard = null;
 let shakeInstalled = false;
 
+// A token identifying the active search "fly-through" (zoom out to the county,
+// then dive level by level to the searched place). Any manual navigation clears
+// it, so a stale fly step can't hijack the screen. See onSearchPick / the descent.
+let flyToken = null;
+const FLY_DWELL_TOP = 720; // pause on the whole-county view before diving in
+const FLY_DWELL_STEP = 360; // pause at each waypoint level on the way down
+
 // Best-effort: shaking the phone scrambles a solved map, the same as shaking it
 // by hand. iOS 13+ needs motion permission, which we request on the (user-
 // gesture) Play tap; elsewhere it just works. Silently does nothing if blocked.
@@ -59,48 +66,50 @@ function renderNode(app, ctx, nodeId, opts) {
   const node = NODES[nodeId];
   const mode = store.mode(); // 'normal' | 'clean' | 'simple'
 
-  // --- navigation --- (every level arrives already assembled)
-  const goUp = () =>
-    node.parent
-      ? renderNode(app, ctx, node.parent, { zoomOutFrom: nodeId })
-      : ctx.back();
+  // --- navigation --- (every level arrives already assembled). Any deliberate
+  // move cancels an in-flight search fly-through.
+  const cancelFly = () => (flyToken = null);
+  const goUp = () => {
+    cancelFly();
+    node.parent ? renderNode(app, ctx, node.parent, { zoomOutFrom: nodeId }) : ctx.back();
+  };
   const goTo = (id) => {
     if (id === nodeId) return;
+    cancelFly();
     const childToward = pathIds(nodeId)[pathIds(id).length];
     renderNode(app, ctx, id, { zoomOutFrom: childToward });
   };
-  const zoomInto = (childId) => renderNode(app, ctx, childId, {});
+  const zoomInto = (childId) => {
+    cancelFly();
+    renderNode(app, ctx, childId, {});
+  };
 
-  // Search jumps to the region holding the chosen place (or the region itself);
-  // for a place we flash which region it's in — that's the thing being learned.
-  const onSearchPick = (it) =>
-    renderNode(app, ctx, it.regionId, {
-      toast: it.kind === 'region' ? null : `${it.label} is in ${it.regionLabel}`,
+  // Search "flies" to the chosen place: it shows the WHOLE county, then dives down
+  // level by level to the smallest grouping that actually contains the place — so
+  // the place itself is a visible piece on the board you land on, and you've seen
+  // where it sits relative to everything. We render the picked item's PARENT (its
+  // children include the picked item) and flash the item once we arrive.
+  const onSearchPick = (it) => {
+    const isRegion = it.kind === 'region';
+    // A region: dive INTO it (its board shows its groups). A place/group: land on
+    // its PARENT, where the item is one of the visible pieces, and flash it.
+    const displayId = isRegion ? it.id : (NODES[it.id].parent ?? it.id);
+    const regionToward = pathIds(displayId)[1] ?? null; // the region under the county
+    const token = (flyToken = {});
+    renderNode(app, ctx, ROOT, {
+      descendTo: displayId,
+      highlight: isRegion ? null : it.id,
+      toast: isRegion ? null : `${it.label} is in ${it.regionLabel}`,
+      zoomOutFrom: regionToward, // an explicit zoom-OUT from the target's region first
+      fly: token,
     });
+  };
   const searchBtn = el(
     'button',
     { class: 'icon-btn search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
     '🔍',
   );
-
-  // A view-mode toggle (Normal / Clean / Simple) — re-renders the current node so
-  // the change is immediate. Persisted, so it sticks across navigation.
-  const modeSelect = el(
-    'select',
-    {
-      class: 'mode-select',
-      'aria-label': 'View mode',
-      onChange: (e) => {
-        store.setMode(e.target.value);
-        renderNode(app, ctx, nodeId, {});
-      },
-    },
-    [['normal', 'Normal'], ['clean', 'Clean'], ['simple', 'Simple']].map(([v, t]) =>
-      el('option', { value: v }, t),
-    ),
-  );
-  modeSelect.value = mode;
-  const tools = el('div', { class: 'topbar-tools' }, [modeSelect, searchBtn]);
+  const tools = el('div', { class: 'topbar-tools' }, [searchBtn]);
 
   // --- chrome ---
   const bannerUi = statusBanner({
@@ -143,7 +152,35 @@ function renderNode(app, ctx, nodeId, opts) {
     const h = boardWrap.clientHeight || 360;
     const vbH = Math.round((1000 * h) / w);
     board.build(vbH, mode);
-    board.start(opts);
-    if (opts.toast) showToast(boardWrap, opts.toast);
+    board.start({ zoomOutFrom: opts.zoomOutFrom });
+
+    const flying = opts.fly && opts.fly === flyToken;
+    if (flying && nodeId !== opts.descendTo) {
+      // A waypoint on the way down: pause, then camera-zoom into the next child
+      // toward the target and re-render there (carrying the fly forward).
+      const next = pathIds(opts.descendTo)[pathIds(nodeId).length];
+      const dwell = opts.zoomOutFrom ? FLY_DWELL_TOP : FLY_DWELL_STEP;
+      setTimeout(() => {
+        if (opts.fly !== flyToken) return; // cancelled by a manual move
+        board.zoomToChild(next, () => {
+          if (opts.fly !== flyToken) return;
+          renderNode(app, ctx, next, {
+            descendTo: opts.descendTo,
+            highlight: opts.highlight,
+            toast: opts.toast,
+            fly: opts.fly,
+          });
+        });
+      }, dwell);
+    } else if (opts.highlight) {
+      // Arrived (or a region landed on the county): flash the found piece + toast,
+      // after any zoom-out intro has played.
+      setTimeout(() => {
+        board.flashPiece(opts.highlight);
+        if (opts.toast) showToast(boardWrap, opts.toast);
+      }, opts.zoomOutFrom ? 640 : 120);
+    } else if (opts.toast) {
+      showToast(boardWrap, opts.toast);
+    }
   });
 }

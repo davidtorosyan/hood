@@ -32,10 +32,9 @@ export class Piece {
     g.dataset.cy = geom.cy.toFixed(1);
     g.dataset.name = label; // identity for the screenshot harness
     g.style.setProperty('--fill', color);
+    // Just the piece's own outline — no inner subdivision lines (they blurred the
+    // boundaries between pieces). Zoomability is shown by piece weight instead.
     g.append(svgEl('path', { d: geom.d, class: 'jig-shape' }));
-    if (geom.inner) {
-      for (const d of geom.inner) g.append(svgEl('path', { d, class: 'jig-inner' }));
-    }
     return g;
   }
 
@@ -101,7 +100,7 @@ export class Piece {
 
   // Back to a loose look (used when the player scrambles an assembled map).
   reset() {
-    this.g.classList.remove('placed', 'zoomable', 'selectable', 'dragging');
+    this.g.classList.remove('placed', 'zoomable', 'selectable', 'dragging', 'seed');
     this.setGlow(0, '');
   }
 
@@ -147,6 +146,14 @@ export class Piece {
   // A leaf piece on a solved board: tappable to open its info card.
   markSelectable() {
     this.g.classList.add('selectable');
+  }
+
+  // Pulse the piece a few times to draw the eye (a search just landed on it).
+  flash() {
+    this.g.classList.remove('flash');
+    void this.g.getBoundingClientRect(); // restart the CSS animation from the top
+    this.g.classList.add('flash');
+    setTimeout(() => this.g.classList.remove('flash'), 1700);
   }
 
   // Fade the piece (body + label) out — used for the siblings when zooming in.
