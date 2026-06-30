@@ -72,7 +72,7 @@ class ShakeDetector {
 export class Board {
   #pendingTimer = 0; // a scheduled end-of-animation callback we may need to cancel
 
-  // cbs: { onRemaining(n,total), onHint(text), onSolved(zoomable),
+  // cbs: { onHint(text), onSolved(zoomable),
   //        onZoomInto(childId), onToast(msg), onSelectLeaf(id), onAction(mode) }
   constructor(nodeId, cbs = {}) {
     this.nodeId = nodeId;
@@ -95,9 +95,14 @@ export class Board {
     const pct = (v) => `${(v * 100).toFixed(2)}%`;
     this.buildPanel = el('div', { class: 'jig-canvas jig-canvas-build' });
     this.trayPanel = el('div', { class: 'jig-canvas jig-canvas-tray' });
-    // Shown in the gap while assembling; the empty-tray prompt when solved.
     this.trayHint = el('div', { class: 'jig-tray-hint' }, 'drag pieces up to build');
-    this.trayEmpty = el('div', { class: 'jig-tray-empty' }, 'Scramble to take it apart');
+    // The Scramble button lives in the tray (centred), shown on a solved board.
+    // It sits ABOVE the svg so it's clickable; the svg captures everything else.
+    this.scrambleBtn = el(
+      'button',
+      { class: 'jig-btn jig-scramble jig-tray-scramble', onClick: () => this.jumble() },
+      '🔀 Scramble',
+    );
     Object.assign(this.buildPanel.style, {
       left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
       top: pct(CANVAS_INSET), height: pct(SPLIT_TOP - CANVAS_INSET),
@@ -108,9 +113,11 @@ export class Board {
     });
     this.trayHint.style.top = pct((SPLIT_TOP + SPLIT_BOT) / 2);
     this.trayHint.style.display = 'none';
-    this.trayEmpty.style.top = pct((SPLIT_BOT + (1 - CANVAS_INSET)) / 2);
-    this.trayEmpty.style.display = 'none';
-    return el('div', { class: 'jig-stage' }, [this.buildPanel, this.trayPanel, this.trayHint, this.trayEmpty, this.svg]);
+    this.scrambleBtn.style.top = pct((SPLIT_BOT + (1 - CANVAS_INSET)) / 2);
+    this.scrambleBtn.style.display = 'none';
+    return el('div', { class: 'jig-stage' }, [
+      this.buildPanel, this.trayPanel, this.trayHint, this.svg, this.scrambleBtn,
+    ]);
   }
 
   #initSvg() {
@@ -198,7 +205,7 @@ export class Board {
     this.seed.setPlaced(true);
     this.seed.g.classList.add('seed');
     this.trayHint.style.display = ''; // "drag up" between the panels while there are pieces
-    this.trayEmpty.style.display = 'none';
+    this.scrambleBtn.style.display = 'none';
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
     this.cbs.onHint?.('');
@@ -438,17 +445,15 @@ export class Board {
     else this.#emitControls();
   }
 
-  // "Left" = pieces not yet attached to the largest cluster (0 → fully assembled).
+  // Tag each piece with its cluster id + size — exposed via data-* for the
+  // screenshot harness to read assembly progress.
   #emitProgress() {
-    let biggest = 0;
     const ids = new Map();
     for (const p of this.pieces) {
       if (!ids.has(p.cluster)) ids.set(p.cluster, ids.size);
-      p.g.dataset.cluster = ids.get(p.cluster); // exposed for the harness
+      p.g.dataset.cluster = ids.get(p.cluster);
       p.g.dataset.csize = p.cluster.size;
-      biggest = Math.max(biggest, p.cluster.size);
     }
-    this.cbs.onRemaining?.(this.pieces.length - biggest, this.pieces.length);
   }
 
   // Tell the host which label the one action button wears: Solve while assembling
@@ -463,7 +468,7 @@ export class Board {
   #enterSolved({ played = false, toast = false } = {}) {
     this.phase = 'solved';
     this.trayHint.style.display = 'none'; // the tray is empty now; keep the panels...
-    this.trayEmpty.style.display = ''; // ...and prompt to take it apart again
+    this.scrambleBtn.style.display = ''; // ...with the Scramble button to play again
     this.seed = null;
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Groups become zoom targets; leaves become tap-for-info targets.
@@ -818,6 +823,7 @@ export class Board {
   #zoomInto(piece) {
     if (!piece.zoomable) return;
     this.phase = 'zooming';
+    this.scrambleBtn.style.display = 'none'; // don't float it over the zooming map
     this.pieces.forEach((p) => p !== piece && p.fadeOut());
     this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () =>
       this.cbs.onZoomInto?.(piece.id),
@@ -831,6 +837,7 @@ export class Board {
     const piece = this.pieces.find((p) => p.id === childId);
     if (!piece) return onArrived?.();
     this.phase = 'zooming';
+    this.scrambleBtn.style.display = 'none';
     this.pieces.forEach((p) => p !== piece && p.fadeOut());
     this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () => onArrived?.());
   }

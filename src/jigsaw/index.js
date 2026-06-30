@@ -123,13 +123,11 @@ function renderNode(app, ctx, nodeId, opts) {
   const bannerUi = statusBanner({
     onUp: goUp,
     onSolve: () => board.solve(),
-    onScramble: () => board.jumble(),
   });
   const boardWrap = el('div', { class: `jig-board mode-${mode}` });
 
   // --- board ---
   const board = new Board(nodeId, {
-    onRemaining: (remaining) => bannerUi.setCounter(remaining),
     onHint: (text) => bannerUi.setHint(text),
     onSolved: (zoomable, played) => {
       if (played) store.markLearnedZoom();

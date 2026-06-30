@@ -22,47 +22,38 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// The status banner. On the LEFT, one ACTION button that stays put and swaps its
-// label/behaviour: "Scramble" on a solved board, "Solve" while assembling. Then
-// the hint, then the up control and a pieces-left counter. (Scramble is an
-// explicit button because the shake gesture proved undiscoverable in playtests;
-// shaking still works as a bonus.)
-export function statusBanner({ onUp, onSolve, onScramble }) {
+// The status banner: a hint and ONE top-right button that swaps with state — it's
+// "Solve" while you're assembling (snap the pieces together), and the "↑" zoom-out
+// control once the map is solved. (Scramble lives in the tray; the shake gesture
+// still works as a bonus.)
+export function statusBanner({ onUp, onSolve }) {
   const hint = el('span', { class: 'jig-hint' }, '');
-  const counter = el('span', { class: 'jig-count' }, '');
 
-  let mode = 'scramble';
-  const actionBtn = el('button', {
-    class: 'jig-btn jig-action jig-scramble',
-    onClick: () => (mode === 'solve' ? onSolve() : onScramble()),
-  }, '🔀 Scramble');
+  let mode = 'scramble'; // 'solve' (assembling) → "Solve"; otherwise → "↑"
+  const topBtn = el('button', {
+    class: 'jig-btn jig-topbtn jig-up',
+    onClick: () => (mode === 'solve' ? onSolve() : onUp()),
+  }, '↑');
 
-  const banner = el('div', { class: 'jig-banner' }, [
-    actionBtn,
-    hint,
-    el('div', { class: 'jig-banner-right' }, [
-      el('button', { class: 'jig-btn jig-up', onClick: onUp, title: 'Zoom out one level', 'aria-label': 'Zoom out' }, '↑'),
-      counter,
-    ]),
-  ]);
+  const banner = el('div', { class: 'jig-banner' }, [hint, topBtn]);
 
   return {
     banner,
     setHint: (t) => (hint.textContent = t),
-    // mode: 'scramble' (solved board) or 'solve' (assembling). Same button.
+    // mode: 'solve' while assembling → the button is "Solve"; otherwise it's the
+    // up/zoom-out control.
     setAction: (m) => {
       mode = m;
-      actionBtn.textContent = m === 'solve' ? 'Solve' : '🔀 Scramble';
-      actionBtn.classList.toggle('jig-scramble', m === 'scramble');
-      actionBtn.title = m === 'solve' ? 'Snap the pieces back together' : 'Break the map apart to play';
-    },
-    setCounter: (remaining) => {
-      counter.textContent = remaining > 0 ? `${remaining} left` : '';
+      const solving = m === 'solve';
+      topBtn.textContent = solving ? 'Solve' : '↑';
+      topBtn.classList.toggle('jig-solve', solving);
+      topBtn.classList.toggle('jig-up', !solving);
+      topBtn.title = solving ? 'Snap the pieces together' : 'Zoom out one level';
+      topBtn.setAttribute('aria-label', solving ? 'Solve' : 'Zoom out');
     },
     // `showTip` = the player has solved a puzzle before, so cue the next step.
     // Kept short so it never wraps to a second line.
     setSolved: (zoomable, showTip) => {
-      counter.textContent = '';
       hint.textContent = !showTip ? '' : zoomable ? '👆 Tap to zoom in' : '👆 Tap for its card';
     },
   };

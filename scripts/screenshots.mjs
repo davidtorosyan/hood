@@ -199,11 +199,21 @@ async function pinch(spread, aroundName) {
   return (await page.locator('.jig-crumb').count()) - before;
 }
 
-// Verify the one action button's label and whether the "tap to zoom/info" hint
-// is showing (it only appears after the player has solved a board).
-const checkState = async (where, wantLabel, wantZoomHint) => {
-  const label = await page.locator('.jig-action').textContent();
-  if (!label.includes(wantLabel)) errors.push(`BUG: action button is "${label}" ${where} (want ${wantLabel})`);
+// Verify the controls for the state and whether the "tap to zoom/info" hint is
+// showing (it only appears after the player has solved a board). `want` is
+// 'Solve' (assembling: the top button reads Solve) or 'Scramble' (solved: the top
+// button is the up control and the tray Scramble button is shown).
+const checkState = async (where, want, wantZoomHint) => {
+  const topBtn = (await page.locator('.jig-topbtn').textContent()).trim();
+  if (want === 'Solve' && topBtn !== 'Solve') {
+    errors.push(`BUG: top button is "${topBtn}" ${where} (want Solve)`);
+  }
+  if (want === 'Scramble') {
+    if (topBtn === 'Solve') errors.push(`BUG: top button still "Solve" ${where} (want the up control)`);
+    if (!(await page.locator('.jig-tray-scramble').isVisible())) {
+      errors.push(`BUG: tray Scramble button not shown ${where}`);
+    }
+  }
   const hint = (await page.locator('.jig-hint').textContent()) || '';
   const hasZoomHint = /zoom|card/.test(hint);
   if (hasZoomHint !== wantZoomHint) errors.push(`BUG: zoom hint ${hasZoomHint ? 'shown' : 'missing'} ${where} (want ${wantZoomHint})`);
@@ -224,7 +234,7 @@ await checkState('on a fresh assembled board', 'Scramble', false); // no zoom hi
 
 // Bonus gesture: grabbing the map and shaking it should also scramble.
 if (!(await dragShake())) errors.push('BUG: drag-shake gesture did not scramble');
-await page.locator('.jig-action').click(); // now reads "Solve" → re-solve
+await page.locator('.jig-topbtn').click(); // now reads "Solve" → re-solve
 await page.waitForTimeout(800);
 await checkState('after solving by button', 'Scramble', true); // now the hint appears
 
@@ -297,7 +307,7 @@ if (loosePair) {
   }
 }
 // Back to a clean solved board for the rest of the flow.
-await page.locator('.jig-action').click(); // "Solve"
+await page.locator('.jig-topbtn').click(); // "Solve"
 await page.waitForTimeout(800);
 
 // Pinch to zoom in (into the region under the pinch — centred on a piece, since
@@ -322,7 +332,7 @@ const crumbDepth = () => page.locator('.jig-crumb').count();
 const depthBefore = await crumbDepth();
 await shakeScramble();
 await shot('region-jumbled');
-await page.locator('.jig-action').click();
+await page.locator('.jig-topbtn').click(); // "Solve"
 await page.waitForTimeout(800); // let the snap-together animation finish
 await shot('region-solved-by-button');
 {
@@ -336,14 +346,14 @@ await shot('region-solved-by-button');
       errors.push('BUG: tap after shake→Solve did not zoom in (phase race)');
     } else {
       await shot('after-solve-zoom');
-      await page.locator('.jig-up').click(); // step back to the sub-level
+      await page.locator('.jig-topbtn').click(); // up control → step back to the sub-level
       await page.waitForTimeout(1100);
     }
   }
 }
 
-// Zoom back out via the "up" control.
-await page.locator('.jig-up').click();
+// Zoom back out via the "up" control (the top button, now that the map is solved).
+await page.locator('.jig-topbtn').click();
 await page.waitForTimeout(1100);
 await shot('zoomed-back-out');
 

@@ -311,19 +311,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.jig-banner-right {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-}
-.jig-count {
-  font-weight: 700;
-  color: var(--accent-text);
-}
-.jig-banner.done .jig-count {
-  color: var(--good);
-}
 .jig-btn {
   appearance: none;
   border: 1px solid var(--line);
@@ -338,14 +325,14 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
-/* The one action button (Scramble ⇆ Solve). Fixed width + first in the banner so
-   it stays put as the label swaps. */
-.jig-action {
+/* The top-right button: "Solve" while assembling, "↑" (zoom out) once solved.
+   Fixed width so it doesn't jump as the label swaps. */
+.jig-topbtn {
   flex: none;
-  min-width: 104px;
+  min-width: 70px;
   text-align: center;
 }
-/* Scramble is the primary call-to-action on a solved board — make it pop. */
+/* The Scramble call-to-action — pops in the empty tray of a solved board. */
 .jig-scramble {
   background: var(--accent);
   border-color: var(--accent);
@@ -353,6 +340,19 @@ body {
 }
 .jig-scramble:active {
   background: var(--accent);
+  filter: brightness(0.94);
+}
+.jig-tray-scramble {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 15px;
+  padding: 12px 24px;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.32);
+}
+.jig-tray-scramble:active {
+  transform: translate(-50%, -50%) scale(0.97);
   filter: brightness(0.94);
 }
 .jig-board {
@@ -390,19 +390,6 @@ body {
   font-weight: 700;
   letter-spacing: 0.3px;
   color: var(--text-dim);
-  pointer-events: none;
-}
-/* The empty-tray prompt on a solved board, centred in the (otherwise empty) tray. */
-.jig-tray-empty {
-  position: absolute;
-  left: 0;
-  right: 0;
-  transform: translateY(-50%);
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dim);
-  opacity: 0.75;
   pointer-events: none;
 }
 /* Toast cue over the map; doesn't reflow the board, taps pass through. */
