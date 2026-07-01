@@ -129,11 +129,6 @@ function renderNode(app, ctx, nodeId, opts) {
   // --- board ---
   const board = new Board(nodeId, {
     onHint: (text) => bannerUi.setHint(text),
-    onSolved: (zoomable, played) => {
-      if (played) store.markLearnedZoom();
-      // Once they've solved anything, the cue sticks around on every solved board.
-      bannerUi.setSolved(zoomable, store.learnedZoom());
-    },
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
     onZoomOut: goUp,

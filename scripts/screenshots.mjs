@@ -210,13 +210,15 @@ const checkState = async (where, want, wantZoomHint) => {
   }
   if (want === 'Scramble') {
     if (topBtn === 'Solve') errors.push(`BUG: top button still "Solve" ${where} (want the up control)`);
-    if (!(await page.locator('.jig-tray-scramble').isVisible())) {
+    if (!(await page.locator('.jig-scramble').isVisible())) {
       errors.push(`BUG: tray Scramble button not shown ${where}`);
     }
   }
-  const hint = (await page.locator('.jig-hint').textContent()) || '';
-  const hasZoomHint = /zoom|card/.test(hint);
-  if (hasZoomHint !== wantZoomHint) errors.push(`BUG: zoom hint ${hasZoomHint ? 'shown' : 'missing'} ${where} (want ${wantZoomHint})`);
+  // The "tap to zoom / for its card" tip now lives in the tray, shown once solved.
+  const tip = page.locator('.jig-tip').first();
+  const tipText = (await tip.isVisible()) ? (await tip.textContent()) || '' : '';
+  const hasZoomHint = /zoom|card/.test(tipText);
+  if (hasZoomHint !== wantZoomHint) errors.push(`BUG: zoom tip ${hasZoomHint ? 'shown' : 'missing'} ${where} (want ${wantZoomHint})`);
 };
 const anyGlow = () =>
   page.evaluate(() =>
@@ -230,7 +232,7 @@ await shot('home');
 await page.getByRole('button', { name: 'Play' }).click();
 await page.waitForTimeout(800);
 await shot('regions-assembled');
-await checkState('on a fresh assembled board', 'Scramble', false); // no zoom hint yet
+await checkState('on a fresh assembled board', 'Scramble', true); // tray tips show once solved
 
 // Bonus gesture: grabbing the map and shaking it should also scramble.
 if (!(await dragShake())) errors.push('BUG: drag-shake gesture did not scramble');

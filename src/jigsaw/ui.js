@@ -51,11 +51,6 @@ export function statusBanner({ onUp, onSolve }) {
       topBtn.title = solving ? 'Snap the pieces together' : 'Zoom out one level';
       topBtn.setAttribute('aria-label', solving ? 'Solve' : 'Zoom out');
     },
-    // `showTip` = the player has solved a puzzle before, so cue the next step.
-    // Kept short so it never wraps to a second line.
-    setSolved: (zoomable, showTip) => {
-      hint.textContent = !showTip ? '' : zoomable ? '👆 Tap to zoom in' : '👆 Tap for its card';
-    },
   };
 }
 

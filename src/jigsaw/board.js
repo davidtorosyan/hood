@@ -104,13 +104,13 @@ export class Board {
     this.buildPanel = el('div', { class: 'jig-canvas jig-canvas-build' });
     this.trayPanel = el('div', { class: 'jig-canvas jig-canvas-tray' });
     this.trayHint = el('div', { class: 'jig-tray-hint' }, 'drag pieces up to build');
-    // The Scramble button lives in the tray (centred), shown on a solved board.
-    // It sits ABOVE the svg so it's clickable; the svg captures everything else.
-    this.scrambleBtn = el(
-      'button',
-      { class: 'jig-btn jig-scramble jig-tray-scramble', onClick: () => this.jumble() },
-      '🔀 Scramble',
-    );
+    // The solved-board tray content — the Scramble button plus the "what next"
+    // tips beneath it. It sits ABOVE the svg so the button is clickable; the svg
+    // captures everything else. Shown once the map is solved.
+    this.scrambleBtn = el('button', { class: 'jig-btn jig-scramble', onClick: () => this.jumble() }, '🔀 Scramble');
+    this.tipZoom = el('div', { class: 'jig-tip' }, '');
+    this.tipSearch = el('div', { class: 'jig-tip' }, '🔍 Search up top to find a place');
+    this.traySolved = el('div', { class: 'jig-tray-solved' }, [this.scrambleBtn, this.tipZoom, this.tipSearch]);
     Object.assign(this.buildPanel.style, {
       left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
       top: pct(CANVAS_INSET), height: pct(SPLIT_TOP - CANVAS_INSET),
@@ -121,10 +121,10 @@ export class Board {
     });
     this.trayHint.style.top = pct((SPLIT_TOP + SPLIT_BOT) / 2);
     this.trayHint.style.display = 'none';
-    this.scrambleBtn.style.top = pct((SPLIT_BOT + (1 - CANVAS_INSET)) / 2);
-    this.scrambleBtn.style.display = 'none';
+    this.traySolved.style.top = pct((SPLIT_BOT + (1 - CANVAS_INSET)) / 2);
+    this.traySolved.style.display = 'none';
     return el('div', { class: 'jig-stage' }, [
-      this.buildPanel, this.trayPanel, this.trayHint, this.svg, this.scrambleBtn,
+      this.buildPanel, this.trayPanel, this.trayHint, this.svg, this.traySolved,
     ]);
   }
 
@@ -213,7 +213,7 @@ export class Board {
     this.seed.setPlaced(true);
     this.seed.g.classList.add('seed');
     this.trayHint.style.display = ''; // "drag up" between the panels while there are pieces
-    this.scrambleBtn.style.display = 'none';
+    this.traySolved.style.display = 'none';
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
     this.cbs.onHint?.('');
@@ -478,9 +478,11 @@ export class Board {
   #enterSolved({ played = false, toast = false } = {}) {
     this.phase = 'solved';
     this.trayHint.style.display = 'none'; // the tray is empty now; keep the panels...
-    this.scrambleBtn.style.display = ''; // ...with the Scramble button to play again
-    this.seed = null;
     const zoomable = this.pieces.some((p) => p.zoomable);
+    // ...and show the Scramble button + the "what next" tips in the tray.
+    this.tipZoom.textContent = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece for its card';
+    this.traySolved.style.display = '';
+    this.seed = null;
     // Groups become zoom targets; leaves become tap-for-info targets.
     this.pieces.forEach((p) => (p.zoomable ? p.markZoomable() : p.markSelectable()));
     this.cbs.onSolved?.(zoomable, played);
@@ -838,17 +840,29 @@ export class Board {
 
   // --- camera zoom ---------------------------------------------------------
 
-  // A zoom box around a piece at its CURRENT position (so it's accurate even if
-  // the assembled map ended up off-centre).
+  // The viewBox to zoom a piece to. Rather than filling the whole board (which
+  // would bleed the map down into the tray), it FRAMES the piece inside the build
+  // canvas — the same region the next level's map will occupy — so a zoom keeps
+  // everything in the top canvas and lands seamlessly on the child.
   #boxFor(piece) {
     const { geom, tx, ty } = piece;
-    return pieceBox({ minX: geom.minX + tx, minY: geom.minY + ty, w: geom.w, h: geom.h });
+    const [px, py, pw, ph] = pieceBox({ minX: geom.minX + tx, minY: geom.minY + ty, w: geom.w, h: geom.h });
+    // The build canvas as a fraction of the board.
+    const fx0 = CANVAS_INSET, fx1 = 1 - CANVAS_INSET, fy0 = CANVAS_INSET, fy1 = SPLIT_TOP;
+    const fw = fx1 - fx0, fh = fy1 - fy0;
+    const aspect = VB_W / this.vbH; // board (and viewBox) width : height
+    // Grow the viewBox so the piece exactly fits the build-canvas fraction of it.
+    const vw = Math.max(pw / fw, ((ph / fh) * aspect));
+    const vh = vw / aspect;
+    const vx = px + pw / 2 - ((fx0 + fx1) / 2) * vw;
+    const vy = py + ph / 2 - ((fy0 + fy1) / 2) * vh;
+    return [vx, vy, vw, vh];
   }
 
   #zoomInto(piece) {
     if (!piece.zoomable) return;
     this.phase = 'zooming';
-    this.scrambleBtn.style.display = 'none'; // don't float it over the zooming map
+    this.traySolved.style.display = 'none'; // don't float it over the zooming map
     this.pieces.forEach((p) => p !== piece && p.fadeOut());
     this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () =>
       this.cbs.onZoomInto?.(piece.id),
@@ -862,7 +876,7 @@ export class Board {
     const piece = this.pieces.find((p) => p.id === childId);
     if (!piece) return onArrived?.();
     this.phase = 'zooming';
-    this.scrambleBtn.style.display = 'none';
+    this.traySolved.style.display = 'none';
     this.pieces.forEach((p) => p !== piece && p.fadeOut());
     this.#animateZoom(fullVB(this.vbH), this.#boxFor(piece), () => onArrived?.());
   }

@@ -342,18 +342,35 @@ body {
   background: var(--accent);
   filter: brightness(0.94);
 }
-.jig-tray-scramble {
+/* Solved-board tray content: the Scramble button plus the "what next" tips,
+   centred in the tray. The container lets taps fall through to the map; only the
+   button is interactive. */
+.jig-tray-solved {
   position: absolute;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  pointer-events: none;
+}
+.jig-tray-solved .jig-scramble {
+  pointer-events: auto;
   font-size: 15px;
   padding: 12px 24px;
   border-radius: 999px;
   box-shadow: 0 6px 16px rgba(245, 158, 11, 0.32);
 }
-.jig-tray-scramble:active {
-  transform: translate(-50%, -50%) scale(0.97);
+.jig-tray-solved .jig-scramble:active {
+  transform: scale(0.97);
   filter: brightness(0.94);
+}
+.jig-tip {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
 }
 .jig-board {
   position: relative;
