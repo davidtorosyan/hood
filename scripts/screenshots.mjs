@@ -263,14 +263,19 @@ const seed = await seedName();
 const seedNbr = radj(seed)[0];
 if (!seedNbr) throw new Error(`seed ${seed} has no region neighbour on the board`);
 const seedP = (await readPieces()).find((p) => p.name === seed);
-await pressDragTo(seedNbr, seedP.tx + 120, seedP.ty + 120, false); // near the seed, in glow range, held
+// The connection radius scales with the smaller piece, so hold it just a little
+// off its mate — in glow range but not yet snapped.
+await pressDragTo(seedNbr, seedP.tx + 52, seedP.ty + 52, false);
 await page.waitForTimeout(120);
 if (!(await anyGlow())) errors.push('BUG: no connection glow as a piece nears the resolved section');
 await shot('connection-glow');
 await page.mouse.up();
+await page.waitForTimeout(300);
 
 // Pull it the last bit in to snap onto the seed, and grab a frame of the burst.
-await pressDragTo(seedNbr, seedP.tx + 22, seedP.ty + 22, true); // within snap → snaps + sparks
+if (((await readPieces()).find((p) => p.name === seedNbr)?.csize ?? 1) < 2) {
+  await pressDragTo(seedNbr, seedP.tx + 14, seedP.ty + 14, true); // within snap → snaps + sparks
+}
 await page.waitForTimeout(60);
 await page.screenshot({ path: `${OUT}/${String(++step).padStart(2, '0')}-snap-spark.png` });
 console.log('shot snap-spark');

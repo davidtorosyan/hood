@@ -25,8 +25,16 @@ import { Piece } from './piece.js';
 import { labelOf } from './tree.js';
 import { layoutLabels } from './labels.js';
 
-const SNAP = 150; // connection radius, in board user units
-const MAGNET = 200; // distance at which a piece starts to "feel" its connection
+// The connection radius scales with the SMALLER mating piece, so a small piece
+// only connects when its shared edge is genuinely close — not whenever it drifts
+// within a big fixed radius (which, for a small piece, meant the glow fired even
+// while it overlapped the map from the wrong side, borders not facing).
+const SNAP_FRAC = 0.5; // snap radius as a fraction of the smaller piece's min dimension
+const MAGNET_FRAC = 0.72; // where the glow starts to feel the connection
+const SNAP_MIN = 48;
+const SNAP_MAX = 150;
+const MAGNET_MIN = 74;
+const MAGNET_MAX = 210;
 const PADDLE_LIFT = 300; // how far above the finger a held piece floats (user units)
 const ZOOM_MS = 580;
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
@@ -358,11 +366,13 @@ export class Board {
     let best = null;
     if (resolved && cluster !== resolved) {
       for (const c of resolved) {
-        let adj = false;
-        for (const d of cluster) if (isAdjacent(d.id, c.id)) { adj = true; break; }
-        if (!adj) continue;
+        let src = null;
+        for (const d of cluster) if (isAdjacent(d.id, c.id)) { src = d; break; }
+        if (!src) continue;
         const dist = Math.hypot(tx - c.tx, ty - c.ty);
-        if (dist < SNAP && (!best || dist < best.dist)) best = { c, dist };
+        const { snap } = this.#mateRadius(src, c);
+        // resolved pieces share a translate (dist ties) — prefer the roomiest snap.
+        if (dist < snap && (!best || snap > best.snap)) best = { c, dist, snap };
       }
     }
     if (best) {
@@ -748,6 +758,18 @@ export class Board {
   // distance — i.e. closest to its correct relative position. The translate
   // metric means the glow only appears when the shared borders are actually being
   // brought together, not when an (in-map) neighbour happens to sit elsewhere.
+  // The snap + magnet radii for mating piece `a` with piece `b`, scaled to the
+  // smaller piece so the connection is proportional (small pieces connect tightly,
+  // and only when their edges genuinely face — not from across the piece).
+  #mateRadius(a, b) {
+    const s = Math.min(a.geom.w, a.geom.h, b.geom.w, b.geom.h);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    return {
+      snap: clamp(s * SNAP_FRAC, SNAP_MIN, SNAP_MAX),
+      magnet: clamp(s * MAGNET_FRAC, MAGNET_MIN, MAGNET_MAX),
+    };
+  }
+
   #glowTarget(cluster) {
     const resolved = this.#resolved();
     if (!resolved || cluster === resolved) return null; // only loose → resolved glows
@@ -758,7 +780,10 @@ export class Board {
       for (const d of cluster) if (isAdjacent(d.id, c.id)) { src = d; break; }
       if (!src) continue;
       const dist = Math.hypot(tx - c.tx, ty - c.ty);
-      if (!best || dist < best.dist) best = { source: src, target: c, dist };
+      const { snap, magnet } = this.#mateRadius(src, c);
+      // resolved pieces share a translate (dist ties) — prefer the pair with the
+      // most permissive (largest) magnet, i.e. the bigger neighbour's edge.
+      if (!best || magnet > best.magnet) best = { source: src, target: c, dist, snap, magnet };
     }
     return best;
   }
@@ -767,8 +792,8 @@ export class Board {
     const next = new Map();
     let connector = null;
     const m = this.#glowTarget(cluster);
-    if (m && m.dist < MAGNET) {
-      const glow = Math.max(0, Math.min(1, (MAGNET - m.dist) / (MAGNET - SNAP)));
+    if (m && m.dist < m.magnet) {
+      const glow = Math.max(0, Math.min(1, (m.magnet - m.dist) / (m.magnet - m.snap)));
       // Light up the TRUE shared border: compute it with the source piece placed
       // where it will SNAP (the target's translate), not where it's currently
       // dragged, so only the correct edge glows however you approach.
