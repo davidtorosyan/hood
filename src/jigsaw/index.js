@@ -11,6 +11,7 @@ import { screen } from '../ui/chrome.js';
 import { ROOT, NODES, pathIds } from './tree.js';
 import { Board } from './board.js';
 import { breadcrumb, actionButton, showToast } from './ui.js';
+import { statsOf, fmtArea, fmtPeople } from './stats.js';
 import { showCard } from './card.js';
 import { openSearch } from './search.js';
 import { store } from '../store.js';
@@ -135,10 +136,18 @@ function renderNode(app, ctx, nodeId, opts) {
   currentBoard = board;
   boardWrap.append(board.root);
 
+  // Aggregate area + population for the level you're on, under the breadcrumb.
+  const st = statsOf(nodeId);
+  const statBits = [`${fmtArea(st.area)} sq mi`];
+  if (st.pop > 0) statBits.push(`${fmtPeople(st.pop)} people`);
+
   clear(app);
   app.append(
     screen('Jigsaw', goUp, [
-      el('div', { class: 'jig-crumb-row' }, [breadcrumb(nodeId, goTo), ctrl.button]),
+      el('div', { class: 'jig-header' }, [
+        el('div', { class: 'jig-crumb-row' }, [breadcrumb(nodeId, goTo), ctrl.button]),
+        el('div', { class: 'jig-stats' }, statBits.join('  ·  ')),
+      ]),
       boardWrap,
     ], { bodyClass: 'jig-body', action: tools }),
   );

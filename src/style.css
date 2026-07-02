@@ -286,6 +286,19 @@ body {
 }
 
 /* Breadcrumb: where you are in the nesting; each level is tappable. */
+/* The header: breadcrumb row + an aggregate area/population line for the level. */
+.jig-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: none;
+}
+.jig-stats {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
 /* The breadcrumb row: crumbs on the left, the Solve/zoom-out button on the right,
    sharing one row (no dedicated header bar just for the button). */
 .jig-crumb-row {

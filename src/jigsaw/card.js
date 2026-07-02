@@ -6,6 +6,7 @@ import { geoMercator } from 'd3-geo';
 import { el, svgEl } from '../ui/dom.js';
 import { labelOf, pathIds, shapeOf } from './tree.js';
 import { PLACES } from '../data/places.js';
+import { statsOf, fmtArea } from './stats.js';
 
 // Render the leaf's boundary as a small centered outline.
 function shapeThumb(id) {
@@ -40,6 +41,7 @@ export function showCard(host, id) {
   const onKey = (e) => e.key === 'Escape' && close();
 
   const pop = fmtPop(info.pop);
+  const area = `${fmtArea(statsOf(id).area)} sq mi`;
   const card = el('div', { class: 'card', role: 'dialog', 'aria-label': labelOf(id) }, [
     el('button', { class: 'card-close', onClick: close, 'aria-label': 'Close' }, '✕'),
     shapeThumb(id),
@@ -50,8 +52,8 @@ export function showCard(host, id) {
     ]),
     el('div', { class: 'card-pop' },
       pop
-        ? [el('b', {}, pop), ' residents (approx.)']
-        : [el('b', {}, 'Mostly parkland'), ' — few residents'],
+        ? [el('b', {}, pop), ' residents · ', el('b', {}, area)]
+        : [el('b', {}, 'Mostly parkland'), ' · ', el('b', {}, area)],
     ),
     info.fact ? el('p', { class: 'card-fact' }, info.fact) : null,
   ]);
