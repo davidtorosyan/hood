@@ -22,34 +22,27 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// The status banner: a hint and ONE top-right button that swaps with state — it's
-// "Solve" while you're assembling (snap the pieces together), and the "↑" zoom-out
-// control once the map is solved. (Scramble lives in the tray; the shake gesture
-// still works as a bonus.)
-export function statusBanner({ onUp, onSolve }) {
-  const hint = el('span', { class: 'jig-hint' }, '');
-
+// One small button that rides the breadcrumb row and swaps with state: "Solve"
+// while assembling (snap the pieces together), and the "↑" zoom-out control once
+// the map is solved. (Scramble lives in the tray; the shake gesture still works.)
+export function actionButton({ onUp, onSolve }) {
   let mode = 'scramble'; // 'solve' (assembling) → "Solve"; otherwise → "↑"
-  const topBtn = el('button', {
+  const button = el('button', {
     class: 'jig-btn jig-topbtn jig-up',
     onClick: () => (mode === 'solve' ? onSolve() : onUp()),
   }, '↑');
 
-  const banner = el('div', { class: 'jig-banner' }, [hint, topBtn]);
-
   return {
-    banner,
-    setHint: (t) => (hint.textContent = t),
-    // mode: 'solve' while assembling → the button is "Solve"; otherwise it's the
-    // up/zoom-out control.
+    button,
+    // mode: 'solve' while assembling → "Solve"; otherwise the up/zoom-out control.
     setAction: (m) => {
       mode = m;
       const solving = m === 'solve';
-      topBtn.textContent = solving ? 'Solve' : '↑';
-      topBtn.classList.toggle('jig-solve', solving);
-      topBtn.classList.toggle('jig-up', !solving);
-      topBtn.title = solving ? 'Snap the pieces together' : 'Zoom out one level';
-      topBtn.setAttribute('aria-label', solving ? 'Solve' : 'Zoom out');
+      button.textContent = solving ? 'Solve' : '↑';
+      button.classList.toggle('jig-solve', solving);
+      button.classList.toggle('jig-up', !solving);
+      button.title = solving ? 'Snap the pieces together' : 'Zoom out one level';
+      button.setAttribute('aria-label', solving ? 'Solve' : 'Zoom out');
     },
   };
 }

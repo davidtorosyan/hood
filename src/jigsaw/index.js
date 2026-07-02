@@ -10,7 +10,7 @@ import { el, clear } from '../ui/dom.js';
 import { screen } from '../ui/chrome.js';
 import { ROOT, NODES, pathIds } from './tree.js';
 import { Board } from './board.js';
-import { breadcrumb, statusBanner, showToast } from './ui.js';
+import { breadcrumb, actionButton, showToast } from './ui.js';
 import { showCard } from './card.js';
 import { openSearch } from './search.js';
 import { store } from '../store.js';
@@ -120,30 +120,27 @@ function renderNode(app, ctx, nodeId, opts) {
   const tools = el('div', { class: 'topbar-tools' }, [searchBtn]);
 
   // --- chrome ---
-  const bannerUi = statusBanner({
-    onUp: goUp,
-    onSolve: () => board.solve(),
-  });
+  // The Solve/zoom-out control rides the breadcrumb row (no dedicated header bar).
+  const ctrl = actionButton({ onUp: goUp, onSolve: () => board.solve() });
   const boardWrap = el('div', { class: `jig-board mode-${mode}` });
 
   // --- board ---
   const board = new Board(nodeId, {
-    onHint: (text) => bannerUi.setHint(text),
     onToast: (msg) => showToast(boardWrap, msg),
     onZoomInto: zoomInto,
     onZoomOut: goUp,
     onSelectLeaf: (id) => showCard(app, id),
-    onAction: (mode) => bannerUi.setAction(mode),
+    onAction: (mode) => ctrl.setAction(mode),
   });
   currentBoard = board;
   boardWrap.append(board.root);
 
   clear(app);
   app.append(
-    screen('Jigsaw', goUp, [breadcrumb(nodeId, goTo), bannerUi.banner, boardWrap], {
-      bodyClass: 'jig-body',
-      action: tools,
-    }),
+    screen('Jigsaw', goUp, [
+      el('div', { class: 'jig-crumb-row' }, [breadcrumb(nodeId, goTo), ctrl.button]),
+      boardWrap,
+    ], { bodyClass: 'jig-body', action: tools }),
   );
 
   // Measure the board so the SVG viewBox matches its aspect (the map fills it

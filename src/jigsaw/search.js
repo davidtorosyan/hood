@@ -87,5 +87,8 @@ export function openSearch({ onPick }) {
   input.addEventListener('input', render);
   document.addEventListener('keydown', onKey);
   document.body.append(overlay);
-  requestAnimationFrame(() => input.focus());
+  // Focus synchronously, still inside the tap gesture that opened the search, so
+  // mobile browsers raise the keyboard (a deferred focus doesn't count as a user
+  // gesture, and iOS then refuses to show it).
+  input.focus();
 }
