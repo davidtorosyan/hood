@@ -73,6 +73,27 @@ body {
   cursor: pointer;
   flex: none;
 }
+/* Search: a labeled pill in the top bar (icon + the word), so it's discoverable. */
+.search-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 15px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: none;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.search-btn:active {
+  background: var(--line);
+}
 
 /* ---- Top bar ------------------------------------------------------------- */
 .topbar {

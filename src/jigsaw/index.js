@@ -114,8 +114,8 @@ function renderNode(app, ctx, nodeId, opts) {
   };
   const searchBtn = el(
     'button',
-    { class: 'icon-btn search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
-    '🔍',
+    { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
+    '🔍 Search',
   );
   const tools = el('div', { class: 'topbar-tools' }, [searchBtn]);
 

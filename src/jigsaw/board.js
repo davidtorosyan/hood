@@ -109,8 +109,7 @@ export class Board {
     // captures everything else. Shown once the map is solved.
     this.scrambleBtn = el('button', { class: 'jig-btn jig-scramble', onClick: () => this.jumble() }, '🔀 Scramble');
     this.tipZoom = el('div', { class: 'jig-tip' }, '');
-    this.tipSearch = el('div', { class: 'jig-tip' }, '🔍 Search up top to find a place');
-    this.traySolved = el('div', { class: 'jig-tray-solved' }, [this.scrambleBtn, this.tipZoom, this.tipSearch]);
+    this.traySolved = el('div', { class: 'jig-tray-solved' }, [this.scrambleBtn, this.tipZoom]);
     Object.assign(this.buildPanel.style, {
       left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
       top: pct(CANVAS_INSET), height: pct(SPLIT_TOP - CANVAS_INSET),
