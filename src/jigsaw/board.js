@@ -11,11 +11,11 @@ import { isAdjacent } from './tree.js';
 import { colorForIndex } from './palette.js';
 import {
   VB_W,
+  FILL,
   CANVAS_INSET,
   SPLIT_TOP,
   SPLIT_BOT,
   fullVB,
-  pieceBox,
   projectChildren,
   bottomScatter,
   facingInfo,
@@ -23,7 +23,7 @@ import {
 } from './geometry.js';
 import { Piece } from './piece.js';
 import { labelOf } from './tree.js';
-import { layoutLabels } from './labels.js';
+import { layoutLabels, wrapLabel } from './labels.js';
 
 // The connection radius scales with the SMALLER mating piece, so a small piece
 // only connects when its shared edge is genuinely close — not whenever it drifts
@@ -846,16 +846,18 @@ export class Board {
   // everything in the top canvas and lands seamlessly on the child.
   #boxFor(piece) {
     const { geom, tx, ty } = piece;
-    const [px, py, pw, ph] = pieceBox({ minX: geom.minX + tx, minY: geom.minY + ty, w: geom.w, h: geom.h });
-    // The build canvas as a fraction of the board.
+    const px = geom.minX + tx;
+    const py = geom.minY + ty;
+    // Fit the piece to FILL of the build-canvas fraction — the exact same fraction
+    // the child level's map fills — so the region is the same size across the
+    // zoom handoff (no size jump / "jitter").
     const fx0 = CANVAS_INSET, fx1 = 1 - CANVAS_INSET, fy0 = CANVAS_INSET, fy1 = SPLIT_TOP;
-    const fw = fx1 - fx0, fh = fy1 - fy0;
+    const fw = (fx1 - fx0) * FILL, fh = (fy1 - fy0) * FILL;
     const aspect = VB_W / this.vbH; // board (and viewBox) width : height
-    // Grow the viewBox so the piece exactly fits the build-canvas fraction of it.
-    const vw = Math.max(pw / fw, ((ph / fh) * aspect));
+    const vw = Math.max(geom.w / fw, (geom.h / fh) * aspect);
     const vh = vw / aspect;
-    const vx = px + pw / 2 - ((fx0 + fx1) / 2) * vw;
-    const vy = py + ph / 2 - ((fy0 + fy1) / 2) * vh;
+    const vx = px + geom.w / 2 - ((fx0 + fx1) / 2) * vw;
+    const vy = py + geom.h / 2 - ((fy0 + fy1) / 2) * vh;
     return [vx, vy, vw, vh];
   }
 
@@ -891,18 +893,51 @@ export class Board {
   // of the given colour (the parent's colour for this region), then run `onDone`
   // (which renders the parent and camera-zooms out). Only meaningful once solved;
   // otherwise it just hands straight off.
-  collapse(color, onDone) {
+  collapse(color, name, onDone) {
     if (this.phase !== 'solved') return void onDone();
     this.#cancelPending();
     this.phase = 'zooming';
     this.traySolved.style.display = 'none';
     for (const p of this.pieces) p.g.classList.add('collapsing');
+    this.#showCollapseName(name);
     this.svg.getBoundingClientRect(); // commit the start colours so the morph runs
     for (const p of this.pieces) p.collapse(color);
     this.#pendingTimer = setTimeout(onDone, COLLAPSE_MS);
   }
 
+  // The merged region's own name, fading in centred over the collapsing shape (as
+  // the individual piece labels fade out).
+  #showCollapseName(name) {
+    let sx = 0;
+    let sy = 0;
+    for (const p of this.pieces) { sx += p.geom.cx; sy += p.geom.cy; }
+    const cx = sx / this.pieces.length;
+    const cy = sy / this.pieces.length;
+    const lines = wrapLabel(name);
+    const fs = 42;
+    const lh = fs * 1.05;
+    const text = svgEl('text', { class: 'jig-collapse-name', 'text-anchor': 'middle' });
+    text.style.fontSize = `${fs}px`;
+    lines.forEach((ln, i) => {
+      const ts = svgEl('tspan', {
+        x: cx.toFixed(1),
+        y: (cy + (i - (lines.length - 1) / 2) * lh).toFixed(1),
+        'dominant-baseline': 'central',
+      });
+      ts.textContent = ln;
+      text.append(ts);
+    });
+    text.style.opacity = '0';
+    this.labelLayer.append(text);
+    this.svg.getBoundingClientRect();
+    text.style.transition = 'opacity 0.3s ease 0.06s';
+    text.style.opacity = '1';
+  }
+
   #animateZoom(from, to, onDone) {
+    // Commit the start frame immediately so there's no flash of the un-zoomed view
+    // before the animation's first rAF (the source of the zoom-out "jitter").
+    this.svg.setAttribute('viewBox', from.map((v) => v.toFixed(1)).join(' '));
     const t0 = performance.now();
     const ease = (t) => 1 - Math.pow(1 - t, 3);
     const frame = (now) => {

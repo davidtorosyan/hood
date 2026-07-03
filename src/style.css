@@ -517,6 +517,18 @@ body {
   stroke: var(--fill);
   transition: fill 0.45s ease, stroke 0.45s ease;
 }
+/* The merged region's name, fading in over the smooshed shape (same styling as a
+   piece label, a touch bigger). */
+.jig-collapse-name {
+  fill: #0c1320;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 8px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
 /* The seed: the anchor piece left in place after a scramble. It already stands
    out as the one COLOURED piece among the grey loose ones; a soft shadow lifts it
    so it reads as the thing to build onto. No accent outline — that colour is

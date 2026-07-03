@@ -80,7 +80,8 @@ function renderNode(app, ctx, nodeId, opts) {
     // region (in the parent's colour), then camera-zoom out to it. Only when the
     // map is solved; otherwise go straight up.
     if (board.phase === 'solved') {
-      board.collapse(colorForIndex(childrenOf(node.parent).indexOf(nodeId)), up);
+      const color = colorForIndex(childrenOf(node.parent).indexOf(nodeId));
+      board.collapse(color, NODES[nodeId].label, up);
     } else {
       up();
     }
@@ -162,9 +163,11 @@ function renderNode(app, ctx, nodeId, opts) {
     ], { bodyClass: 'jig-body', action: tools }),
   );
 
-  // Measure the board so the SVG viewBox matches its aspect (the map fills it
-  // with no letterboxing), then build the pieces and start.
-  requestAnimationFrame(() => {
+  // Measure the board so the SVG viewBox matches its aspect (the map fills it with
+  // no letterboxing), then build the pieces and start — synchronously right after
+  // the append (reading clientWidth forces layout), so a zoom-out never flashes an
+  // empty board for a frame before the map appears.
+  {
     const w = boardWrap.clientWidth || 360;
     const h = boardWrap.clientHeight || 360;
     const vbH = Math.round((1000 * h) / w);
@@ -190,7 +193,12 @@ function renderNode(app, ctx, nodeId, opts) {
       setTimeout(() => {
         if (opts.fly !== flyToken) return; // cancelled by a manual move
         if (goingUp) {
-          renderNode(app, ctx, next, { ...nextOpts, zoomOutFrom: nodeId });
+          // Same two-step as a manual zoom-out: smoosh this level into its region,
+          // then render the parent (which reverse-zooms out to it).
+          const color = colorForIndex(childrenOf(next).indexOf(nodeId));
+          board.collapse(color, NODES[nodeId].label, () => {
+            if (opts.fly === flyToken) renderNode(app, ctx, next, { ...nextOpts, zoomOutFrom: nodeId });
+          });
         } else {
           board.zoomToChild(next, () => {
             if (opts.fly === flyToken) renderNode(app, ctx, next, nextOpts);
@@ -204,5 +212,5 @@ function renderNode(app, ctx, nodeId, opts) {
         arrivedByZoomOut ? FLY_ZOOM_MS + 60 : 150,
       );
     }
-  });
+  }
 }
