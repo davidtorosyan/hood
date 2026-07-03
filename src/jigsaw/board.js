@@ -449,6 +449,7 @@ export class Board {
       for (const p of dragged) store.markSeen(p.id);
     }
     this.#refresh();
+    if (best) this.#persist(); // a piece connected — that's worth saving
     return !!best;
   }
 
@@ -515,7 +516,6 @@ export class Board {
       this.#enterSolved({ played: true, toast: true });
     } else {
       this.#emitControls();
-      this.#persist(); // save progress after each piece connects
     }
   }
 
@@ -733,13 +733,13 @@ export class Board {
     if (!snapped) this.#returnToTray(g.cluster);
   }
 
-  // Spring a dropped-but-unconnected cluster back to its tray position.
+  // Spring a dropped-but-unconnected cluster back to its tray spot. Not a real
+  // event — the piece is right back where it was — so nothing to save.
   #returnToTray(cluster) {
     for (const p of cluster) p.setSettling(true);
     this.svg.getBoundingClientRect(); // reflow so the transition runs
     for (const p of cluster) p.moveTo(p.scatterTx, p.scatterTy);
     setTimeout(() => { for (const p of cluster) p.setSettling(false); }, SETTLE_MS);
-    this.#persist(); // its resting spot is set; save it
   }
 
   // --- the drag paddle ---
