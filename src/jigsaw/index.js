@@ -60,9 +60,11 @@ function setupDeviceShake() {
   else install();
 }
 
-export function mountJigsaw(app, { back }) {
+// `resume` (optional) is a saved { node, board } to drop straight back into.
+export function mountJigsaw(app, { back, resume } = {}) {
   setupDeviceShake();
-  renderNode(app, { back }, ROOT, {});
+  const at = resume && NODES[resume.node] ? resume.node : ROOT;
+  renderNode(app, { back }, at, { restore: at === resume?.node ? resume.board : null });
 }
 
 function renderNode(app, ctx, nodeId, opts) {
@@ -143,6 +145,8 @@ function renderNode(app, ctx, nodeId, opts) {
     onZoomOut: goUp,
     onSelectLeaf: (id) => showCard(app, id),
     onAction: (mode) => ctrl.setAction(mode),
+    // Remember where we are + the puzzle in progress, so a reload restores it.
+    onPersist: () => store.saveNav({ node: nodeId, board: board.serialize() }),
   });
   currentBoard = board;
   boardWrap.append(board.root);
@@ -172,7 +176,7 @@ function renderNode(app, ctx, nodeId, opts) {
     const h = boardWrap.clientHeight || 360;
     const vbH = Math.round((1000 * h) / w);
     board.build(vbH, mode);
-    board.start({ zoomOutFrom: opts.zoomOutFrom });
+    board.start({ zoomOutFrom: opts.zoomOutFrom, restore: opts.restore });
 
     const flying = opts.fly && opts.fly === flyToken;
     if (!flying) return;

@@ -46,4 +46,18 @@ export const store = {
     state.mode = m;
     save(state);
   },
+  // Where the player last was: { node, board } — `board` is the serialized
+  // in-progress puzzle (or null when solved), so a reload drops them right back
+  // in instead of on the home screen. Cleared when they return home.
+  nav() {
+    return state.nav || null;
+  },
+  saveNav(nav) {
+    state.nav = nav;
+    save(state);
+  },
+  clearNav() {
+    delete state.nav;
+    save(state);
+  },
 };

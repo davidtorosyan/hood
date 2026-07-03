@@ -1,6 +1,8 @@
 import './style.css';
 import { el, clear } from './ui/dom.js';
 import { mountJigsaw } from './jigsaw/index.js';
+import { NODES } from './jigsaw/tree.js';
+import { store } from './store.js';
 
 // In dev, kill any stale PWA service worker + caches. The dev server's port can
 // cycle (5173/5175/…) and come back; a service worker registered for this
@@ -14,6 +16,13 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
 
 const app = document.querySelector('#app');
 
+// Leaving the jigsaw for home also forgets the saved spot, so the next launch
+// opens on home (until they play again).
+function goHome() {
+  store.clearNav();
+  renderHome();
+}
+
 function renderHome() {
   clear(app);
   app.append(
@@ -23,10 +32,18 @@ function renderHome() {
         el('p', { class: 'home-tag' }, 'Get to know Los Angeles County — piece by piece.'),
       ]),
       el('div', { class: 'home-art' }, '🧩'),
-      el('button', { class: 'btn home-play', onClick: () => mountJigsaw(app, { back: renderHome }) }, 'Play'),
+      el('button', { class: 'btn home-play', onClick: () => mountJigsaw(app, { back: goHome }) }, 'Play'),
       el('p', { class: 'home-note' }, 'Drag the pieces together, then tap one to zoom in.'),
     ]),
   );
 }
 
-renderHome();
+// Resume the last spot (node + in-progress puzzle) if we have a valid one — so a
+// reload / PWA restart drops you back in instead of on home.
+const nav = store.nav();
+if (nav && NODES[nav.node]) {
+  mountJigsaw(app, { back: goHome, resume: nav });
+} else {
+  if (nav) store.clearNav(); // stale (data changed under it)
+  renderHome();
+}

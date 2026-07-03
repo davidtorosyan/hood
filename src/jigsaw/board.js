@@ -81,7 +81,7 @@ class ShakeDetector {
 export class Board {
   #pendingTimer = 0; // a scheduled end-of-animation callback we may need to cancel
 
-  // cbs: { onHint(text), onSolved(zoomable),
+  // cbs: { onHint(text), onSolved(zoomable), onPersist(),
   //        onZoomInto(childId), onToast(msg), onSelectLeaf(id), onAction(mode) }
   constructor(nodeId, cbs = {}) {
     this.nodeId = nodeId;
@@ -186,15 +186,73 @@ export class Board {
     this.#initClusters();
   }
 
-  // Begin the level already assembled — we never auto-jumble; the player decides
-  // when to scramble. `zoomOutFrom` reverse-zooms from the child we arrived from.
-  start({ zoomOutFrom = null } = {}) {
-    this.#snapAll();
-    this.#enterSolved({ played: false }); // loaded assembled — not "solved by you"
+  // Begin the level. Normally already assembled (the player decides when to
+  // scramble); `restore` re-hydrates a saved in-progress puzzle instead.
+  // `zoomOutFrom` reverse-zooms from the child we arrived from.
+  start({ zoomOutFrom = null, restore = null } = {}) {
+    if (restore && restore.phase === 'play') {
+      this.#restorePlay(restore);
+    } else {
+      this.#snapAll();
+      this.#enterSolved({ played: false }); // loaded assembled — not "solved by you"
+    }
     if (zoomOutFrom) {
       const from = this.pieces.find((p) => p.id === zoomOutFrom);
       if (from) this.#animateZoom(this.#boxFor(from), fullVB(this.vbH));
     }
+  }
+
+  // Serialize the puzzle for persistence: null when solved (a reload rebuilds it
+  // assembled), otherwise the seed + every piece's position and whether it's part
+  // of the resolved section, so an in-progress scramble comes back intact.
+  serialize() {
+    // 'jumbling' counts: the pieces are already at their scatter targets.
+    if (this.phase !== 'play' && this.phase !== 'jumbling') return null;
+    const resolved = this.#resolved();
+    const pieces = {};
+    for (const p of this.pieces) {
+      pieces[p.id] = [Math.round(p.tx), Math.round(p.ty), p.cluster === resolved ? 1 : 0];
+    }
+    return { phase: 'play', seed: this.seed?.id ?? null, pieces };
+  }
+
+  // Re-hydrate a saved in-progress scramble. Falls back to assembled if the saved
+  // pieces don't match this node (e.g. the data changed under an old save).
+  #restorePlay(saved) {
+    const byId = new Map(this.pieces.map((p) => [p.id, p]));
+    if (!saved.pieces || !this.pieces.every((p) => saved.pieces[p.id])) {
+      this.#snapAll();
+      this.#enterSolved({ played: false });
+      return;
+    }
+    const resolved = new Set();
+    for (const p of this.pieces) {
+      const [tx, ty, placed] = saved.pieces[p.id];
+      p.moveTo(tx, ty);
+      if (placed) resolved.add(p);
+    }
+    this.seed = byId.get(saved.seed) || null;
+    if (this.seed) resolved.add(this.seed);
+    for (const p of this.pieces) {
+      if (resolved.has(p)) {
+        p.cluster = resolved;
+        p.setPlaced(true);
+      } else {
+        p.cluster = new Set([p]);
+        p.setPlaced(false);
+      }
+    }
+    if (this.seed) this.seed.g.classList.add('seed');
+    this.phase = 'play';
+    this.trayHint.style.display = '';
+    this.traySolved.style.display = 'none';
+    this.cbs.onHint?.('');
+    this.#emitProgress();
+    this.#emitControls();
+  }
+
+  #persist() {
+    this.cbs.onPersist?.();
   }
 
   // Burst the assembled map apart into loose pieces for the player to rebuild.
@@ -224,8 +282,10 @@ export class Board {
       () => {
         this.phase = 'play';
         this.#emitControls();
+        this.#persist();
       },
     );
+    this.#persist(); // save the scramble immediately (pieces are already at target)
   }
 
   // Snap everything home (the Solve button — gave up, or just want to move on).
@@ -451,8 +511,12 @@ export class Board {
     // A piece shows its map colour once it's in a multi-piece cluster — or if it's
     // the lone seed, which reads as placed from the start.
     for (const p of this.pieces) p.setPlaced(p.cluster.size > 1 || p === this.seed);
-    if (this.#allClusters().size === 1 && this.phase === 'play') this.#enterSolved({ played: true, toast: true });
-    else this.#emitControls();
+    if (this.#allClusters().size === 1 && this.phase === 'play') {
+      this.#enterSolved({ played: true, toast: true });
+    } else {
+      this.#emitControls();
+      this.#persist(); // save progress after each piece connects
+    }
   }
 
   // Tag each piece with its cluster id + size — exposed via data-* for the
@@ -487,6 +551,7 @@ export class Board {
     this.pieces.forEach((p) => (p.zoomable ? p.markZoomable() : p.markSelectable()));
     this.cbs.onSolved?.(zoomable, played);
     this.#emitControls();
+    this.#persist(); // solved → save the node (board rebuilds assembled on reload)
     if (toast) this.cbs.onToast?.(`${labelOf(this.nodeId)} solved!`);
   }
 
@@ -674,6 +739,7 @@ export class Board {
     this.svg.getBoundingClientRect(); // reflow so the transition runs
     for (const p of cluster) p.moveTo(p.scatterTx, p.scatterTy);
     setTimeout(() => { for (const p of cluster) p.setSettling(false); }, SETTLE_MS);
+    this.#persist(); // its resting spot is set; save it
   }
 
   // --- the drag paddle ---
