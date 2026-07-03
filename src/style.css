@@ -510,6 +510,13 @@ body {
 .jig-piece.placed .jig-shape {
   fill: var(--fill, #9bdcc1);
 }
+/* Zoom-out step 1: the pieces smoosh into one region — fill morphs to a shared
+   colour and the seams (borders) melt into it, so the map becomes a solid shape. */
+.jig-piece.collapsing .jig-shape {
+  fill: var(--fill);
+  stroke: var(--fill);
+  transition: fill 0.45s ease, stroke 0.45s ease;
+}
 /* The seed: the anchor piece left in place after a scramble. It already stands
    out as the one COLOURED piece among the grey loose ones; a soft shadow lifts it
    so it reads as the thing to build onto. No accent outline — that colour is

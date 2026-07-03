@@ -8,7 +8,8 @@
 // in the Board.
 import { el, clear } from '../ui/dom.js';
 import { screen } from '../ui/chrome.js';
-import { ROOT, NODES, pathIds } from './tree.js';
+import { ROOT, NODES, pathIds, childrenOf } from './tree.js';
+import { colorForIndex } from './palette.js';
 import { Board } from './board.js';
 import { breadcrumb, actionButton, showToast } from './ui.js';
 import { statsOf, fmtArea, fmtPeople } from './stats.js';
@@ -73,7 +74,16 @@ function renderNode(app, ctx, nodeId, opts) {
   const cancelFly = () => (flyToken = null);
   const goUp = () => {
     cancelFly();
-    node.parent ? renderNode(app, ctx, node.parent, { zoomOutFrom: nodeId }) : ctx.back();
+    if (!node.parent) return ctx.back();
+    const up = () => renderNode(app, ctx, node.parent, { zoomOutFrom: nodeId });
+    // Two-step zoom-out: first smoosh this level's pieces into the single parent
+    // region (in the parent's colour), then camera-zoom out to it. Only when the
+    // map is solved; otherwise go straight up.
+    if (board.phase === 'solved') {
+      board.collapse(colorForIndex(childrenOf(node.parent).indexOf(nodeId)), up);
+    } else {
+      up();
+    }
   };
   const goTo = (id) => {
     if (id === nodeId) return;

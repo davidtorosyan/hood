@@ -148,6 +148,16 @@ export class Piece {
     this.g.classList.add('selectable');
   }
 
+  // Smoosh this piece into the combined parent region: its fill morphs to the
+  // shared `color`, its border melts into that fill (so the seams between pieces
+  // vanish), and its label fades — leaving one solid shape. Used on zoom-out. The
+  // Board adds the `.collapsing` class (with the transition) first, then calls this.
+  collapse(color) {
+    this.g.style.setProperty('--fill', color);
+    this.labelEl.style.transition = 'opacity 0.26s ease';
+    this.labelEl.style.opacity = '0';
+  }
+
   // Pulse the piece a few times to draw the eye (a search just landed on it).
   flash() {
     this.g.classList.remove('flash');

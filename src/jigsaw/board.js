@@ -37,6 +37,7 @@ const MAGNET_MIN = 74;
 const MAGNET_MAX = 210;
 const PADDLE_LIFT = 300; // how far above the finger a held piece floats (user units)
 const ZOOM_MS = 580;
+const COLLAPSE_MS = 450; // pieces smoosh into the parent region before zooming out
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
 const SNAP_MS = 150; // the "click" pull-in when a piece connects
@@ -884,6 +885,21 @@ export class Board {
   // that contains the searched place, so you can spot it.
   flashPiece(id) {
     this.pieces.find((p) => p.id === id)?.flash();
+  }
+
+  // Step one of a zoom-OUT: smoosh the assembled pieces into a single solid shape
+  // of the given colour (the parent's colour for this region), then run `onDone`
+  // (which renders the parent and camera-zooms out). Only meaningful once solved;
+  // otherwise it just hands straight off.
+  collapse(color, onDone) {
+    if (this.phase !== 'solved') return void onDone();
+    this.#cancelPending();
+    this.phase = 'zooming';
+    this.traySolved.style.display = 'none';
+    for (const p of this.pieces) p.g.classList.add('collapsing');
+    this.svg.getBoundingClientRect(); // commit the start colours so the morph runs
+    for (const p of this.pieces) p.collapse(color);
+    this.#pendingTimer = setTimeout(onDone, COLLAPSE_MS);
   }
 
   #animateZoom(from, to, onDone) {
