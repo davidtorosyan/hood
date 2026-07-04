@@ -3,6 +3,10 @@ import { el, clear } from './ui/dom.js';
 import { mountJigsaw } from './jigsaw/index.js';
 import { NODES } from './jigsaw/tree.js';
 import { store } from './store.js';
+import { initTelemetry } from './telemetry.js';
+import { openBugReport } from './bugreport.js';
+
+initTelemetry();
 
 // In dev, kill any stale PWA service worker + caches. The dev server's port can
 // cycle (5173/5175/…) and come back; a service worker registered for this
@@ -34,6 +38,7 @@ function renderHome() {
       el('div', { class: 'home-art' }, '🧩'),
       el('button', { class: 'btn home-play', onClick: () => mountJigsaw(app, { back: goHome }) }, 'Play'),
       el('p', { class: 'home-note' }, 'Drag the pieces together, then tap one to zoom in.'),
+      el('button', { class: 'home-report', onClick: openBugReport }, 'Report a bug'),
     ]),
   );
 }

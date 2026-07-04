@@ -15,6 +15,7 @@ import { breadcrumb, actionButton, showToast } from './ui.js';
 import { statsOf, fmtArea, fmtPeople } from './stats.js';
 import { showCard } from './card.js';
 import { openSearch } from './search.js';
+import { openBugReport } from '../bugreport.js';
 import { store } from '../store.js';
 
 // The board currently on screen — the target for a device shake.
@@ -131,7 +132,12 @@ function renderNode(app, ctx, nodeId, opts) {
     { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
     '🔍 Search',
   );
-  const tools = el('div', { class: 'topbar-tools' }, [searchBtn]);
+  const bugBtn = el(
+    'button',
+    { class: 'icon-btn bug-icon', onClick: openBugReport, 'aria-label': 'Report a bug', title: 'Report a bug' },
+    '🐞',
+  );
+  const tools = el('div', { class: 'topbar-tools' }, [bugBtn, searchBtn]);
 
   // --- chrome ---
   // The Solve/zoom-out control rides the breadcrumb row (no dedicated header bar).

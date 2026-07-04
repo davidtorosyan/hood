@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -5,8 +6,17 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Override at build time with BASE_PATH if the repo name differs.
 const base = process.env.BASE_PATH ?? '/hood/';
 
+// Short commit, baked in so bug reports say exactly which build they hit.
+let commit = 'dev';
+try {
+  commit = execSync('git rev-parse --short HEAD').toString().trim();
+} catch {
+  /* not a git checkout (or git missing) — fine */
+}
+
 export default defineConfig({
   base,
+  define: { __COMMIT__: JSON.stringify(commit) },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
