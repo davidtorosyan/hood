@@ -13,14 +13,17 @@ import {
   VB_W,
   FILL,
   CANVAS_INSET,
-  SPLIT_TOP,
-  SPLIT_BOT,
+  layoutFor,
   fullVB,
   projectChildren,
-  bottomScatter,
+  trayScatter,
   facingInfo,
   ringContains,
 } from './geometry.js';
+
+// A precise pointer (mouse/trackpad) doesn't obscure the piece under it, so on
+// desktop we drag pieces directly — no "paddle" lift that keeps a fingertip clear.
+const HAS_MOUSE = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
 import { Piece } from './piece.js';
 import { labelOf } from './tree.js';
 import { layoutLabels, wrapLabel } from './labels.js';
@@ -92,6 +95,8 @@ export class Board {
     this.gesture = null; // current gesture: piece drag, pan, or pinch
     this.glowing = new Set(); // pieces currently showing a connection glow
     this.seed = null; // the anchor piece left in place to build around after a scramble
+    this.lift = HAS_MOUSE ? 0 : PADDLE_LIFT; // no paddle lift when dragging with a mouse
+    this.layout = layoutFor(VB_W); // updated per measured aspect in build()
     this.vbH = VB_W;
     this.svg = this.#initSvg();
     this.root = this.#initStage(); // the two fixed canvas panels + the svg over them
@@ -99,33 +104,49 @@ export class Board {
 
   // The board stage: two fixed CSS panels (the build canvas + the tray canvas,
   // always present) with the transparent SVG layered over them. The panels are
-  // chrome — they don't zoom with the camera. Positions track the geometry split.
+  // chrome — they don't zoom with the camera. Positions are set in #positionPanels
+  // once the board is measured (they depend on portrait vs landscape).
   #initStage() {
-    const pct = (v) => `${(v * 100).toFixed(2)}%`;
     this.buildPanel = el('div', { class: 'jig-canvas jig-canvas-build' });
     this.trayPanel = el('div', { class: 'jig-canvas jig-canvas-tray' });
-    this.trayHint = el('div', { class: 'jig-tray-hint' }, 'drag pieces up to build');
+    this.trayHint = el('div', { class: 'jig-tray-hint' }, '');
     // The solved-board tray content — the Scramble button plus the "what next"
     // tips beneath it. It sits ABOVE the svg so the button is clickable; the svg
     // captures everything else. Shown once the map is solved.
     this.scrambleBtn = el('button', { class: 'jig-btn jig-scramble', onClick: () => this.jumble() }, '🔀 Scramble');
     this.tipZoom = el('div', { class: 'jig-tip' }, '');
     this.traySolved = el('div', { class: 'jig-tray-solved' }, [this.scrambleBtn, this.tipZoom]);
-    Object.assign(this.buildPanel.style, {
-      left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
-      top: pct(CANVAS_INSET), height: pct(SPLIT_TOP - CANVAS_INSET),
-    });
-    Object.assign(this.trayPanel.style, {
-      left: pct(CANVAS_INSET), right: pct(CANVAS_INSET),
-      top: pct(SPLIT_BOT), bottom: pct(CANVAS_INSET),
-    });
-    this.trayHint.style.top = pct((SPLIT_TOP + SPLIT_BOT) / 2);
     this.trayHint.style.display = 'none';
-    this.traySolved.style.top = pct((SPLIT_BOT + (1 - CANVAS_INSET)) / 2);
     this.traySolved.style.display = 'none';
     return el('div', { class: 'jig-stage' }, [
       this.buildPanel, this.trayPanel, this.trayHint, this.svg, this.traySolved,
     ]);
+  }
+
+  // Position the two panels (and the tray content) for the current layout —
+  // stacked for a portrait board, side-by-side for a landscape one.
+  #positionPanels() {
+    const pct = (v) => `${(v * 100).toFixed(2)}%`;
+    const [bx0, by0, bx1, by1] = this.layout.build;
+    const [tx0, ty0, tx1, ty1] = this.layout.tray;
+    const box = (elm, [x0, y0, x1, y1]) => Object.assign(elm.style, {
+      left: pct(x0), right: pct(1 - x1), top: pct(y0), bottom: pct(1 - y1), height: 'auto',
+    });
+    box(this.buildPanel, this.layout.build);
+    box(this.trayPanel, this.layout.tray);
+    // Tray content spans the tray's width, centred in it.
+    Object.assign(this.traySolved.style, {
+      left: pct(tx0), right: pct(1 - tx1), top: pct((ty0 + ty1) / 2), transform: 'translateY(-50%)',
+    });
+    // The "drag pieces …" hint: in the gap for portrait, at the top of the tray
+    // strip for landscape.
+    if (this.layout.wide) {
+      this.trayHint.textContent = 'drag pieces over to the map';
+      Object.assign(this.trayHint.style, { left: pct(tx0), right: pct(1 - tx1), top: pct(ty0 + 0.05) });
+    } else {
+      this.trayHint.textContent = 'drag pieces up to build';
+      Object.assign(this.trayHint.style, { left: pct(bx0), right: pct(1 - bx1), top: pct((by1 + ty0) / 2) });
+    }
   }
 
   #initSvg() {
@@ -163,17 +184,20 @@ export class Board {
   // Create the pieces for `vbH` (the measured board aspect), placed assembled.
   build(vbH, mode) {
     this.vbH = vbH;
+    this.layout = layoutFor(vbH); // portrait (stacked) or landscape (side by side)
+    this.#positionPanels();
     this.svg.setAttribute('viewBox', `0 0 ${VB_W} ${vbH}`);
     const geoms = projectChildren(this.nodeId, vbH, mode);
     const pieces = geoms.map(
       (geom, i) => new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) }),
     );
-    // Lay all labels out together so they can dodge each other and the small
-    // pieces become leader-line callouts.
+    // Label size scales with the build canvas width, so names stay proportional to
+    // the map whether it fills a wide (portrait) or a narrower (landscape) canvas.
+    const buildW = (this.layout.build[2] - this.layout.build[0]) * VB_W;
+    const fs = Math.max(18, Math.min(34, (33 * buildW) / 950));
     const plans = layoutLabels(
       pieces.map((p) => ({ id: p.id, label: labelOf(p.id), geom: p.geom })),
-      VB_W,
-      vbH,
+      fs,
     );
     pieces.forEach((piece) => {
       piece.setLabel(plans.get(piece.id));
@@ -270,7 +294,9 @@ export class Board {
     // clearly the thing to build onto.
     this.seed.setPlaced(true);
     this.seed.g.classList.add('seed');
-    this.trayHint.style.display = ''; // "drag up" between the panels while there are pieces
+    // The "drag pieces …" hint shows in the portrait gap; in landscape the tray is
+    // full of pieces and the split is self-evident, so skip it.
+    this.trayHint.style.display = this.layout.wide ? 'none' : '';
     this.traySolved.style.display = 'none';
     this.#emitProgress();
     this.#emitControls(); // mid-animation: both controls off
@@ -338,17 +364,16 @@ export class Board {
   // anchor; everyone else scatters down into the tray. Pieces snap to the seed's
   // translate (0), so the map reassembles right where it sits.
   #assignSeedScatter() {
-    const cx0 = VB_W / 2;
-    const cy0 = (CANVAS_INSET + SPLIT_TOP) / 2 * this.vbH; // build-canvas centre
+    const [bx0, by0, bx1, by1] = this.layout.build;
+    const cx0 = ((bx0 + bx1) / 2) * VB_W; // build-canvas centre
+    const cy0 = ((by0 + by1) / 2) * this.vbH;
     const dist2 = (p) => (p.geom.cx - cx0) ** 2 + (p.geom.cy - cy0) ** 2;
     this.seed = this.pieces.reduce((best, p) => (dist2(p) < dist2(best) ? p : best));
     this.seed.scatterTx = 0;
     this.seed.scatterTy = 0;
-    const trayTop = SPLIT_BOT * this.vbH;
-    const trayBot = (1 - CANVAS_INSET) * this.vbH;
     const loose = shuffle(this.pieces.filter((p) => p !== this.seed));
     loose.forEach((p, k, arr) => {
-      const [tx, ty] = bottomScatter(p.geom, k, arr.length, trayTop, trayBot);
+      const [tx, ty] = trayScatter(p.geom, k, arr.length, this.vbH);
       p.scatterTx = tx;
       p.scatterTy = ty;
     });
@@ -691,8 +716,9 @@ export class Board {
 
   // --- single-pointer cluster drag (assembling) ---
   // Grab a piece and you drag its whole cluster — a lone piece or a sub-assembly.
-  // The cluster floats up by PADDLE_LIFT above the finger so you can see what
-  // you're holding; a paddle (dot + stick) marks the finger and the lift.
+  // On touch the cluster floats up by `lift` above the finger so you can see what
+  // you're holding (a paddle marks the finger + lift); with a mouse `lift` is 0
+  // and the piece just follows the cursor.
   #beginPieceDrag(piece, ux, uy) {
     const cluster = piece.cluster;
     const starts = [...cluster].map((p) => ({ p, tx: p.tx, ty: p.ty }));
@@ -701,9 +727,9 @@ export class Board {
       this.glowLayer.append(p.glowEl);
       this.labelLayer.append(p.labelEl);
       p.setDragging(true);
-      p.moveTo(p.tx, p.ty - PADDLE_LIFT); // lift clear of the thumb
+      if (this.lift) p.moveTo(p.tx, p.ty - this.lift); // lift clear of the thumb
     }
-    this.#showPaddle(ux, uy);
+    if (this.lift) this.#showPaddle(ux, uy);
     return { type: 'piece', ux, uy, cluster, starts, moved: false };
   }
 
@@ -712,8 +738,8 @@ export class Board {
     const dx = ux - g.ux;
     const dy = uy - g.uy;
     if (!g.moved && Math.hypot(dx, dy) > 2) g.moved = true;
-    for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy - PADDLE_LIFT);
-    this.#updatePaddle(ux, uy);
+    for (const s of g.starts) s.p.moveTo(s.tx + dx, s.ty + dy - this.lift);
+    if (this.lift) this.#updatePaddle(ux, uy);
     this.#updateGlow(g.cluster);
   }
 
@@ -754,7 +780,7 @@ export class Board {
     this.paddleLine.setAttribute('x1', ux.toFixed(1));
     this.paddleLine.setAttribute('y1', uy.toFixed(1));
     this.paddleLine.setAttribute('x2', ux.toFixed(1));
-    this.paddleLine.setAttribute('y2', (uy - PADDLE_LIFT).toFixed(1));
+    this.paddleLine.setAttribute('y2', (uy - this.lift).toFixed(1));
   }
 
   #hidePaddle() {
@@ -917,7 +943,7 @@ export class Board {
     // Fit the piece to FILL of the build-canvas fraction — the exact same fraction
     // the child level's map fills — so the region is the same size across the
     // zoom handoff (no size jump / "jitter").
-    const fx0 = CANVAS_INSET, fx1 = 1 - CANVAS_INSET, fy0 = CANVAS_INSET, fy1 = SPLIT_TOP;
+    const [fx0, fy0, fx1, fy1] = this.layout.build;
     const fw = (fx1 - fx0) * FILL, fh = (fy1 - fy0) * FILL;
     const aspect = VB_W / this.vbH; // board (and viewBox) width : height
     const vw = Math.max(geom.w / fw, (geom.h / fh) * aspect);

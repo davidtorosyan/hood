@@ -7,22 +7,30 @@ import { childrenOf, hasChildren, shapeOf } from './tree.js';
 export const VB_W = 1000; // user-space board width; height derived from aspect
 export const FILL = 0.9; // fraction of the build canvas the assembled map fills
 
-// The board is permanently split into two stacked canvases: an upper "build"
-// canvas (where the map always lives) and a lower "tray" canvas (loose pieces),
-// with a gap between. Fractions of board height.
+// The board is split into two canvases with a gap: a "build" canvas (where the
+// map lives) and a "tray" canvas (loose pieces). On a tall (portrait) board they
+// stack — build on top, tray below; on a wide (landscape) board they sit side by
+// side — build on the left, tray on the right. Rects are [x0,y0,x1,y1] fractions.
 export const CANVAS_INSET = 0.025; // canvases inset from the board edges
-export const SPLIT_TOP = 0.54; // the build canvas ends here
-export const SPLIT_BOT = 0.6; // the tray canvas starts here (gap = SPLIT_TOP … SPLIT_BOT)
+
+export function layoutFor(vbH) {
+  const i = CANVAS_INSET;
+  const wide = VB_W / vbH > 1.15; // board wider than ~1.15:1 → side-by-side
+  if (wide) {
+    const split = 0.63;
+    const gap = 0.03;
+    return { wide, build: [i, i, split, 1 - i], tray: [split + gap, i, 1 - i, 1 - i] };
+  }
+  const split = 0.54;
+  const gap = 0.06;
+  return { wide, build: [i, i, 1 - i, split], tray: [i, split + gap, 1 - i, 1 - i] };
+}
+
+const toUser = ([x0, y0, x1, y1], vbH) => [x0 * VB_W, y0 * vbH, x1 * VB_W, y1 * vbH];
+export const buildRect = (vbH) => toUser(layoutFor(vbH).build, vbH);
+export const trayRect = (vbH) => toUser(layoutFor(vbH).tray, vbH);
 
 export const fullVB = (vbH) => [0, 0, VB_W, vbH];
-
-// The build-canvas rect [x0, y0, x1, y1] in board user units, for a given height.
-export const buildRect = (vbH) => [
-  CANVAS_INSET * VB_W,
-  CANVAS_INSET * vbH,
-  (1 - CANVAS_INSET) * VB_W,
-  SPLIT_TOP * vbH,
-];
 
 // A zoom-target box around a single piece, with breathing room, used as the
 // viewBox we animate to when zooming into that piece (and out of, in reverse).
@@ -189,32 +197,36 @@ export function ringContains(ring, x, y) {
   return inside;
 }
 
-// Where the loose pieces wait before assembly: a pile spread across the lower
-// "tray" canvas, between board y = trayTop and trayBot (1–2 rows), jittered. Each
-// piece is kept fully on the board — big region pieces must never clip off an edge
-// (you couldn't grab them, and it looks broken). Returns the translate that moves
+// Where the loose pieces wait before assembly: spread across the tray canvas in a
+// grid — more columns when the tray is wide (portrait, a bottom strip), a single
+// column when it's tall (landscape, a right strip) — jittered, and kept inside the
+// tray (big pieces centred if they don't fit). Returns the translate that moves
 // the piece's centroid to its slot (its solved translate is 0,0).
-export function bottomScatter(p, k, count, trayTop, trayBot) {
-  const cols = Math.min(count, 3);
+export function trayScatter(p, k, count, vbH) {
+  const [x0, y0, x1, y1] = trayRect(vbH);
+  const w = x1 - x0;
+  const h = y1 - y0;
+  // Wide tray (portrait, bottom strip) → a few columns; tall tray (landscape,
+  // right strip) → a single column, since the region pieces are wide.
+  const cols = w >= h ? Math.min(count, 3) : 1;
   const rows = Math.ceil(count / cols);
   const col = k % cols;
   const row = Math.floor(k / cols);
-  const jx = (Math.random() - 0.5) * VB_W * 0.04;
-  const jy = (Math.random() - 0.5) * (trayBot - trayTop) * 0.06;
-  const x = VB_W * ((col + 0.5) / cols) + jx;
-  const y = rows === 1 ? (trayTop + trayBot) / 2 : trayTop + ((trayBot - trayTop) * row) / (rows - 1) + jy;
+  const jx = (Math.random() - 0.5) * (w / cols) * 0.22;
+  const jy = (Math.random() - 0.5) * (h / rows) * 0.22;
+  const x = x0 + (w * (col + 0.5)) / cols + jx;
+  const y = y0 + (h * (row + 0.5)) / rows + jy;
 
-  // Clamp the centroid so the piece's bounding box stays on the board and, where
-  // it fits, inside the tray. The centroid (pole of inaccessibility) can sit
-  // off-centre in the bbox, so clamp against its real distance to each edge. If a
-  // piece is too big for the tray, centre it in the available room.
-  const m = VB_W * 0.025;
+  // Clamp the centroid so the piece's bounding box stays inside the tray (its
+  // centroid can sit off-centre in the bbox, so clamp against its real distance to
+  // each edge). If a piece is too big for a slot, centre it in the available room.
+  const m = VB_W * 0.015;
   const left = p.cx - p.minX + m;
   const right = p.minX + p.w - p.cx + m;
-  const top = p.cy - p.minY;
-  const bottom = p.minY + p.h - p.cy;
+  const top = p.cy - p.minY + m;
+  const bottom = p.minY + p.h - p.cy + m;
   const fit = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
-  const cx = fit(x, left, VB_W - right);
-  const cy = fit(y, trayTop + top, trayBot - bottom);
+  const cx = fit(x, x0 + left, x1 - right);
+  const cy = fit(y, y0 + top, y1 - bottom);
   return [cx - p.cx, cy - p.cy];
 }

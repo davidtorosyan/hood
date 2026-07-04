@@ -36,17 +36,6 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* Mobile-first: on a wider (laptop) screen, keep the app a centred phone-width
-     column so the map — and its labels — stay proportioned, instead of stretching
-     wide-and-short. */
-  max-width: 480px;
-  margin: 0 auto;
-}
-/* Frame the column on desktop so the centred app doesn't float on a bare page. */
-@media (min-width: 540px) {
-  #app {
-    box-shadow: 0 0 0 1px var(--line), 0 10px 40px rgba(27, 34, 48, 0.08);
-  }
 }
 .screen {
   flex: 1;

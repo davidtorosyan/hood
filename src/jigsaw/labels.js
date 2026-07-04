@@ -25,9 +25,8 @@ export function wrapLabel(str) {
 // Plan labels for every piece in a level. `items` is [{ id, label, geom }];
 // returns Map<id, plan> where plan is { callout, lines, fs, lineHeight, x, y }.
 // Every label is centred on its piece's visual centre (no callouts/leaders).
-export function layoutLabels(items /* , vbW, vbH */) {
+export function layoutLabels(items, fs = UNIFORM_FS) {
   const plans = new Map();
-  const fs = UNIFORM_FS;
   const lineHeight = fs * 1.02;
   for (const { id, label, geom } of items) {
     plans.set(id, {
