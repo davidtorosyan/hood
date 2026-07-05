@@ -6,10 +6,10 @@ import { store } from './store.js';
 // ---- Fill these in ---------------------------------------------------------
 // GoatCounter: after signing up, this is your counter endpoint, e.g.
 //   'https://myhood.goatcounter.com/count'
-const GOATCOUNTER = '';
+const GOATCOUNTER = 'https://jimbo84.goatcounter.com/count';
 // A form endpoint that emails you the report (Formspree recommended), e.g.
 //   'https://formspree.io/f/abcdwxyz'
-const FORM_ENDPOINT = '';
+const FORM_ENDPOINT = 'https://formspree.io/f/xqevnyeo';
 // ----------------------------------------------------------------------------
 
 const GITHUB_REPO = 'davidtorosyan/hood';
