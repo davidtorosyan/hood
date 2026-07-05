@@ -132,12 +132,9 @@ function renderNode(app, ctx, nodeId, opts) {
     { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
     '🔍 Search',
   );
-  const bugBtn = el(
-    'button',
-    { class: 'icon-btn bug-icon', onClick: openBugReport, 'aria-label': 'Report a bug', title: 'Report a bug' },
-    '🐞',
-  );
-  const tools = el('div', { class: 'topbar-tools' }, [bugBtn, searchBtn]);
+  const tools = el('div', { class: 'topbar-tools' }, [searchBtn]);
+  // A quiet "Report an issue" affordance in the bottom-left corner of the screen.
+  const reportLink = el('button', { class: 'report-link', onClick: openBugReport }, 'Report an issue');
 
   // --- chrome ---
   // The Solve/zoom-out control rides the breadcrumb row (no dedicated header bar).
@@ -170,6 +167,7 @@ function renderNode(app, ctx, nodeId, opts) {
         el('div', { class: 'jig-stats' }, statBits.join('  ·  ')),
       ]),
       boardWrap,
+      reportLink,
     ], { bodyClass: 'jig-body', action: tools }),
   );
 

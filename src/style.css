@@ -769,6 +769,25 @@ body {
   cursor: pointer;
   margin-top: 4px;
 }
+/* Quiet corner affordance inside the game, bottom-left. */
+.report-link {
+  position: fixed;
+  left: 12px;
+  bottom: 10px;
+  z-index: 20;
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  opacity: 0.65;
+  cursor: pointer;
+}
+.report-link:hover {
+  opacity: 1;
+}
 .bug-card {
   max-width: 400px;
   text-align: left;
@@ -799,6 +818,21 @@ body {
 .bug-input:focus {
   border-color: var(--accent);
 }
+.bug-email {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* ≥16px so iOS doesn't zoom the page on focus */
+  outline: none;
+}
+.bug-email:focus {
+  border-color: var(--accent);
+}
 .bug-status {
   min-height: 18px;
   margin: 8px 0 0;
@@ -823,4 +857,13 @@ body {
 .bug-send:disabled {
   opacity: 0.6;
   cursor: default;
+}
+.bug-alt {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.bug-mail {
+  color: var(--accent);
+  font-weight: 600;
 }

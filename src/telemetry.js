@@ -12,7 +12,7 @@ const GOATCOUNTER = 'https://jimbo84.goatcounter.com/count';
 const FORM_ENDPOINT = 'https://formspree.io/f/xqevnyeo';
 // ----------------------------------------------------------------------------
 
-const GITHUB_REPO = 'davidtorosyan/hood';
+const SUPPORT_EMAIL = 'support@jimbo84.com';
 const VERSION = typeof __COMMIT__ === 'string' ? __COMMIT__ : 'dev';
 
 let ready = false;
@@ -58,4 +58,4 @@ export function bugContext() {
   };
 }
 
-export const reportConfig = { FORM_ENDPOINT, GITHUB_REPO };
+export const reportConfig = { FORM_ENDPOINT, SUPPORT_EMAIL };

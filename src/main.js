@@ -38,7 +38,7 @@ function renderHome() {
       el('div', { class: 'home-art' }, '🧩'),
       el('button', { class: 'btn home-play', onClick: () => mountJigsaw(app, { back: goHome }) }, 'Play'),
       el('p', { class: 'home-note' }, 'Drag the pieces together, then tap one to zoom in.'),
-      el('button', { class: 'home-report', onClick: openBugReport }, 'Report a bug'),
+      el('button', { class: 'home-report', onClick: openBugReport }, 'Report an issue'),
     ]),
   );
 }
