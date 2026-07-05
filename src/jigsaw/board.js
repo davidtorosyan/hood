@@ -839,11 +839,6 @@ export class Board {
     setTimeout(() => this.pieces.forEach((p) => p.setSettling(false)), SETTLE_MS);
   }
 
-  // Called by the app on a device shake (phone) — scramble if we're solved.
-  shakeToScramble() {
-    if (this.phase === 'solved') this.jumble();
-  }
-
   // --- connection glow -----------------------------------------------------
   // As a loose piece nears where it would connect, the EDGE that will mate lights
   // up on both pieces — stronger the closer they get, full at the snap radius.

@@ -18,10 +18,6 @@ import { openSearch } from './search.js';
 import { openBugReport } from '../bugreport.js';
 import { store } from '../store.js';
 
-// The board currently on screen — the target for a device shake.
-let currentBoard = null;
-let shakeInstalled = false;
-
 // A token identifying the active search "fly-through" (zoom out to the county,
 // then dive level by level to the searched place). Any manual navigation clears
 // it, so a stale fly step can't hijack the screen. See onSearchPick / the descent.
@@ -30,40 +26,8 @@ const FLY_ZOOM_MS = 600; // matches the Board's camera zoom; a zoom-out step wai
 const FLY_DWELL_UP = 140; // extra pause after a zoom-OUT step settles
 const FLY_DWELL_DOWN = 220; // pause before each zoom-IN step
 
-// Best-effort: shaking the phone scrambles a solved map, the same as shaking it
-// by hand. iOS 13+ needs motion permission, which we request on the (user-
-// gesture) Play tap; elsewhere it just works. Silently does nothing if blocked.
-function setupDeviceShake() {
-  if (shakeInstalled || typeof window === 'undefined' || !window.DeviceMotionEvent) return;
-  const install = () => {
-    if (shakeInstalled) return;
-    shakeInstalled = true;
-    let lastMag = 0;
-    let spikes = [];
-    window.addEventListener('devicemotion', (e) => {
-      const a = e.accelerationIncludingGravity;
-      if (!a) return;
-      const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
-      const now = performance.now();
-      if (Math.abs(mag - lastMag) > 13) {
-        spikes.push(now);
-        while (spikes.length && now - spikes[0] > 600) spikes.shift();
-        if (spikes.length >= 5) {
-          spikes = [];
-          currentBoard?.shakeToScramble();
-        }
-      }
-      lastMag = mag;
-    });
-  };
-  const req = window.DeviceMotionEvent.requestPermission;
-  if (typeof req === 'function') req.call(window.DeviceMotionEvent).then((r) => r === 'granted' && install()).catch(() => {});
-  else install();
-}
-
 // `resume` (optional) is a saved { node, board } to drop straight back into.
 export function mountJigsaw(app, { back, resume } = {}) {
-  setupDeviceShake();
   const at = resume && NODES[resume.node] ? resume.node : ROOT;
   renderNode(app, { back }, at, { restore: at === resume?.node ? resume.board : null });
 }
@@ -151,7 +115,6 @@ function renderNode(app, ctx, nodeId, opts) {
     // Remember where we are + the puzzle in progress, so a reload restores it.
     onPersist: () => store.saveNav({ node: nodeId, board: board.serialize() }),
   });
-  currentBoard = board;
   boardWrap.append(board.root);
 
   // Aggregate area + population for the level you're on, under the breadcrumb.
