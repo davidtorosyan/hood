@@ -442,9 +442,10 @@ export class Board {
   }
 
   // On drop: snap the dragged cluster onto the resolved section if it can join it
-  // (a dragged piece adjacent to a resolved piece, within SNAP of its true
-  // offset), then merge everything that lines up. Only the resolved section is a
-  // snap target — loose pieces don't join each other.
+  // (a dragged piece adjacent to a resolved piece, within the MAGNET radius of its
+  // true offset — i.e. anywhere the connection glow was showing), then merge
+  // everything that lines up. Only the resolved section is a snap target — loose
+  // pieces don't join each other.
   #dropCluster(cluster, dragged) {
     const resolved = this.#resolved();
     const [tx, ty] = this.#clusterTx(cluster);
@@ -455,9 +456,9 @@ export class Board {
         for (const d of cluster) if (isAdjacent(d.id, c.id)) { src = d; break; }
         if (!src) continue;
         const dist = Math.hypot(tx - c.tx, ty - c.ty);
-        const { snap } = this.#mateRadius(src, c);
-        // resolved pieces share a translate (dist ties) — prefer the roomiest snap.
-        if (dist < snap && (!best || snap > best.snap)) best = { c, dist, snap };
+        const { magnet } = this.#mateRadius(src, c); // any glow at all → close enough
+        // resolved pieces share a translate (dist ties) — prefer the roomiest reach.
+        if (dist < magnet && (!best || magnet > best.magnet)) best = { c, dist, magnet };
       }
     }
     if (best) {
