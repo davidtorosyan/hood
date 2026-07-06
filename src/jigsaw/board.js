@@ -44,6 +44,7 @@ const COLLAPSE_MS = 450; // pieces smoosh into the parent region before zooming 
 const SHUFFLE_MS = 620; // piece fly time; must outlast the CSS transform transition
 const SETTLE_MS = 300; // spring-back time after panning a solved map
 const SNAP_MS = 150; // the "click" pull-in when a piece connects
+const CUE_DELAY_MS = 480; // after solving, let the tray settle, THEN nudge the tip
 const TAP_SLOP = 22; // movement under this (user units) counts as a tap, not a drag
 const PINCH_IN = 0.72; // pinch ratio that triggers zoom out
 const PINCH_OUT = 1.34; // spread ratio that triggers zoom in
@@ -571,6 +572,15 @@ export class Board {
     const zoomable = this.pieces.some((p) => p.zoomable);
     // ...and show the Scramble button + the "what next" tips in the tray.
     this.tipZoom.textContent = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece for its card';
+    this.tipZoom.classList.remove('cue');
+    // Just solved it? Let the Scramble button + hint reappear first, then a beat
+    // later the hint asserts itself (brightens + one gentle size bump) — otherwise
+    // it's lost in the same moment the tray pops back. (Cancellable: a scramble or
+    // zoom-out clears this before it fires.)
+    if (played) {
+      this.#cancelPending();
+      this.#pendingTimer = setTimeout(() => this.tipZoom.classList.add('cue'), CUE_DELAY_MS);
+    }
     this.traySolved.style.display = '';
     this.seed = null;
     // Groups become zoom targets; leaves become tap-for-info targets.

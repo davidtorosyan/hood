@@ -395,6 +395,19 @@ body {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-dim);
+  opacity: 0.55; /* a little grayed out until we call attention to it */
+  transition: opacity 0.35s ease;
+}
+/* Just solved? Wake the hint to full strength and give it a single gentle size
+   bump to catch the eye — then it settles back. Nothing more. */
+.jig-tip.cue {
+  opacity: 1;
+  animation: tip-nudge 0.5s ease both;
+}
+@keyframes tip-nudge {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.13); }
+  100% { transform: scale(1); }
 }
 .jig-board {
   position: relative;
