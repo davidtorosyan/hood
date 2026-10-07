@@ -348,29 +348,40 @@ await shot('campaign-start-choices');
   if (n !== 3) fail(`expected 3 starting choices, got ${n}`);
   if (await page.locator('.ow-built').count()) fail('fresh campaign already has built places');
 }
-for (let round = 0; round < 3; round++) {
-  const card = page.locator('.ow-card.build').first();
+// Keep playing the top card. Offers favour finishing a district, so a
+// "Connect" (building the groups themselves into one) comes within a few.
+let linked = false;
+for (let round = 0; round < 9 && !linked; round++) {
+  const isLink = (await page.locator('.ow-card.link').count()) > 0;
+  if (isLink) await shot('campaign-connect-offered');
+  const card = page.locator(isLink ? '.ow-card.link' : '.ow-card.build').first();
   const title = await card.locator('b').textContent();
   await card.click();
   await page.waitForTimeout(300);
   if (round === 0) await shot('campaign-puzzle-start');
   await waitForPrompt();
+  if (isLink) await shot('campaign-connect-play');
   await solveByName();
   await page.waitForTimeout(900);
   if (round === 0) await shot('campaign-puzzle-solved');
-  const back = page.getByRole('button', { name: /Back to the map/ }).last();
-  await back.click();
+  await page.getByRole('button', { name: /Back to the map/ }).last().click();
   await page.waitForTimeout(500);
   if (round === 0) {
     await shot('campaign-overworld-after-one');
-    if (!(await page.locator('.ow-built').count())) fail(`${title}: nothing shows as built`);
+    if (!(await page.locator('.ow-place').count())) fail(`${title}: nothing shows as built`);
     if (!(await page.locator('.ow-card').count())) fail('no offers after the first build');
   }
+  if (isLink) {
+    linked = true;
+    await page.waitForTimeout(1500);
+    await shot('campaign-after-connect');
+  }
 }
-await shot('campaign-overworld-after-three');
+if (!linked) fail('no Connect offered within 9 builds');
+
 // Tap a frontier place on the map: selects its puzzle + card.
 {
-  const spot = page.locator('.ow-frontier, .ow-offer').first();
+  const spot = page.locator('.ow-slot').first();
   if (await spot.count()) {
     await spot.click({ force: true });
     await page.waitForTimeout(500);

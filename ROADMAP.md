@@ -56,6 +56,10 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
       to the map.
 - [x] **Campaign trophies** (🏗️ first area built, 🌆 LA restored), plus a test that
       the campaign is finishable from every start.
+- [x] **Dave's notes:** the overworld starts as an empty county outline, not a
+      grey map that looks already built. Built-but-unlinked puzzles are separate
+      outlined islands that merge when you connect them. Offers favour finishing
+      your district, so connecting groups into districts happens every few builds.
 - [ ] Ideas: pinch/zoom on the overworld (it's small on a phone), names on the
       overworld, a celebration when a whole region links up.
 

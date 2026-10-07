@@ -39,19 +39,47 @@ export function linkable() {
   );
 }
 
-// What the overworld offers next: any linking puzzles first, then up to three
-// frontier puzzles (or, at the very start, three starting spots). The offer is
-// remembered, so it doesn't reshuffle every time you look — it refreshes once
-// one of them is built.
+// Built puzzles not yet linked into something bigger: the separate "islands"
+// on the overworld. Linking a parent merges its islands into one.
+export function topBuilt() {
+  return book.doneIds().filter((id) => NODES[id] && built(id) && !built(NODES[id].parent));
+}
+
+// How close a bottom puzzle's district is to being linked: built siblings / all.
+const parentOf = (id) => NODES[id].parent;
+export function districtProgress(id) {
+  const sibs = childrenOf(parentOf(id)).filter(hasChildren);
+  return { parent: parentOf(id), built: sibs.filter(built).length, total: sibs.length };
+}
+
+// What the overworld offers next: any linking puzzles first, then three
+// frontier puzzles (or, at the very start, three starting spots). Frontier
+// picks favour finishing the district (then the region) you're in — so a "Connect" comes along
+// every few builds instead of the map sprawling — plus one wildcard. The offer
+// is remembered until you build something, so it doesn't reshuffle on a look.
 export function offers(rand = Math.random) {
   const links = linkable();
+  const n = book.doneIds().length;
+  const saved = book.get('offer');
   const pool = builtLeaves().size ? frontier() : BOTTOM.filter((id) => !built(id));
-  let picks = (book.get('offer') || []).filter((id) => pool.includes(id));
-  if (picks.length < Math.min(3, pool.length)) {
-    const rest = pool.filter((id) => !picks.includes(id));
-    while (picks.length < 3 && rest.length) picks.push(rest.splice(Math.floor(rand() * rest.length), 1)[0]);
-    book.set('offer', picks);
-  }
+  if (saved?.at === n && saved.picks.every((id) => pool.includes(id))) return { links, picks: saved.picks };
+
+  const shuffled = pool.map((id) => [id, rand()]).sort((a, b) => a[1] - b[1]).map(([id]) => id);
+  // How much of each enclosing area is already built: the district counts
+  // most, then the area around it (so after connecting a district, the next
+  // offers stay in that region).
+  const have = builtLeaves();
+  const frac = (a) => leavesOf(a).filter((l) => have.has(l)).length / leavesOf(a).length;
+  const score = (id) => {
+    const p = parentOf(id);
+    const gp = NODES[p].parent;
+    return frac(p) + (gp && gp !== ROOT ? 0.5 * frac(gp) : 0);
+  };
+  const focused = n ? [...shuffled].sort((a, b) => score(b) - score(a)) : shuffled;
+  const picks = focused.slice(0, 2);
+  const wild = shuffled.find((id) => !picks.includes(id));
+  if (wild) picks.push(wild);
+  book.set('offer', { at: n, picks });
   return { links, picks };
 }
 

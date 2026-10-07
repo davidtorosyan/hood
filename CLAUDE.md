@@ -116,12 +116,17 @@ from home, and 19 friendly trophies with a toast — never punitive.
 ### Rebuild LA — the bottom-up campaign (alongside Explore)
 Home offers two modes. **Explore** is the zoomable jigsaw above. **Rebuild LA**
 (`src/campaign/`) is a campaign: "LA's been scrambled" and you rebuild it bottom-up on
-an **overworld** map of all 240 places (built = region colour, open slots = white with
-a dashed outline, the rest grey fog). You start from one of 3 offered bottom puzzles
-(groups of individual places). After that you can build any bottom puzzle on the
-**frontier** (one bordering what you've built; 3 are offered as cards, and tapping any
-frontier place on the map picks its puzzle), or **connect** a higher puzzle once
-everything inside it is built, all the way up to the county. `state.js` holds the
+an **overworld** that starts as just the county's empty outline (Dave: a grey map of
+every place looked already built). Built places are drawn in region colour. Each built
+puzzle that isn't linked yet is outlined as its own "island", and connecting a district
+merges its islands into one. Open slots are drawn as whole puzzle shapes, without their
+insides. You start from one of 3 offered bottom puzzles (groups of individual places).
+After that you can build any bottom puzzle on the **frontier** (one bordering what
+you've built; tapping any slot on the map picks it), or **connect** a higher puzzle
+once everything inside it is built, all the way up to the county. Building the groups
+*into* their district is the point (Dave), so the 3 offered cards favour finishing
+the current district, then its region, plus one wildcard. That way a "🔗 Connect"
+comes along every few builds instead of the map sprawling. `state.js` holds the
 rules. `test/campaign.test.js` proves the campaign is finishable from every start.
 The campaign plays the same `Board` with `{ book: store.campaign, campaign: true }`:
 there's no zooming or context navigation, and solving offers "🗺️ Back to the map".

@@ -1,12 +1,14 @@
-// The "Rebuild LA" overworld: the whole county drawn place by place. What
-// you've rebuilt is in colour, the rest is fog, and what you can build next
-// glows — tap it on the map or pick it from the list below to play it.
+// The "Rebuild LA" overworld: an empty county outline — the board — that you
+// fill in. Built places are in colour; each built-but-unlinked puzzle is its
+// own outlined "island", and connecting a district merges its islands into
+// one. Open slots (what you can build next) show as whole puzzle shapes —
+// tap one on the map or pick it from the list below to play it.
 import { el, svgEl, clear } from '../ui/dom.js';
 import { ROOT, childrenOf, leavesOf, labelOf, pathIds } from '../jigsaw/tree.js';
 import { projectAll, mapAspectOf } from '../jigsaw/geometry.js';
 import { colorForIndex } from '../jigsaw/palette.js';
 import { store } from '../store.js';
-import { builtLeaves, frontier, offers, progress, finished } from './state.js';
+import { builtLeaves, districtProgress, frontier, offers, progress, finished, topBuilt } from './state.js';
 
 // The board fits the county's real shape, so there's no dead band around it.
 const W = 1000;
@@ -28,40 +30,52 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
   const { built: nBuilt, total } = progress();
   const started = have.size > 0;
 
-  // Which puzzle a tap on a place means: an offered/frontier build, or a link.
-  const candidates = [...links, ...picks, ...front.filter((id) => !picks.includes(id))];
-  const owner = new Map();
-  for (const id of candidates) for (const l of leavesOf(id)) if (!owner.has(l)) owner.set(l, id);
+  const slots = [...picks, ...front.filter((id) => !picks.includes(id))];
 
   // --- the map ---
   const svg = svgEl('svg', { class: 'ow-map', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of what you have rebuilt' });
-  const outlineIds = [...links, ...picks];
-  const { places, outlines } = projectAll(ALL_PLACES, [10, 10, W - 10, H - 10], outlineIds);
-  const placeLayer = svgEl('g');
-  for (const p of places) {
-    const cls = have.has(p.id)
-      ? `ow-built${fresh.has(p.id) ? ' ow-fresh' : ''}`
-      : owner.has(p.id)
-        ? picks.includes(owner.get(p.id)) ? 'ow-offer' : 'ow-frontier'
-        : 'ow-fog';
-    const path = svgEl('path', { d: p.d, class: `ow-place ${cls}` });
-    if (have.has(p.id)) path.style.setProperty('--fill', regionColor(p.id));
-    path.dataset.place = p.id;
-    placeLayer.append(path);
+  const { pathOf } = projectAll(REGIONS, [10, 10, W - 10, H - 10]);
+  const layer = (cls) => svgEl('g', cls ? { class: cls } : {});
+  // The empty board: the county's silhouette. Each region is stroked, then
+  // filled on top without a stroke, so only the outer edge shows.
+  const board = layer('ow-board');
+  for (const r of REGIONS) board.append(svgEl('path', { d: pathOf(r), class: 'ow-board-edge' }));
+  for (const r of REGIONS) board.append(svgEl('path', { d: pathOf(r), class: 'ow-board-fill' }));
+  // Open slots, whole (their insides are still a mystery).
+  const slotLayer = layer();
+  for (const id of slots) {
+    slotLayer.append(svgEl('path', { d: pathOf(id), class: `ow-slot${picks.includes(id) ? ' offer' : ''}`, 'data-puzzle': id }));
   }
-  const outlineLayer = svgEl('g', { class: 'ow-outlines' });
-  for (const o of outlines) {
-    outlineLayer.append(svgEl('path', { d: o.d, class: `ow-outline ${links.includes(o.id) ? 'link' : 'offer'}`, 'data-puzzle': o.id }));
+  // What you've built, place by place, then an outline around each island.
+  const builtLayer = layer();
+  for (const leaf of ALL_PLACES) {
+    if (!have.has(leaf)) continue;
+    const path = svgEl('path', { d: pathOf(leaf), class: `ow-place${fresh.has(leaf) ? ' ow-fresh' : ''}` });
+    path.style.setProperty('--fill', regionColor(leaf));
+    path.dataset.place = leaf;
+    builtLayer.append(path);
   }
-  svg.append(placeLayer, outlineLayer);
+  const islandLayer = layer('ow-outlines');
+  for (const id of topBuilt()) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-island' }));
+  for (const id of links) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-outline link', 'data-puzzle': id }));
+  svg.append(board, slotLayer, builtLayer, islandLayer);
+
+  // Which puzzle a tap means: a slot, or a link over built places.
+  const linkOf = new Map();
+  for (const id of links) for (const l of leavesOf(id)) if (!linkOf.has(l)) linkOf.set(l, id);
+  const tapped = (t) => t?.dataset?.puzzle || linkOf.get(t?.dataset?.place);
 
   // --- the list of what's next ---
   const cards = new Map();
   const card = (id, kind) => {
     const n = childrenOf(id).length;
-    const sub = kind === 'link'
-      ? `${n} pieces you've built · ${whereOf(id)}`
-      : `${n} places · ${whereOf(id)}`;
+    let sub;
+    if (kind === 'link') sub = `Join your ${n} built pieces into one · ${whereOf(id)}`;
+    else if (!started) sub = `${n} places · ${whereOf(id)}`;
+    else {
+      const d = districtProgress(id);
+      sub = `${n} places · ${labelOf(d.parent)} · ${d.built} of ${d.total} built`;
+    }
     const btn = el('button', { class: `ow-card ${kind}`, onClick: () => onPlay(id) }, [
       el('span', { class: 'ow-card-icon', 'aria-hidden': 'true' }, kind === 'link' ? '🔗' : '🧩'),
       el('span', { class: 'ow-card-text' }, [
@@ -80,12 +94,11 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
 
   // Tap the map: select what's there (bringing its card into view).
   svg.addEventListener('click', (e) => {
-    const leaf = e.target?.dataset?.place;
-    const id = leaf && owner.get(leaf);
+    const id = tapped(e.target);
     if (!id) return;
     if (!cards.has(id)) list.prepend(card(id, links.includes(id) ? 'link' : 'build'));
     for (const [cid, c] of cards) c.classList.toggle('selected', cid === id);
-    for (const o of outlineLayer.children) o.classList.toggle('selected', o.dataset.puzzle === id);
+    for (const o of svg.querySelectorAll('[data-puzzle]')) o.classList.toggle('selected', o.dataset.puzzle === id);
     cards.get(id).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
 
@@ -99,7 +112,9 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
       ? el('div', { class: 'ow-intro' }, [
           el('div', { class: 'ow-count' }, [el('b', {}, `${nBuilt}`), ` of ${total} puzzles rebuilt`]),
           el('div', { class: 'pg-bar' }, [el('div', { class: 'pg-bar-fill', style: `width:${(100 * nBuilt) / total}%` })]),
-          el('span', { class: 'ow-hint' }, links.length ? 'Connect what you’ve built, or keep growing outward.' : 'Keep growing outward from what you’ve built.'),
+          links.length
+            ? el('span', { class: 'ow-hint link' }, `🔗 Every piece of ${labelOf(links[0])} is built — connect them!`)
+            : el('span', { class: 'ow-hint' }, 'Finish a district and you can connect its pieces into one.'),
         ])
       : el('div', { class: 'ow-intro' }, [
           el('b', {}, 'Oh no — LA’s been scrambled!'),
