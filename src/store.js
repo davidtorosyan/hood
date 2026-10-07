@@ -62,6 +62,33 @@ export const store = {
     state.counts[name] = (state.counts[name] || 0) + by;
     save(state);
   },
+  // Puzzles solved without a single miss (each counts once, however often replayed).
+  flawlessCount() {
+    return (state.flawless ||= []).length;
+  },
+  markFlawless(id) {
+    state.flawless ||= [];
+    if (state.flawless.includes(id)) return;
+    state.flawless.push(id);
+    save(state);
+  },
+  // Forget progress for puzzles that no longer exist (renamed in a data update),
+  // so counts and trophies only ever reflect real puzzles.
+  prune(validIds) {
+    let changed = false;
+    for (const bag of [state.progress, state.puzzles]) {
+      for (const id of Object.keys(bag)) if (!validIds.has(id)) {
+        delete bag[id];
+        changed = true;
+      }
+    }
+    if (state.flawless) {
+      const keep = state.flawless.filter((id) => validIds.has(id));
+      changed ||= keep.length !== state.flawless.length;
+      state.flawless = keep;
+    }
+    if (changed) save(state);
+  },
   trophies() {
     return state.trophies;
   },

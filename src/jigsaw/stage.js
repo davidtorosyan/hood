@@ -127,6 +127,7 @@ export class Stage {
     this.chips.style.display = '';
     this.chips.style.visibility = 'hidden';
     requestAnimationFrame(() => {
+      if (this.solved.style.display === 'none' || !this.solved.isConnected) return; // moved on
       if (overflows()) this.tip.style.display = 'none';
       if (overflows()) {
         this.tip.style.display = '';

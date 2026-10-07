@@ -181,8 +181,9 @@ await shot('county-play-first-ask');
   await page.waitForTimeout(400);
   if (!(await readPieces()).find((q) => q.name === target).placed) fail('near drop did not snap');
   if (!(await page.locator('.trophy-toast').count())) fail('no "First Piece" trophy toast');
-  await shot('trophy-toast-and-quiet-prompt');
-  if (!(await page.locator('.jig-prompt.quiet').count())) fail('prompt not quiet after the tutorial');
+  await shot('trophy-toast');
+  // The whole first-ever run keeps the bold tutorial prompt…
+  if (await page.locator('.jig-prompt.quiet').count()) fail('prompt went quiet during the tutorial run');
 }
 
 // Missed drops escalate: 2 misses → neighbour hint, 3 → ghost outline.
@@ -212,6 +213,8 @@ await shot('region-arrived');
 await waitForPrompt();
 await page.waitForTimeout(300);
 await shot('region-play');
+// …and every run after it gets the quiet one.
+if (!(await page.locator('.jig-prompt.quiet').count())) fail('prompt not quiet after the tutorial run');
 
 // Zoom out mid-puzzle: the county shows the region as in progress; going back in
 // resumes the same ask.

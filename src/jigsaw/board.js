@@ -210,8 +210,8 @@ export class Board {
   // a different size (rotated phone, resized window).
   serialize() {
     if (!this.run || (this.phase !== 'play' && this.phase !== 'scattering')) return null;
-    const { anchor, order, step } = this.run;
-    return { phase: 'play', anchor, order, step };
+    const { anchor, order, step, flawless } = this.run;
+    return { phase: 'play', anchor, order, step, flawless };
   }
 
   #restorePlay(saved) {
@@ -243,8 +243,9 @@ export class Board {
     this.#packLoose();
     for (const p of this.pieces) p.moveTo(p.homeTx, p.homeTy);
     this.byId.get(anchor).g.classList.add('anchor');
-    // flawless: unknown for a resumed run, so it doesn't count.
-    this.run = { anchor, order, step, misses: 0, finds: 0, flawless: false };
+    // flawless carries over from the save (older saves: unknown → doesn't count).
+    const coaching = !store.coached();
+    this.run = { anchor, order, step, misses: 0, finds: 0, flawless: saved.flawless === true, coaching };
     this.phase = 'play';
     this.stage.hideSolved();
     this.#emitAction();
@@ -287,7 +288,8 @@ export class Board {
     const ids = this.pieces.map((p) => p.id);
     const anchor = pickAnchor(ids, adjacentIds);
     const order = placementOrder(ids, anchor, adjacentIds);
-    this.run = { anchor, order, step: 0, misses: 0, finds: 0, flawless: true };
+    // coaching: the first-ever run keeps the bold, spelled-out prompt throughout.
+    this.run = { anchor, order, step: 0, misses: 0, finds: 0, flawless: true, coaching: !store.coached() };
     this.cbs.onEvent?.('puzzle-start');
 
     for (const p of this.pieces) {
@@ -386,12 +388,12 @@ export class Board {
     this.run.misses = 0;
     this.run.finds = 0;
     this.run.ready = true; // the asked-for piece can be picked up now
-    const firstEver = !store.coached();
+    const firstEver = this.run.coaching;
     const mate = this.byId.get(this.#mate(t)?.id);
     // The very first ask of all time spells out the move.
     const sub = firstEver && mate ? `Drag it ${this.layout.wide ? 'over' : 'up'} next to ${labelOf(mate.id)}` : '';
     this.stage.ask(labelOf(t.id), step + 2, order.length + 1, sub, { quiet: !firstEver });
-    if (firstEver) {
+    if (firstEver && step === 0) {
       this.coach.play(
         [t.geom.cx + t.homeTx, t.geom.cy + t.homeTy],
         [t.geom.cx, t.geom.cy],
@@ -590,9 +592,12 @@ export class Board {
       cancelDrag: () => this.#cancelHeld(),
       tap: (piece) => this.#open(piece),
       // A tap on a surrounding area goes there.
+      // Mid-puzzle only the NAME counts (a deliberate target) — a near-miss
+      // beside the map mustn't whisk you away from the puzzle.
       tapEmpty: (target) => {
-        const id = target?.closest?.('[data-ctx]')?.dataset.ctx;
-        if (id) this.cbs.onGoTo?.(id);
+        const hit = target?.closest?.('[data-ctx]');
+        if (!hit || (this.phase === 'play' && !hit.classList.contains('jig-ctx-label'))) return;
+        this.cbs.onGoTo?.(hit.dataset.ctx);
       },
       pan: (dx, dy) => {
         for (const p of this.pieces) {

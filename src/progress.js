@@ -53,11 +53,11 @@ export const TROPHIES = [
   },
   {
     id: 'flawless', icon: '🎯', name: 'Flawless', desc: 'Solve a puzzle of 4+ pieces without a single miss.',
-    earned: () => store.count('flawless') >= 1,
+    earned: () => store.flawlessCount() >= 1,
   },
   {
-    id: 'sharp', icon: '🦅', name: 'Sharp Eye', desc: 'Five flawless solves.',
-    earned: () => store.count('flawless') >= 5, progress: () => [Math.min(5, store.count('flawless')), 5],
+    id: 'sharp', icon: '🦅', name: 'Sharp Eye', desc: 'Solve five different puzzles flawlessly.',
+    earned: () => store.flawlessCount() >= 5, progress: () => [Math.min(5, store.flawlessCount()), 5],
   },
   {
     id: 'pieces', icon: '💯', name: 'Hundred Pieces', desc: 'Place 100 pieces.',
@@ -97,7 +97,7 @@ export function record(event, data = {}) {
   if (event === 'placed') store.bump('placed');
   else if (event === 'card') store.bump('cards');
   else if (event === 'hop') store.bump('hops');
-  else if (event === 'solved' && data.flawless && data.size >= 4) store.bump('flawless');
+  else if (event === 'solved' && data.flawless && data.size >= 4) store.markFlawless(data.id);
   else if (event === 'visit') {
     const r = regionOf(data.id);
     if (r) store.visit(r);
@@ -113,6 +113,7 @@ export function record(event, data = {}) {
 // Earned trophies that predate this build (e.g. puzzles solved before trophies
 // existed) are awarded quietly on load, without a pile of toasts.
 export function catchUp() {
+  store.prune(new Set(Object.keys(NODES)));
   const have = store.trophies();
   for (const t of TROPHIES) if (!have[t.id] && t.earned()) store.award(t.id);
 }

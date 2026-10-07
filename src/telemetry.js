@@ -37,7 +37,13 @@ function hit(params) {
 // Count the visit and start counting crashes. Called once at startup.
 export function initTelemetry() {
   if (GOATCOUNTER && ENABLED) {
-    hit({ p: location.pathname, t: document.title, r: document.referrer, s: `${screen.width},${screen.height}` });
+    hit({
+      p: location.pathname,
+      q: location.search,
+      t: document.title,
+      r: document.referrer,
+      s: `${screen.width},${screen.height},${window.devicePixelRatio || 1}`,
+    });
   }
   // Crash visibility: count JS errors / rejected promises as events. Guard the
   // resource-load "error" events (they have no `.error`).

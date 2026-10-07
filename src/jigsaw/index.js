@@ -24,7 +24,7 @@ const FLY_DWELL_UP = 140; // extra pause after a zoom-OUT step settles
 const FLY_DWELL_DOWN = 220; // pause before each zoom-IN step
 
 let board = null; // the one live Board
-let current = null; // { app, ctx, nodeId, w, h } — what's on screen, for resize
+let current = null; // { app, ctx, nodeId, w, h, autoPlay, flying } — what's on screen, for resize
 
 // Rotating the phone or resizing the window re-lays the level out for the new
 // shape (a puzzle in progress comes back via its save, re-packed). Debounced,
@@ -33,12 +33,14 @@ let resizeTimer = 0;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (!current || !board?.idle()) return;
+    if (!current || current.flying || !board?.idle()) return; // never mid fly-through
     const wrap = document.querySelector('.jig-board');
     if (!wrap) return;
     const dw = Math.abs(wrap.clientWidth - current.w);
     const dh = Math.abs(wrap.clientHeight - current.h);
-    if (dw > 24 || dh > 24) renderNode(current.app, current.ctx, current.nodeId, { autoPlay: true });
+    // Same intent as the original render: a level you were only browsing stays
+    // assembled; one that was starting itself still does.
+    if (dw > 24 || dh > 24) renderNode(current.app, current.ctx, current.nodeId, { autoPlay: current.autoPlay });
   }, 250);
 });
 
@@ -87,6 +89,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
     const route = [...pCur.slice(lca, pCur.length - 1).reverse(), ...pTgt.slice(lca + 1)];
     const fly = { route, step: 0, highlight };
     if (!route.length) return void me.flashPiece(highlight);
+    if (current) current.flying = true;
     flyStep(fly, false);
   };
   // Search: a region opens its own board; anything else lands on the board where
@@ -175,7 +178,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   const w = boardWrap.clientWidth || 360;
   const h = boardWrap.clientHeight || 360;
   me.build(Math.round((1000 * h) / w), w);
-  current = { app, ctx, nodeId, w, h };
+  current = { app, ctx, nodeId, w, h, autoPlay: !!opts.autoPlay, flying: !!opts.fly && opts.fly.step < opts.fly.route.length };
   const restore = store.puzzle(nodeId);
   me.start({
     zoomOutFrom: opts.zoomOutFrom,
