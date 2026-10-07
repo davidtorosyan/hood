@@ -24,26 +24,20 @@ export const BUILD = BUILT
 // harness), so the numbers mean something.
 const ENABLED = import.meta.env.PROD && !navigator.webdriver;
 
-let ready = false;
-const pending = []; // events from before the beacon script loaded
+// Count via GoatCounter's no-JavaScript pixel endpoint (`/count?p=…`) rather
+// than loading its third-party script: nothing external runs in the page, and
+// there's no script to pin with an integrity hash. No cookies either way.
+function hit(params) {
+  const q = new URLSearchParams({ ...params, rnd: Math.random().toString(36).slice(2) });
+  const img = new Image();
+  img.referrerPolicy = 'no-referrer-when-downgrade';
+  img.src = `${GOATCOUNTER}?${q}`;
+}
 
-// Load the GoatCounter beacon (no cookies) and start counting crashes. Called
-// once at startup.
+// Count the visit and start counting crashes. Called once at startup.
 export function initTelemetry() {
   if (GOATCOUNTER && ENABLED) {
-    // Don't auto-count on load here — we do it explicitly so it also works if the
-    // script loads late.
-    window.goatcounter = { no_onload: true };
-    const s = document.createElement('script');
-    s.async = true;
-    s.src = '//gc.zgo.at/count.js';
-    s.setAttribute('data-goatcounter', GOATCOUNTER);
-    s.addEventListener('load', () => {
-      ready = true;
-      for (const name of pending.splice(0)) countEvent(name);
-      window.goatcounter?.count?.(); // the single page view for this visit
-    });
-    document.head.appendChild(s);
+    hit({ p: location.pathname, t: document.title, r: document.referrer, s: `${screen.width},${screen.height}` });
   }
   // Crash visibility: count JS errors / rejected promises as events. Guard the
   // resource-load "error" events (they have no `.error`).
@@ -51,16 +45,12 @@ export function initTelemetry() {
   window.addEventListener('unhandledrejection', () => countEvent('js-error'));
 }
 
-// Record a named event (a no-op until analytics is configured + loaded).
-// Gameplay events: puzzle-start / puzzle-solved / puzzle-skip, hint-neighbor /
-// hint-ghost, zoom-in, card-open, search.
+// Record a named event. Gameplay events: puzzle-start / puzzle-solved /
+// puzzle-skip, hint-neighbor / hint-ghost, zoom-in, card-open,
+// search, context-tap.
 export function countEvent(name) {
   if (!ENABLED || !GOATCOUNTER) return;
-  if (!ready) {
-    if (pending.length < 30) pending.push(name);
-    return;
-  }
-  window.goatcounter?.count?.({ path: name, title: name, event: true });
+  hit({ p: name, t: name, e: 'true' });
 }
 
 // The context we attach to a bug report — where they were and which build.

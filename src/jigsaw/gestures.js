@@ -61,6 +61,9 @@ export class Gestures {
     svg.addEventListener('pointermove', (e) => this.#move(e));
     svg.addEventListener('pointerup', (e) => this.#up(e));
     svg.addEventListener('pointercancel', (e) => this.#cancel(e));
+    // iOS Safari: a pinch on the board is ours, not a page zoom (page zoom stays
+    // available everywhere else, for accessibility).
+    svg.addEventListener('gesturestart', (e) => e.preventDefault());
   }
 
   // Abandon whatever's in progress (phase changed under it, board torn down).

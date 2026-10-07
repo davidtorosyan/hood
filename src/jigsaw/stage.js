@@ -45,7 +45,7 @@ export class Stage {
     box(this.buildPanel, layout.build);
     box(this.trayPanel, layout.tray);
     const [bx0, by0, bx1, by1] = layout.build;
-    const [tx0, ty0, tx1, ty1] = layout.tray;
+    const [tx0, ty0, tx1] = layout.tray;
     box(this.solved, layout.tray);
     if (layout.wide) {
       // Side by side: the prompt sits in the band above the tray.

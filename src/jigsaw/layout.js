@@ -56,8 +56,7 @@ export function layoutFor(vbH, mapAspect = 1, gap = PROMPT_GAP, fill = FILL) {
     const score = room >= 1 ? 1e6 + Math.floor(mw / 10) * 10 + Math.min(room, 5) : room * 1e3 + mw * 1e-3;
     if (!best || score > best.score) best = { ...c, score };
   }
-  const { score, ...layout } = best;
-  return layout;
+  return { wide: best.wide, build: best.build, tray: best.tray };
 }
 
 export const rectToUser = ([x0, y0, x1, y1], vbH) => [x0 * VB_W, y0 * vbH, x1 * VB_W, y1 * vbH];

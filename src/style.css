@@ -23,6 +23,11 @@ body {
   margin: 0;
   height: 100%;
 }
+/* Page zoom stays available (accessibility) — the board itself handles its own
+   gestures (touch-action: none on .jig) — but no double-tap-to-zoom on buttons. */
+html {
+  touch-action: manipulation;
+}
 body {
   background: var(--bg);
   color: var(--text);

@@ -136,7 +136,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
     onSelectLeaf: (id) => showCard(id),
     onAction: (mode) => ctrl.setAction(mode),
     onEvent: (name, data) => {
-      countEvent(name);
+      if (name !== 'piece-placed') countEvent(name); // (too chatty to send every piece)
       if (name === 'piece-placed') record('placed');
       else if (name === 'puzzle-solved') record('solved', data);
       else if (name === 'card-open') record('card');

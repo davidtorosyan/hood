@@ -6,6 +6,7 @@ import hierarchy from '../data/hierarchy.json';
 import shapes from '../data/puzzle-shapes.json';
 import adjacency from '../data/puzzle-adjacency.json';
 import neighbors from '../data/neighbors.json';
+import { decodeRing } from './polyline.js';
 
 export const NODES = hierarchy.nodes;
 export const ROOT = hierarchy.root;
@@ -13,7 +14,12 @@ export const ROOT = hierarchy.root;
 export const labelOf = (id) => NODES[id].label;
 export const childrenOf = (id) => NODES[id].children || [];
 export const hasChildren = (id) => childrenOf(id).length > 0;
-export const shapeOf = (id) => shapes[id];
+// Shapes ship as encoded polylines; decode each once, on first use.
+const decoded = new Map();
+export const shapeOf = (id) => {
+  if (!decoded.has(id)) decoded.set(id, decodeRing(shapes[id]));
+  return decoded.get(id);
+};
 
 // The sibling pieces that share a real border with `id` (so they can connect).
 export const adjacentIds = (id) => adjacency[id] || [];

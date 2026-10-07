@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PLACES } from '../src/data/places.js';
+import { decodeRing } from '../src/jigsaw/polyline.js';
 
 const { nodes, root } = JSON.parse(readFileSync('src/data/hierarchy.json', 'utf8'));
 const adjacency = JSON.parse(readFileSync('src/data/puzzle-adjacency.json', 'utf8'));
@@ -33,8 +34,8 @@ test('adjacency is symmetric and between siblings', () => {
 });
 
 test('every node has a shape, and every place has card info', () => {
-  for (const id of Object.keys(nodes)) if (id !== root) assert.ok(shapes[id]?.length >= 4, `no shape for ${id}`);
-  for (const [id, n] of Object.entries(nodes)) {
+  for (const id of Object.keys(nodes)) if (id !== root) assert.ok(decodeRing(shapes[id] || '').length >= 4, `no shape for ${id}`);
+  for (const n of Object.values(nodes)) {
     if (n.children?.length) continue;
     assert.ok(PLACES[n.label], `no PLACES entry for ${n.label}`);
   }

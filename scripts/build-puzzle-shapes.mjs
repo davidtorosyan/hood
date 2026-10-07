@@ -9,6 +9,7 @@
 // neighborhoods, so children always tile their parent exactly.
 //
 // Run: node scripts/build-puzzle-shapes.mjs
+import { encodeRing } from '../src/jigsaw/polyline.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import simplify from '@turf/simplify';
 import union from '@turf/union';
@@ -442,7 +443,12 @@ const hierarchy = {
   ),
 };
 writeFileSync('src/data/hierarchy.json', JSON.stringify(hierarchy));
-writeFileSync('src/data/puzzle-shapes.json', JSON.stringify(shapes));
+// Shipped as encoded polylines (see src/jigsaw/polyline.js) — same precision,
+// a fraction of the bytes.
+writeFileSync(
+  'src/data/puzzle-shapes.json',
+  JSON.stringify(Object.fromEntries(Object.entries(shapes).map(([id, ring]) => [id, encodeRing(ring)]))),
+);
 writeFileSync('src/data/puzzle-adjacency.json', JSON.stringify(adjacency));
 // Every place's real neighbours (across group lines too), for the place card.
 const neighbors = Object.fromEntries(names.map((n) => [n, [...adj[n]].sort()]));

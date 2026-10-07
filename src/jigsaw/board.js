@@ -303,7 +303,7 @@ export class Board {
     this.stage.hideSolved();
     this.#emitAction();
     this.#animatePieces(
-      (p) => [0, 0],
+      () => [0, 0],
       (p) => [p.homeTx, p.homeTy],
       () => {
         this.phase = 'play';
