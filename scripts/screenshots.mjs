@@ -265,9 +265,27 @@ await page.waitForTimeout(300);
   await page.waitForTimeout(800);
   const after = await promptName();
   if (before !== after) fail(`restore lost the ask (${before} → ${after})`);
+  if (!(await page.getByRole('button', { name: 'Solve' }).isVisible())) fail('no Solve button after restore');
   await dragTo(after, 0, -900);
   await page.waitForTimeout(400);
   await shot('restored-after-reload');
+
+  // Rotate to landscape mid-puzzle: the level re-lays out, every loose piece is
+  // still on screen, and the same piece is still asked for.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(900);
+  if ((await promptName()) !== after) fail('rotation lost the ask');
+  const offscreen = await page.evaluate(() => {
+    const svg = document.querySelector('svg.jig').getBoundingClientRect();
+    return [...document.querySelectorAll('.jig-piece:not(.placed)')]
+      .map((g) => [g.dataset.name, g.getBoundingClientRect()])
+      .filter(([, r]) => r.bottom < svg.top || r.top > svg.bottom || r.right < svg.left || r.left > svg.right)
+      .map(([n]) => n);
+  });
+  if (offscreen.length) fail(`pieces off screen after rotating: ${offscreen.join(', ')}`);
+  await shot('rotated-mid-puzzle');
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.waitForTimeout(900);
 }
 
 // Home: Continue + progress.

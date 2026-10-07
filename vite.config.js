@@ -41,7 +41,11 @@ export default defineConfig({
           {
             urlPattern: ({ request }) => request.mode === 'navigate',
             handler: 'NetworkFirst',
-            options: { cacheName: 'hood-pages', networkTimeoutSeconds: 4 },
+            options: {
+              cacheName: 'hood-pages',
+              networkTimeoutSeconds: 4,
+              matchOptions: { ignoreSearch: true },
+            },
           },
         ],
       },

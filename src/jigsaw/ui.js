@@ -30,7 +30,10 @@ export function actionButton({ onUp, onSolve, isRoot }) {
     class: 'jig-btn jig-topbtn',
     onClick: () => (mode === 'solve' ? onSolve() : onUp()),
   });
+  // m: 'solve' | 'up' | 'busy' (mid-animation: keep the label, ignore taps).
   const setAction = (m) => {
+    button.disabled = m === 'busy';
+    if (m === 'busy') return;
     mode = m;
     const solving = m === 'solve';
     button.textContent = solving ? 'Solve' : '↑ Zoom out';

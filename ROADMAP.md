@@ -52,6 +52,18 @@ by name**, for example "Place **Burbank**".
 - [x] **Search threw away an in-progress puzzle.** It now asks for nothing and keeps
       the scramble saved for that level.
 
+### Found in the second review round (all fixed)
+- [x] A resumed puzzle had no Solve button, and its pieces could restore off-screen
+      after a rotation or window resize. Tray spots are now re-packed on restore.
+- [x] Rotating or resizing mid-level now re-lays the level out.
+- [x] Double-tapping Solve could turn into Zoom out. The button now disables
+      mid-animation, and Solve also works during the intro.
+- [x] Leaving right after the final snap could keep a stale in-progress save.
+- [x] The next piece could be grabbed in the beat before it was asked for.
+- [x] An offline launch right after install had no app shell (the page cache is now
+      warmed on registration).
+- [x] Bug reports always said "solved".
+
 ## 3. Content (what the game teaches)
 - [x] **Hand-name all 61 groups.** The auto-derived names taught wrong geography:
       "Holmby Hills" contained Beverly Hills and Westwood, "Bunker Hill" was all of

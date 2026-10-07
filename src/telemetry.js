@@ -66,7 +66,7 @@ export function countEvent(name) {
 // The context we attach to a bug report — where they were and which build.
 export function bugContext() {
   const nav = store.nav?.();
-  const where = nav ? `${nav.node} · ${nav.board ? nav.board.phase : 'solved'}` : 'home';
+  const where = nav ? `${nav.node} · ${store.puzzle(nav.node) ? 'mid-puzzle' : 'browsing'}` : 'home';
   return {
     where,
     version: VERSION,

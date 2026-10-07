@@ -417,6 +417,10 @@ body {
   border-radius: 9px;
   cursor: pointer;
 }
+.jig-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .jig-btn:active {
   background: var(--line);
 }

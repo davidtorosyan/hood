@@ -146,44 +146,48 @@ export class Board {
   }
 
   // Serialize for persistence: null when solved (a reload rebuilds it assembled),
-  // otherwise the run (anchor, order, how far along) and each loose piece's spot.
+  // otherwise the run (anchor, order, how far along). Loose pieces' tray spots
+  // aren't saved — they're re-packed on restore, since the board may come back
+  // a different size (rotated phone, resized window).
   serialize() {
     if (!this.run || (this.phase !== 'play' && this.phase !== 'scattering')) return null;
-    const pieces = {};
-    for (const p of this.pieces) if (!p.placed) pieces[p.id] = [Math.round(p.homeTx), Math.round(p.homeTy)];
     const { anchor, order, step } = this.run;
-    return { phase: 'play', anchor, order, step, pieces };
+    return { phase: 'play', anchor, order, step };
   }
 
   #restorePlay(saved) {
-    const { anchor, order, step, pieces } = saved;
+    const { anchor, order, step } = saved;
     const ids = new Set(this.pieces.map((p) => p.id));
+    // Every ask must border something placed before it, or it could never snap.
+    const connected = () => {
+      const seen = new Set([anchor]);
+      return order.every((id) => adjacentIds(id).some((n) => seen.has(n)) && seen.add(id));
+    };
     const valid =
       ids.has(anchor) &&
       Array.isArray(order) &&
       order.length === ids.size - 1 &&
+      new Set(order).size === order.length &&
       order.every((id) => ids.has(id) && id !== anchor) &&
       Number.isInteger(step) &&
       step >= 0 &&
       step < order.length &&
-      order.slice(step).every((id) => Array.isArray(pieces?.[id]));
+      connected();
     if (!valid) return false; // data changed under an old save → start assembled
     const placed = new Set([anchor, ...order.slice(0, step)]);
     for (const p of this.pieces) {
       p.reset();
-      if (placed.has(p.id)) {
-        p.moveTo(0, 0);
-        p.setPlaced(true);
-      } else {
-        [p.homeTx, p.homeTy] = pieces[p.id];
-        p.moveTo(p.homeTx, p.homeTy);
-        p.setPlaced(false);
-      }
+      p.setPlaced(placed.has(p.id));
+      p.homeTx = 0;
+      p.homeTy = 0;
     }
+    this.#packLoose();
+    for (const p of this.pieces) p.moveTo(p.homeTx, p.homeTy);
     this.byId.get(anchor).g.classList.add('anchor');
     this.run = { anchor, order, step, misses: 0, finds: 0 };
     this.phase = 'play';
     this.stage.hideSolved();
+    this.#emitAction();
     this.#ask();
     return true;
   }
@@ -192,9 +196,22 @@ export class Board {
     if (this.phase !== 'destroyed') this.cbs.onPersist?.();
   }
 
+  // The top-right button: Solve while a puzzle is on (or about to be), Zoom out
+  // on a solved map, and disabled mid-animation (a second tap on Solve mustn't
+  // turn into a Zoom out).
   #emitAction() {
-    const playing = this.phase === 'play' || this.phase === 'scattering' || this.phase === 'intro';
-    this.cbs.onAction?.(playing ? 'solve' : 'up');
+    const playing = ['play', 'scattering', 'intro'].includes(this.phase);
+    this.cbs.onAction?.(playing ? 'solve' : this.phase === 'solved' ? 'up' : 'busy');
+  }
+
+  // Pack every loose (unplaced) piece into the tray: sets their homeTx/Ty.
+  #packLoose() {
+    const loose = this.pieces.filter((p) => !p.placed);
+    const homes = packTray(
+      loose.map((p) => ({ box: p.extent(p.labelBoxes), labels: p.labelBoxes })),
+      rectToUser(this.layout.tray, this.vbH),
+    );
+    loose.forEach((p, i) => ([p.homeTx, p.homeTy] = homes[i]));
   }
 
   // --- starting a run --------------------------------------------------------
@@ -213,20 +230,14 @@ export class Board {
     this.run = { anchor, order, step: 0, misses: 0, finds: 0 };
     this.cbs.onEvent?.('puzzle-start');
 
-    const loose = this.pieces.filter((p) => p.id !== anchor);
-    const homes = packTray(
-      loose.map((p) => ({ box: p.extent(p.labelBoxes), labels: p.labelBoxes })),
-      rectToUser(this.layout.tray, this.vbH),
-    );
-    loose.forEach((p, i) => ([p.homeTx, p.homeTy] = homes[i]));
     for (const p of this.pieces) {
       p.reset();
       p.setPlaced(p.id === anchor);
+      p.homeTx = 0;
+      p.homeTy = 0;
     }
-    const a = this.byId.get(anchor);
-    a.homeTx = 0;
-    a.homeTy = 0;
-    a.g.classList.add('anchor');
+    this.#packLoose();
+    this.byId.get(anchor).g.classList.add('anchor');
 
     this.phase = 'scattering';
     this.stage.hideSolved();
@@ -246,6 +257,13 @@ export class Board {
 
   // Snap everything home (the Solve button — gave up, or just want to move on).
   solve() {
+    if (this.phase === 'intro') {
+      // Not even started: just settle on the assembled map.
+      this.sched.cancelAll();
+      store.markDone(this.nodeId, 'skipped');
+      this.cbs.onEvent?.('puzzle-skip');
+      return this.#enterSolved();
+    }
     if (this.phase !== 'play' && this.phase !== 'scattering') return;
     this.sched.cancelAll();
     this.#cancelHeld();
@@ -307,6 +325,7 @@ export class Board {
     const { step, order } = this.run;
     this.run.misses = 0;
     this.run.finds = 0;
+    this.run.ready = true; // the asked-for piece can be picked up now
     const firstEver = !store.coached();
     const mate = this.byId.get(this.#mate(t)?.id);
     // The very first ask of all time spells out the move.
@@ -320,12 +339,14 @@ export class Board {
     }
     // Can't find it after a while? Pulse it in the tray.
     this.sched.cancel(this.run.findTimer);
-    this.run.findTimer = this.sched.after(FIND_HINT_MS, () => this.#target() === t && t.pulse());
+    this.run.findTimer = this.sched.after(FIND_HINT_MS, () => this.#target() === t && !this.held && t.pulse());
   }
 
   // A piece was pressed during play.
   #grab(piece, pt) {
-    if (piece.placed) return false;
+    // Placed pieces stay put; and between a snap and the next ask, nothing moves
+    // (the next target would otherwise be grabbable before it's been named).
+    if (piece.placed || !this.run.ready) return false;
     const t = this.#target();
     if (piece !== t) {
       // Not this one — but you learn a name either way.
@@ -426,9 +447,15 @@ export class Board {
     this.#clearHints();
     if (!store.coached()) store.markCoached();
     this.run.step += 1;
+    this.run.ready = false;
     if (this.run.step >= this.run.order.length) {
+      // Done. Leave 'play' right away so leaving in the next beat can't keep a
+      // stale in-progress save, and Solve can't fire on a finished map.
+      this.phase = 'solving';
+      this.#emitAction();
       this.stage.hidePrompt();
       store.markDone(this.nodeId, 'solved');
+      this.#persist();
       this.cbs.onEvent?.('puzzle-solved');
       this.sched.after(SNAP_MS, () => this.#enterSolved({ justSolved: true }));
       return;
@@ -544,6 +571,8 @@ export class Board {
     const piece = this.byId.get(childId);
     if (!piece?.zoomable || this.phase !== 'solved') return void onArrived?.();
     this.phase = 'zooming';
+    this.gestures.reset();
+    this.#emitAction();
     this.stage.hideSolved();
     this.cbs.onEvent?.('zoom-in');
     for (const p of this.pieces) if (p !== piece) p.fadeOut();
@@ -559,6 +588,8 @@ export class Board {
     if (this.phase !== 'solved') return void onDone();
     this.sched.cancelAll();
     this.phase = 'zooming';
+    this.gestures.reset();
+    this.#emitAction();
     this.stage.hideSolved();
     for (const p of this.pieces) p.g.classList.add('collapsing');
     const cx = this.pieces.reduce((s, p) => s + p.geom.cx, 0) / this.pieces.length;

@@ -12,6 +12,10 @@ export function initPwa() {
     immediate: true,
     onRegisteredSW(swUrl, reg) {
       if (!reg) return;
+      // The very first visit's page load happens before the worker is in
+      // control, so the network-first page cache is empty; warm it now so an
+      // offline launch right after install still has the app shell.
+      window.caches?.open('hood-pages').then((c) => c.add(location.pathname)).catch(() => {});
       const check = () => {
         // Skip while offline (the check would just fail) or mid-install.
         if (!navigator.onLine || reg.installing) return;

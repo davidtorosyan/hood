@@ -23,6 +23,23 @@ const FLY_DWELL_UP = 140; // extra pause after a zoom-OUT step settles
 const FLY_DWELL_DOWN = 220; // pause before each zoom-IN step
 
 let board = null; // the one live Board
+let current = null; // { app, ctx, nodeId, w, h } — what's on screen, for resize
+
+// Rotating the phone or resizing the window re-lays the level out for the new
+// shape (a puzzle in progress comes back via its save, re-packed). Debounced,
+// and never mid-animation.
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!current || !board?.idle()) return;
+    const wrap = document.querySelector('.jig-board');
+    if (!wrap) return;
+    const dw = Math.abs(wrap.clientWidth - current.w);
+    const dh = Math.abs(wrap.clientHeight - current.h);
+    if (dw > 24 || dh > 24) renderNode(current.app, current.ctx, current.nodeId, {});
+  }, 250);
+});
 
 // Open the jigsaw at `node` (default: the saved spot, else the county).
 export function mountJigsaw(app, { back, node } = {}) {
@@ -36,6 +53,7 @@ export function mountJigsaw(app, { back, node } = {}) {
 export function unmountJigsaw() {
   board?.destroy();
   board = null;
+  current = null;
 }
 
 // opts: { autoPlay, zoomOutFrom, fly: { route, step, highlight } }
@@ -138,6 +156,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   const w = boardWrap.clientWidth || 360;
   const h = boardWrap.clientHeight || 360;
   me.build(Math.round((1000 * h) / w), w);
+  current = { app, ctx, nodeId, w, h };
   const restore = store.puzzle(nodeId);
   me.start({
     zoomOutFrom: opts.zoomOutFrom,
