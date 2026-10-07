@@ -120,7 +120,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
           renderNode(app, ctx, next, { zoomOutFrom: nodeId, fly: nextFly }),
         );
       } else {
-        me.zoomInto(next, () => renderNode(app, ctx, next, { fly: nextFly }));
+        me.zoomInto(next, () => renderNode(app, ctx, next, { fly: nextFly, arrived: true }));
       }
     });
   };
@@ -133,7 +133,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   if (st.pop > 0) statBits.push(`${fmtPeople(st.pop)} people`);
 
   const me = new Board(nodeId, {
-    onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true }),
+    onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true, arrived: true }),
     onZoomOut: goUp,
     onGoTo,
     onSelectLeaf: (id) => showCard(id),
@@ -187,6 +187,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
     // (Play, or zooming in). Browsing (search, breadcrumbs, zooming out) shows it
     // assembled, with a button to play.
     autoPlay: !!opts.autoPlay && !restore && !store.progress(nodeId),
+    arrived: !!opts.arrived,
   });
 
   const fly = opts.fly;

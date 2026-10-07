@@ -76,7 +76,7 @@ export class Board {
     defs.append(clip);
     this.contextLayer = svgEl('g', { class: 'jig-context', 'clip-path': `url(#${this.clipId})` });
     this.contextShapes = svgEl('g');
-    this.contextLabels = svgEl('g'); // names above every context shape
+    this.contextLabels = svgEl('g', { class: 'jig-ctx-labels' }); // names above every context shape
     this.contextLayer.append(this.contextShapes, this.contextLabels);
     this.hintLayer = svgEl('g', { class: 'jig-hints' }); // ghost outlines, under the pieces
     this.pieceLayer = svgEl('g');
@@ -169,7 +169,10 @@ export class Board {
   // it starts assembled, and with `autoPlay` it breaks apart into play after a
   // beat (so a new puzzle starts itself). `zoomOutFrom` reverse-zooms from the
   // child we came up from.
-  start({ zoomOutFrom = null, restore = null, autoPlay = false } = {}) {
+  // `arrived`: we zoomed in from the parent — the context shapes were already on
+  // screen (the parent's siblings turned into them), so only their names fade in.
+  start({ zoomOutFrom = null, restore = null, autoPlay = false, arrived = false } = {}) {
+    if (arrived) this.contextLabels.classList.add('arriving');
     const restored = restore?.phase === 'play' && this.#restorePlay(restore);
     if (!restored) {
       this.#assembleAll();
@@ -184,7 +187,17 @@ export class Board {
     }
     if (zoomOutFrom) {
       const from = this.byId.get(zoomOutFrom);
-      if (from) this.#animateCamera(this.#boxFor(from), fullVB(this.vbH));
+      if (from) {
+        // The siblings start as grey context (as they looked a moment ago, one
+        // level down) and warm up to their colours as the camera pulls back.
+        const others = this.pieces.filter((p) => p !== from && p.placed);
+        for (const p of others) p.setContextLook(true);
+        this.svg.getBoundingClientRect(); // commit the grey so the warm-up animates
+        for (const p of others) p.setContextLook(false);
+        this.contextLabels.classList.add('arriving');
+        this.#clipDuringZoom(this.#childLayout(from).build, this.layout.build);
+        this.#animateCamera(this.#boxFor(from), fullVB(this.vbH));
+      }
     }
   }
 
@@ -632,7 +645,7 @@ export class Board {
   #boxFor(piece) {
     const { geom, tx, ty } = piece;
     const fill = fillFor(piece.id);
-    const child = layoutFor(this.vbH, mapAspectOf(piece.id), this.gap, fill);
+    const child = this.#childLayout(piece);
     const [fx0, fy0, fx1, fy1] = child.build;
     const fw = (fx1 - fx0) * fill;
     const fh = (fy1 - fy0) * fill;
@@ -653,9 +666,12 @@ export class Board {
     this.gestures.reset();
     this.#emitAction();
     this.stage.hideSolved();
-    this.contextLayer.classList.add('fading');
+    // The siblings turn into the next level's grey context (it'll be drawn
+    // there too), and this level's own context stays put — no pop on arrival.
+    this.contextLabels.classList.add('fading');
     this.cbs.onEvent?.('zoom-in');
-    for (const p of this.pieces) if (p !== piece) p.fadeOut();
+    for (const p of this.pieces) if (p !== piece) p.setContextLook(true);
+    this.#clipDuringZoom(this.layout.build, this.#childLayout(piece).build);
     this.#animateCamera(fullVB(this.vbH), this.#boxFor(piece), () =>
       onArrived ? onArrived() : this.cbs.onZoomInto?.(childId),
     );
@@ -671,7 +687,7 @@ export class Board {
     this.gestures.reset();
     this.#emitAction();
     this.stage.hideSolved();
-    this.contextLayer.classList.add('fading');
+    this.contextLabels.classList.add('fading'); // the shapes stay: the parent draws them too
     for (const p of this.pieces) p.g.classList.add('collapsing');
     const cx = this.pieces.reduce((s, p) => s + p.geom.cx, 0) / this.pieces.length;
     const cy = this.pieces.reduce((s, p) => s + p.geom.cy, 0) / this.pieces.length;
@@ -684,6 +700,30 @@ export class Board {
   // Pulse a piece to draw the eye (a search just landed on it).
   flashPiece(id) {
     this.byId.get(id)?.flash();
+  }
+
+  // The layout `piece`'s own level will have (its map's aspect + fill).
+  #childLayout(piece) {
+    return layoutFor(this.vbH, mapAspectOf(piece.id), this.gap, fillFor(piece.id));
+  }
+
+  // While the camera zooms, keep the map inside the build canvas ON SCREEN
+  // (morphing from one level's canvas to the next's), so the grey context never
+  // spills over the tray and then gets cut off at the handoff.
+  #clipDuringZoom(from, to) {
+    const pct = (v) => `${(v * 100).toFixed(2)}%`;
+    const inset = ([x0, y0, x1, y1]) =>
+      `inset(${pct(y0)} ${pct(1 - x1)} ${pct(1 - y1)} ${pct(x0)} round 14px)`; // the panel's corners
+    const s = this.svg.style;
+    s.transition = 'none';
+    s.clipPath = inset(from);
+    this.svg.getBoundingClientRect(); // commit the start
+    s.transition = `clip-path ${ZOOM_MS}ms cubic-bezier(0.33, 1, 0.68, 1)`;
+    s.clipPath = inset(to);
+    this.sched.after(ZOOM_MS + 40, () => {
+      s.transition = '';
+      s.clipPath = '';
+    });
   }
 
   #animateCamera(from, to, onDone) {

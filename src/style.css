@@ -808,10 +808,35 @@ body {
   stroke-linejoin: round;
   cursor: pointer; /* the name is tappable too */
 }
-.jig-context {
+.jig-context,
+.jig-ctx-labels {
   transition: opacity 0.35s ease;
 }
-.jig-context.fading {
+.jig-context.fading,
+.jig-ctx-labels.fading {
+  opacity: 0;
+}
+/* Arriving by zoom: the context shapes were already on screen (the parent's
+   pieces turned into them), so only the names fade in. */
+.jig-ctx-labels.arriving {
+  animation: ctx-names-in 0.45s ease 0.05s both;
+}
+@keyframes ctx-names-in {
+  from { opacity: 0; }
+}
+/* A piece blending into (or out of) the grey context look during a zoom. */
+.jig-piece.ctx-morph .jig-shape {
+  transition: fill 0.5s ease, stroke-width 0.5s ease;
+}
+.jig-label-wrap.ctx-morph {
+  transition: opacity 0.4s ease;
+}
+/* (After .placed so it wins: same specificity, later rule.) */
+.jig-piece.as-context .jig-shape {
+  fill: #e6eaf1;
+  stroke-width: 3;
+}
+.jig-label-wrap.as-context {
   opacity: 0;
 }
 /* A solved sub-puzzle's ✓ beside its name. */

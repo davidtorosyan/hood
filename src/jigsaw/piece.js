@@ -180,6 +180,17 @@ export class Piece {
     }
   }
 
+  // Blend into the faint grey "surrounding area" look (and back). Zooming in,
+  // the siblings become the next level's context instead of vanishing — so the
+  // context there is already on screen and nothing pops in; zooming out, they
+  // start grey and warm back up to their colours.
+  setContextLook(on) {
+    this.g.classList.add('ctx-morph');
+    this.labelEl.classList.add('ctx-morph');
+    this.g.classList.toggle('as-context', on);
+    this.labelEl.classList.toggle('as-context', on);
+  }
+
   // A quick side-to-side shake: "not this one".
   wiggle() {
     this.#restartClass('wiggle', 450);
