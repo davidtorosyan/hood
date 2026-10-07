@@ -4,6 +4,7 @@
 // use the support address at the bottom.
 import { el } from './ui/dom.js';
 import { openModal } from './ui/modal.js';
+import { store } from './store.js';
 import { bugContext, countEvent, reportConfig } from './telemetry.js';
 
 export function openBugReport() {
@@ -78,6 +79,24 @@ export function openBugReport() {
       el('a', { class: 'bug-mail', href: `mailto:${reportConfig.SUPPORT_EMAIL}` }, reportConfig.SUPPORT_EMAIL),
     ]),
   ]);
+
+  // Start over: wipe all progress to replay the new-player experience. Two taps
+  // (the first one asks), since it can't be undone.
+  let armed = false;
+  const resetBtn = el('button', {
+    class: 'bug-reset',
+    onClick: () => {
+      if (!armed) {
+        armed = true;
+        resetBtn.textContent = 'Tap again to erase all progress';
+        resetBtn.classList.add('armed');
+        return;
+      }
+      store.resetAll();
+      location.reload();
+    },
+  }, 'Start over (erase progress)');
+  card.append(el('div', { class: 'bug-reset-row' }, [resetBtn]));
 
   close = openModal(card, { label: 'Report an issue', focus: input });
 }

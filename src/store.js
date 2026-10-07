@@ -139,6 +139,15 @@ export const store = {
     delete state.nav;
     save(state);
   },
+  // Erase everything (the "Start over" button — e.g. to replay the new-player
+  // experience). The caller reloads, since this module holds state in memory.
+  resetAll() {
+    try {
+      localStorage.removeItem(KEY);
+    } catch {
+      /* nothing saved to clear */
+    }
+  },
   // Were they on the home screen last? Then a relaunch opens home, not the game.
   atHome() {
     return !!state.atHome;
