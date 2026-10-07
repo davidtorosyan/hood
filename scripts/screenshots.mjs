@@ -205,11 +205,14 @@ await solveByName({ onMidway: () => shot('county-midway') });
 await page.waitForTimeout(500);
 await shot('county-solved');
 
-// Zoom into a region: it starts itself.
+// Zoom into a region: past the tutorial it opens assembled, to explore — no
+// auto-scramble — and the primary ▶ Play starts it.
 const regionName = (await readPieces()).find((p) => p.zoomable)?.name;
 await tapPiece(regionName);
-await page.waitForTimeout(700);
-await shot('region-arrived');
+await page.waitForTimeout(1600);
+if (await phaseIsPlay()) fail('a level auto-started after the tutorial');
+await shot('region-arrived-to-explore');
+await page.getByRole('button', { name: /Play this puzzle/ }).click();
 await waitForPrompt();
 await page.waitForTimeout(300);
 await shot('region-play');
@@ -239,7 +242,7 @@ await page.waitForTimeout(1300);
 await shot('county-with-check');
 if (!(await page.locator('.jig-check').count())) fail('no ✓ on the solved region');
 
-// Dive down to a level of places (using Solve on each new puzzle), then open a
+// Dive down to a level of places (exploring — nothing auto-starts), then open a
 // place's card. Some regions nest one level deeper than others.
 await tapPiece(regionName);
 await page.waitForTimeout(800);
@@ -247,7 +250,7 @@ for (let depth = 0; depth < 4; depth++) {
   const pieces = await readPieces();
   const leaf = pieces.find((p) => !p.zoomable && p.placed);
   if (leaf && !(await phaseIsPlay())) {
-    await shot('leaf-level-solved-by-button');
+    await shot('leaf-level-explore');
     await tapPiece(leaf.name);
     await page.waitForTimeout(400);
     await shot('place-card');
@@ -259,10 +262,7 @@ for (let depth = 0; depth < 4; depth++) {
   const group = pieces.find((p) => p.zoomable)?.name;
   if (!group) break;
   await tapPiece(group);
-  await page.waitForTimeout(900);
-  await waitForPrompt();
-  await page.getByRole('button', { name: 'Solve' }).click();
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(1200);
 }
 
 // Search fly-through.

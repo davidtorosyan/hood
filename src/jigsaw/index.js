@@ -183,10 +183,11 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   me.start({
     zoomOutFrom: opts.zoomOutFrom,
     restore,
-    // A puzzle you haven't finished starts itself when you arrive the normal way
-    // (Play, or zooming in). Browsing (search, breadcrumbs, zooming out) shows it
-    // assembled, with a button to play.
-    autoPlay: !!opts.autoPlay && !restore && !store.progress(nodeId),
+    // Only a brand-new player's first puzzle starts itself (finding how to
+    // start was the old stumbling block). After the tutorial run, every level
+    // opens assembled for exploring, with a prominent ▶ Play in the tray —
+    // auto-scrambling got in the way of just looking around.
+    autoPlay: !!opts.autoPlay && !restore && !store.progress(nodeId) && !store.coached(),
     arrived: !!opts.arrived,
   });
 

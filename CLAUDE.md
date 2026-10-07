@@ -100,9 +100,11 @@ outline. ~9 s without the right grab → pulse the target in the tray. The very 
 ever adds a spelled-out instruction and an animated finger demo (`Coach`) in the bold
 dark pill; after that the ask is a quiet light chip ("NEXT Burbank 3/7") — Dave found
 the bold pill too tutorial-y for ongoing play.
-**Unsolved levels start themselves** (assembled for a beat, then break apart) when you
-arrive via Play or by zooming in; browsing (search, breadcrumb, zoom-out) shows them
-assembled with "Play this one". Solved levels show assembled with a ✓ on solved
+**Only a brand-new player's first puzzle starts itself** (assembled for a beat, then
+breaks apart) — finding how to start was the original stumbling block. After that tutorial
+run nothing auto-scrambles (Dave: it got in the way of exploring): an unplayed level
+opens assembled with a prominent ▶ "Play this puzzle" in the tray; played ones get a
+quieter "Play again". Solved levels show assembled with a ✓ on solved
 sub-areas, a "🎉 X solved!" pill, chips naming every piece (in-progress ones marked),
 Play again, and the region's puzzle count. **↑ Zoom out is always available** below
 the county, even mid-puzzle (the run is saved per level and resumes).

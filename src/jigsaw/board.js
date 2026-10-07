@@ -132,12 +132,11 @@ export class Board {
     // Context names must never sit on the map: a spot is usable only if its
     // label box stays clear of every piece and every name placed so far.
     const taken = this.pieces.flatMap((p) => p.labelBoxes);
-    const onMap = ([bx0, by0, bx1, by1]) =>
-      this.pieces.some((p) =>
-        [[bx0, by0], [bx1, by0], [bx0, by1], [bx1, by1], [(bx0 + bx1) / 2, (by0 + by1) / 2]].some(([x, y]) =>
-          ringContains(p.geom.ring, x, y),
-        ),
-      );
+    const onMap = ([bx0, by0, bx1, by1]) => {
+      const pts = []; // a 5×3 grid over the label box
+      for (let i = 0; i <= 4; i++) for (let j = 0; j <= 2; j++) pts.push([bx0 + ((bx1 - bx0) * i) / 4, by0 + ((by1 - by0) * j) / 2]);
+      return this.pieces.some((p) => pts.some(([x, y]) => ringContains(p.geom.ring, x, y)));
+    };
     const hits = (b) => taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
     for (const c of projectContext(this.nodeId, proj, [x0 + inset, y0 + inset, x1 - inset, y1 - inset], fs * 0.55)) {
       const g = svgEl('g', { class: 'jig-ctx' });
@@ -561,7 +560,10 @@ export class Board {
     this.run = null;
     this.stage.hidePrompt();
     const zoomable = this.pieces.some((p) => p.zoomable);
-    this.stage.replayBtn.textContent = store.progress(this.nodeId) ? '🔀 Play again' : '🔀 Play this one';
+    // Not played yet: Play is the call to action. Played: a quieter Play again.
+    const fresh = !store.progress(this.nodeId);
+    this.stage.replayBtn.textContent = fresh ? '▶ Play this puzzle' : '🔀 Play again';
+    this.stage.replayBtn.classList.toggle('primary', fresh);
     const chips = this.pieces.map((p) => ({
       label: labelOf(p.id),
       done: p.zoomable && store.isSolved(p.id),

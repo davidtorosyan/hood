@@ -36,6 +36,15 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
     one, mostly tiny unincorporated slivers with nothing solid to say.
   - Keyboard play stays in "Later"
 
+## Batch 3: Dave's notes
+- [x] **No auto-scramble after the tutorial.** It got in the way of exploring. Only
+      a brand-new player's first puzzle starts itself; after that, an unplayed level
+      opens assembled with a prominent ▶ Play.
+- [x] **Zoom without the context pop-in.** Neighbors blend into the gray context
+      during the zoom.
+- [x] **"Start over" (erase progress)** in Report an issue, for testing the
+      new-player flow.
+
 ## 1. Guided placement: the core design change
 Each puzzle starts the same way: one **anchor** piece sits on the map and the rest wait
 in the tray. Instead of free-for-all dragging, the game asks for **one piece at a time

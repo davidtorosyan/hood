@@ -511,6 +511,15 @@ body {
   font-weight: 650;
   color: var(--text-dim);
 }
+.jig-replay.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  padding: 11px 22px;
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.3);
+}
 .jig-replay {
   pointer-events: auto;
   font-size: 14px;
