@@ -110,6 +110,10 @@ export class Stage {
       ),
     );
     this.solved.style.display = '';
+    // The chips are a bonus; if the tray can't fit them all, drop them rather
+    // than show a row sliced in half.
+    this.chips.style.display = '';
+    if (this.chips.scrollHeight > this.chips.clientHeight + 1) this.chips.style.display = 'none';
   }
 
   hideSolved() {

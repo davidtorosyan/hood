@@ -1086,3 +1086,20 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Narrow phones (iPhone SE): the piece name matters more than the verb. */
+@media (max-width: 380px) {
+  .jig-prompt-verb {
+    display: none;
+  }
+  .jig-prompt.celebrate .jig-prompt-verb {
+    display: inline;
+  }
+  .jig-prompt-name {
+    font-size: 17px;
+  }
+  .jig-prompt-main {
+    padding: 7px 13px 8px;
+    gap: 6px;
+  }
+}

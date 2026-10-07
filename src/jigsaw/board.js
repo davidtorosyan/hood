@@ -310,8 +310,7 @@ export class Board {
     const firstEver = !store.coached();
     const mate = this.byId.get(this.#mate(t)?.id);
     // The very first ask of all time spells out the move.
-    const where = this.layout.wide ? 'onto the map' : 'up to the map';
-    const sub = firstEver && mate ? `Drag it ${where}, next to ${labelOf(mate.id)}` : '';
+    const sub = firstEver && mate ? `Drag it ${this.layout.wide ? 'over' : 'up'} next to ${labelOf(mate.id)}` : '';
     this.stage.ask(labelOf(t.id), step + 2, order.length + 1, sub);
     if (firstEver) {
       this.coach.play(
