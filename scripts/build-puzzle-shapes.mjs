@@ -15,9 +15,6 @@ import union from '@turf/union';
 import booleanIntersects from '@turf/boolean-intersects';
 import { featureCollection } from '@turf/helpers';
 import rewind from '@mapbox/geojson-rewind';
-import { topology } from 'topojson-server';
-import { presimplify, simplify as topoSimplify } from 'topojson-simplify';
-import { merge } from 'topojson-client';
 import { REGION_GROUPS } from '../src/data/regions.js';
 import { PLACES } from '../src/data/places.js';
 
@@ -30,7 +27,6 @@ const PRECISION = 5;
 // topology simplifier — a vertex goes if its triangle is smaller than this, so
 // every piece reduces to a few big sides regardless of how dense it was. Bigger
 // = blockier; too big and tiny hoods collapse, so this is tuned to keep them.
-const SIMPLE_MIN_WEIGHT = 0.0005;
 const round = (n) => Number(n.toFixed(PRECISION));
 
 const boundaries = JSON.parse(readFileSync('src/data/boundaries.json', 'utf8'));
@@ -243,22 +239,26 @@ const moreProminent = (a, b) => {
 };
 
 // Hand-authored names for every generated group, keyed by the exact set of areas
-// it contains (stable regardless of the auto-label). Rules (enforced below):
-// a single name (no "&"), at most NAME_CAP chars, never a region name, and never
-// one of the group's own member areas (so it doesn't read like "X area"). Real
-// district/area names where they exist; geographic coinages for the rest. If the
-// partition ever changes, build:shapes warns about any uncovered group.
-const NAME_CAP = 18;
+// it contains (stable regardless of the auto-label). The name TEACHES — players
+// learn it as a fact — so it must be accurate and recognizable: a real district
+// name that covers the members ("Northwest Valley", "Palos Verdes"), else
+// "<best-known member> area" ("Pasadena area"). Never a clever coinage named
+// after one small place (an earlier pass had "Holmby Hills" for a group holding
+// Beverly Hills and Westwood, "Santa Fe Dam" for Monrovia). Rules enforced
+// below: no "&", at most NAME_CAP chars, never a region name, never exactly a
+// member's name. If the partition changes, build:shapes fails on any uncovered
+// group.
+const NAME_CAP = 20;
 const GROUP_NAMES = {
   // --- San Fernando Valley ---
   'Las Virgenes': ['Agoura Hills', 'Calabasas', 'Hidden Hills', 'Westlake Village'],
-  'Sunland-Tujunga': ['Burbank', 'Hansen Dam', 'Lake View Terrace', 'Shadow Hills', 'Sun Valley', 'Sunland', 'Tujunga'],
+  'East Valley': ['Burbank', 'Hansen Dam', 'Lake View Terrace', 'Shadow Hills', 'Sun Valley', 'Sunland', 'Tujunga'],
   'Central Valley': ['Encino', 'Lake Balboa', 'Northridge', 'Reseda', 'Sepulveda Basin', 'Van Nuys', 'Winnetka'],
   'North Valley': ['Arleta', 'Granada Hills', 'Mission Hills', 'North Hills', 'Pacoima', 'Panorama City', 'San Fernando', 'Sylmar'],
   'South Valley': ['North Hollywood', 'Sherman Oaks', 'Studio City', 'Toluca Lake', 'Universal City', 'Valley Glen', 'Valley Village'],
   'West Valley': ['Canoga Park', 'Chatsworth', 'Chatsworth Reservoir', 'Porter Ranch', 'Tarzana', 'West Hills', 'Woodland Hills'],
   'Northwest Valley': ['Granada Hills', 'Mission Hills', 'North Hills'],
-  'Northeast Valley': ['Arleta', 'Pacoima', 'Panorama City'],
+  'Pacoima area': ['Arleta', 'Pacoima', 'Panorama City'],
   // --- San Gabriel Valley ---
   'Northeast L.A.': ['Atwater Village', 'Cypress Park', 'Eagle Rock', 'Elysian Valley', 'Glassell Park', 'Glendale', 'Highland Park', 'La Cañada Flintridge', 'La Crescenta-Montrose', 'Lincoln Heights', 'Mount Washington'],
   'Foothill Cities': ['Arcadia', 'East Pasadena', 'East San Gabriel', 'Irwindale', 'Mayflower Village', 'Monrovia', 'North El Monte', 'San Marino', 'San Pasqual', 'Sierra Madre', 'Temple City'],
@@ -267,46 +267,46 @@ const GROUP_NAMES = {
   'The Puente Valley': ['Baldwin Park', 'El Monte', 'La Puente', 'Rosemead', 'South El Monte', 'South San Jose Hills', 'Valinda', 'West Covina', 'West Puente Valley', 'Whittier Narrows'],
   'The Pomona Valley': ['Avocado Heights', 'Claremont', 'Diamond Bar', 'Hacienda Heights', 'Industry', 'La Verne', 'Pomona', 'Rowland Heights', 'South Diamond Bar', 'Walnut'],
   'The Verdugos': ['Glendale', 'La Cañada Flintridge', 'La Crescenta-Montrose'],
-  'Arroyo Seco': ['Atwater Village', 'Eagle Rock', 'Elysian Valley', 'Glassell Park'],
-  'Figueroa Corridor': ['Cypress Park', 'Highland Park', 'Lincoln Heights', 'Mount Washington'],
-  'Santa Fe Dam': ['Irwindale', 'Mayflower Village', 'Monrovia'],
-  'Santa Anita': ['Arcadia', 'East Pasadena', 'North El Monte', 'Sierra Madre'],
-  'The Huntington': ['East San Gabriel', 'San Marino', 'San Pasqual', 'Temple City'],
-  'Canyon Cities': ['Azusa', 'Bradbury', 'Duarte'],
-  'Covina Hills': ['Citrus', 'Covina', 'Ramona'],
-  'Glendora Hills': ['Charter Oak', 'Glendora', 'San Dimas', 'West San Dimas'],
-  'The Mission': ['Alhambra', 'Monterey Park', 'San Gabriel', 'South San Gabriel'],
-  'Crown City': ['Altadena', 'Pasadena', 'South Pasadena'],
+  'Eagle Rock area': ['Atwater Village', 'Eagle Rock', 'Elysian Valley', 'Glassell Park'],
+  'Arroyo Seco': ['Cypress Park', 'Highland Park', 'Lincoln Heights', 'Mount Washington'],
+  'Monrovia area': ['Irwindale', 'Mayflower Village', 'Monrovia'],
+  'Arcadia area': ['Arcadia', 'East Pasadena', 'North El Monte', 'Sierra Madre'],
+  'San Marino area': ['East San Gabriel', 'San Marino', 'San Pasqual', 'Temple City'],
+  'Azusa area': ['Azusa', 'Bradbury', 'Duarte'],
+  'Covina area': ['Citrus', 'Covina', 'Ramona'],
+  'Glendora area': ['Charter Oak', 'Glendora', 'San Dimas', 'West San Dimas'],
+  'Alhambra area': ['Alhambra', 'Monterey Park', 'San Gabriel', 'South San Gabriel'],
+  'Pasadena area': ['Altadena', 'Pasadena', 'South Pasadena'],
   'The Eastside': ['Boyle Heights', 'East Los Angeles', 'El Sereno', 'Montecito Heights'],
-  'West Puente': ['Baldwin Park', 'La Puente', 'West Puente Valley'],
-  'Rio Hondo': ['El Monte', 'Rosemead', 'South El Monte', 'Whittier Narrows'],
-  'San Jose Hills': ['South San Jose Hills', 'Valinda', 'West Covina'],
-  'The Colleges': ['Claremont', 'La Verne', 'Pomona'],
-  'Brea Canyon': ['Diamond Bar', 'Rowland Heights', 'South Diamond Bar'],
+  'La Puente area': ['Baldwin Park', 'La Puente', 'West Puente Valley'],
+  'El Monte area': ['El Monte', 'Rosemead', 'South El Monte', 'Whittier Narrows'],
+  'West Covina area': ['South San Jose Hills', 'Valinda', 'West Covina'],
+  'Pomona area': ['Claremont', 'La Verne', 'Pomona'],
+  'Diamond Bar area': ['Diamond Bar', 'Rowland Heights', 'South Diamond Bar'],
   'Puente Hills': ['Avocado Heights', 'Hacienda Heights', 'Industry', 'Walnut'],
   // --- Central L.A. ---
-  'Bunker Hill': ['Chinatown', 'Downtown', 'Elysian Park'],
-  'Hollywoodland': ['Griffith Park', 'Hollywood', 'Hollywood Hills', 'Los Feliz'],
-  'Wilshire Center': ['Koreatown', 'Larchmont', 'Pico-Union', 'Windsor Square'],
-  'Miracle Mile': ['Carthay', 'Hancock Park', 'Mid-City', 'Mid-Wilshire'],
-  'The Sunset Strip': ['Beverly Grove', 'Fairfax', 'Hollywood Hills West', 'West Hollywood'],
-  'Sunset Junction': ['East Hollywood', 'Echo Park', 'Silver Lake', 'Westlake'],
+  'Downtown area': ['Chinatown', 'Downtown', 'Elysian Park'],
+  'Hollywood area': ['Griffith Park', 'Hollywood', 'Hollywood Hills', 'Los Feliz'],
+  'Koreatown area': ['Koreatown', 'Larchmont', 'Pico-Union', 'Windsor Square'],
+  'Mid-Wilshire area': ['Carthay', 'Hancock Park', 'Mid-City', 'Mid-Wilshire'],
+  'West Hollywood area': ['Beverly Grove', 'Fairfax', 'Hollywood Hills West', 'West Hollywood'],
+  'Silver Lake area': ['East Hollywood', 'Echo Park', 'Silver Lake', 'Westlake'],
   // --- Westside & Coast ---
-  'West L.A.': ['Bel-Air', 'Brentwood', 'Mar Vista', 'Sawtelle', 'Veterans Administration'],
-  'Westside Village': ['Beverlywood', 'Century City', 'Cheviot Hills', 'Palms', 'Pico-Robertson'],
-  'Santa Monica Bay': ['Culver City', 'Pacific Palisades', 'Santa Monica', 'Venice'],
-  'Silicon Beach': ['Del Rey', 'Marina del Rey', 'Playa Vista', 'Playa del Rey', 'Westchester'],
-  'Holmby Hills': ['Beverly Crest', 'Beverly Hills', 'Rancho Park', 'West Los Angeles', 'Westwood'],
+  'Brentwood area': ['Bel-Air', 'Brentwood', 'Mar Vista', 'Sawtelle', 'Veterans Administration'],
+  'Century City area': ['Beverlywood', 'Century City', 'Cheviot Hills', 'Palms', 'Pico-Robertson'],
+  'Santa Monica area': ['Culver City', 'Pacific Palisades', 'Santa Monica', 'Venice'],
+  'Marina del Rey area': ['Del Rey', 'Marina del Rey', 'Playa Vista', 'Playa del Rey', 'Westchester'],
+  'Beverly Hills area': ['Beverly Crest', 'Beverly Hills', 'Rancho Park', 'West Los Angeles', 'Westwood'],
   // --- South Bay & Harbor ---
-  'Dominguez': ['Carson', 'Gardena', 'Harbor Gateway', 'West Carson'],
-  'Centinela Valley': ['Alondra Park', 'Hawthorne', 'Inglewood', 'Lennox'],
-  'North Beaches': ['Del Aire', 'El Segundo', 'Manhattan Beach'],
+  'Carson area': ['Carson', 'Gardena', 'Harbor Gateway', 'West Carson'],
+  'Inglewood area': ['Alondra Park', 'Hawthorne', 'Inglewood', 'Lennox'],
+  'El Segundo area': ['Del Aire', 'El Segundo', 'Manhattan Beach'],
   'Palos Verdes': ['Palos Verdes Estates', 'Rancho Palos Verdes', 'Rolling Hills', 'Rolling Hills Estates'],
   'The Harbor': ['Harbor City', 'Lomita', 'San Pedro', 'Wilmington'],
-  'The Beach Cities': ['Hermosa Beach', 'Lawndale', 'Redondo Beach', 'Torrance'],
+  'Torrance area': ['Hermosa Beach', 'Lawndale', 'Redondo Beach', 'Torrance'],
   // --- South L.A. ---
   Crenshaw: ['Baldwin Hills/Crenshaw', 'Jefferson Park', 'Ladera Heights', 'Leimert Park', 'View Park-Windsor Hills', 'West Adams'],
-  'Industrial Belt': ['Bell', 'Cudahy', 'Maywood', 'Vernon'],
+  'Bell area': ['Bell', 'Cudahy', 'Maywood', 'Vernon'],
   'Alameda Corridor': ['Central-Alameda', 'Florence-Firestone', 'Green Meadows', 'Huntington Park', 'Walnut Park', 'Watts'],
   'Vermont Corridor': ['Chesterfield Square', 'Gramercy Park', 'Harvard Park', 'Hyde Park', 'Manchester Square', 'Vermont Square', 'Vermont-Slauson'],
   'South Central': ['Adams-Normandie', 'Arlington Heights', 'Exposition Park', 'Harvard Heights', 'Historic South-Central', 'South Park', 'University Park'],
@@ -314,9 +314,9 @@ const GROUP_NAMES = {
   // --- Gateway Cities ---
   'Greater Compton': ['Compton', 'East Compton', 'Rancho Dominguez', 'West Compton'],
   'Southeast Cities': ['Bellflower', 'Downey', 'Lynwood', 'Paramount', 'South Gate'],
-  'Los Cerritos': ['Cerritos', 'Hawaiian Gardens', 'Lakewood', 'Long Beach', 'Signal Hill'],
-  'Los Nietos': ['Artesia', 'Norwalk', 'Santa Fe Springs', 'South Whittier', 'West Whittier-Los Nietos'],
-  'Montebello Hills': ['Bell Gardens', 'Commerce', 'Montebello', 'North Whittier', 'Pico Rivera'],
+  'Long Beach area': ['Cerritos', 'Hawaiian Gardens', 'Lakewood', 'Long Beach', 'Signal Hill'],
+  'Norwalk area': ['Artesia', 'Norwalk', 'Santa Fe Springs', 'South Whittier', 'West Whittier-Los Nietos'],
+  'Montebello area': ['Bell Gardens', 'Commerce', 'Montebello', 'North Whittier', 'Pico Rivera'],
   'Whittier Hills': ['East La Mirada', 'La Habra Heights', 'La Mirada', 'Whittier'],
 };
 // Invert to a member-set key → name lookup, validating each name against the
@@ -409,43 +409,13 @@ function unionHoods(hoods) {
   return u;
 }
 const shapes = {};
-const fullPoly = {}; // unsimplified largest-ring per node (for the sibling topology)
 for (const id of Object.keys(nodes)) {
   if (id === 'la') continue;
   const feat = unionHoods(nodeHoods.get(id));
   const single = { type: 'Feature', properties: {}, geometry: structuredClone(largestRingGeometry(feat.geometry)) };
   rewind(single, true);
-  fullPoly[id] = structuredClone(single.geometry);
   const s = simplify(single, { tolerance: TOLERANCE, highQuality: true, mutate: true });
   shapes[id] = s.geometry.coordinates[0].map(([x, y]) => [round(x), round(y)]);
-}
-
-// --- simplified shapes (topology-preserving, for the "simple" view mode) -----
-// For each PUZZLE (a parent + its sibling pieces) build a topology over just
-// those siblings' full shapes, so the only points pinned are where SIBLINGS meet
-// — not every leaf border (which is what kept the regions jagged). Drop most of
-// the rest and re-extract each sibling: a level's pieces get a real low-poly look
-// yet still tile exactly. (Pieces are simplified per parent, so a parent outline
-// needn't equal its children's union — fine, "simple" hides the inner lines.)
-const simpleShapes = {};
-for (const parentId of Object.keys(nodes)) {
-  const kids = nodes[parentId].children || [];
-  if (!kids.length) continue;
-  const fc = {
-    type: 'FeatureCollection',
-    features: kids.map((kid) => ({ type: 'Feature', properties: { id: kid }, geometry: fullPoly[kid] })),
-  };
-  let t = presimplify(topology({ kids: fc }));
-  t = topoSimplify(t, SIMPLE_MIN_WEIGHT);
-  const gById = new Map(t.objects.kids.geometries.map((g) => [g.properties.id, g]));
-  for (const kid of kids) {
-    const merged = merge(t, [gById.get(kid)]); // this sibling's simplified polygon
-    const single = { type: 'Feature', properties: {}, geometry: structuredClone(largestRingGeometry(merged)) };
-    rewind(single, true);
-    const ring = single.geometry.coordinates[0];
-    // Guard: if a piece collapsed under simplification, keep its full shape.
-    simpleShapes[kid] = ring.length >= 4 ? ring.map(([x, y]) => [round(x), round(y)]) : shapes[kid];
-  }
 }
 
 // --- sibling adjacency -----------------------------------------------------
@@ -473,13 +443,10 @@ const hierarchy = {
 };
 writeFileSync('src/data/hierarchy.json', JSON.stringify(hierarchy));
 writeFileSync('src/data/puzzle-shapes.json', JSON.stringify(shapes));
-writeFileSync('src/data/puzzle-shapes-simple.json', JSON.stringify(simpleShapes));
 writeFileSync('src/data/puzzle-adjacency.json', JSON.stringify(adjacency));
-
-const totalSides = (set) => Object.values(set).reduce((s, r) => s + r.length, 0);
-const normalSides = totalSides(shapes);
-const simpleSides = totalSides(simpleShapes);
-console.log(`Sides: normal ${normalSides} → simple ${simpleSides} (${Math.round((100 * simpleSides) / normalSides)}%)`);
+// Every place's real neighbours (across group lines too), for the place card.
+const neighbors = Object.fromEntries(names.map((n) => [n, [...adj[n]].sort()]));
+writeFileSync('src/data/neighbors.json', JSON.stringify(neighbors));
 
 // --- report ----------------------------------------------------------------
 console.log(`Nodes: ${Object.keys(nodes).length} | shapes: ${Object.keys(shapes).length}`);
@@ -496,6 +463,9 @@ function show(id, depth) {
   for (const k of kids) if (!nodes[k].leaf) show(k, depth + 1);
 }
 show('la', 0);
-console.log(problems ? `\n⚠ ${problems} node(s) violate the 3–7 / connected rule` : '\n✓ every puzzle has 3–7 connected pieces');
-if (uncovered.length) console.log(`\n⚠ ${uncovered.length} group(s) without a hand-name (rename in GROUP_NAMES):\n  ${uncovered.join('\n  ')}`);
+console.log(problems ? `\n✗ ${problems} node(s) violate the 3–7 / connected rule` : '\n✓ every puzzle has 3–7 connected pieces');
+if (uncovered.length) console.log(`\n✗ ${uncovered.length} group(s) without a hand-name (rename in GROUP_NAMES):\n  ${uncovered.join('\n  ')}`);
 else console.log('✓ every group has a hand-authored name');
+// Fail loudly: guided assembly needs every puzzle connected, and every group
+// needs a real name. (The data files are still written, for inspection.)
+if (problems || uncovered.length) process.exit(1);

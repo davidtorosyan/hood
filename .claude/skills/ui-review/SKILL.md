@@ -16,22 +16,27 @@ bugs — you are. After any UI-affecting change, run this loop before reporting 
 
 2. **Capture.** Run the harness, passing the live URL if it isn't the default:
    `node scripts/screenshots.mjs http://localhost:<port>/hood/`
-   It drives a full Jigsaw session (home → pan the solved map → shake-scramble → assemble
-   with the connection glow → pinch zoom in/out → tap-zoom → dive to a leaf → open a
-   neighborhood card) at an iPhone viewport, writes labeled PNGs to `.ui-review/`, and
-   **fails on any console error or a failed gesture/state assertion** — treat a non-zero
-   exit as a bug to fix first. If it logs `UNPLACED after solve`, a piece wouldn't snap —
-   investigate (adjacency data or snap logic) before judging visuals.
+   (If Playwright's bundled browser isn't installed, point it at one:
+   `CHROMIUM_PATH=/opt/pw-browsers/chromium node scripts/screenshots.mjs …`.)
+   It drives the guided flow at an iPhone viewport — home → the county puzzle starts
+   itself → a wrong grab → connection glow → missed drops (neighbour hint, ghost) →
+   place every asked-for piece → solved → zoom into a region → solve → zoom out (✓) →
+   dive with Solve → a place card → search fly-through → reload mid-puzzle → home with
+   Continue — then a desktop/landscape pass. It writes labeled PNGs to `.ui-review/` and
+   **fails on any console error or failed assertion** (e.g. "X didn't snap") — treat a
+   non-zero exit as a bug to fix first.
 
 3. **Evaluate.** Read every screenshot in `.ui-review/` and critique like a designer.
    Look for:
    - Clipping / overflow / content pushed off-screen (the board fills the screen and
      nothing scrolls; the banner, breadcrumb, and board must all be fully visible).
    - Tap targets too small (< ~44px), cramped spacing, misalignment.
-   - Contrast and legibility: piece labels need a strong white halo and must fit their
-     piece; placed pieces should be distinct pastels, loose pieces gray.
-   - The map: is LA's shape recognizable? Do assembled pieces tile cleanly? Is the
-     zoomable hint (faint inner subdivisions) subtle, not noisy?
+   - Contrast and legibility: piece labels need a strong white halo; no two labels may
+     overlap (on the map or in the tray — players must find pieces BY NAME); placed
+     pieces are distinct pastels, loose pieces gray.
+   - The prompt pill + its hint line must sit in the gap without covering tray pieces.
+   - The map: is LA's shape recognizable? Do assembled pieces tile cleanly? Is the map
+     as big as the screen allows?
    - Visual hierarchy: is the thing the player must act on the most prominent?
 
 4. **Fix** the concrete problems you found.

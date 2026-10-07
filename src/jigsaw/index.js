@@ -102,7 +102,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   const me = new Board(nodeId, {
     onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true }),
     onZoomOut: goUp,
-    onSelectLeaf: (id) => showCard(app, id),
+    onSelectLeaf: (id) => showCard(id),
     onAction: (mode) => ctrl.setAction(mode),
     onEvent: countEvent,
     onPersist: () => store.savePuzzle(nodeId, me.serialize()),

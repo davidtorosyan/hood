@@ -3,6 +3,7 @@
 // build, browser) is attached automatically. Folks who'd rather just email can
 // use the support address at the bottom.
 import { el } from './ui/dom.js';
+import { openModal } from './ui/modal.js';
 import { bugContext, countEvent, reportConfig } from './telemetry.js';
 
 export function openBugReport() {
@@ -13,21 +14,17 @@ export function openBugReport() {
     class: 'bug-input',
     rows: '4',
     placeholder: 'What happened? What did you expect? Steps if you have them.',
+    'aria-label': 'What happened',
   });
   const email = el('input', {
     class: 'bug-email',
     type: 'email',
     placeholder: 'Your email (optional — if you’d like a reply)',
+    'aria-label': 'Your email (optional)',
   });
-  const status = el('div', { class: 'bug-status' }, '');
+  const status = el('div', { class: 'bug-status', role: 'status' }, '');
 
-  const backdrop = el('div', { class: 'card-backdrop' });
-  const close = () => {
-    backdrop.classList.remove('show');
-    setTimeout(() => backdrop.remove(), 200);
-    document.removeEventListener('keydown', onKey);
-  };
-  const onKey = (e) => e.key === 'Escape' && close();
+  let close = () => {};
 
   const sendBtn = el(
     'button',
@@ -68,10 +65,10 @@ export function openBugReport() {
     'Send',
   );
 
-  const card = el('div', { class: 'card bug-card', role: 'dialog', 'aria-label': 'Report an issue' }, [
-    el('button', { class: 'card-close', onClick: close, 'aria-label': 'Close' }, '✕'),
+  const card = el('div', { class: 'card bug-card' }, [
+    el('button', { class: 'card-close', onClick: () => close(), 'aria-label': 'Close' }, '✕'),
     el('h2', { class: 'card-name bug-title' }, 'Report an issue'),
-    el('p', { class: 'bug-note' }, 'Tell us what went wrong — a little context is attached automatically.'),
+    el('p', { class: 'bug-note' }, 'Tell us what went wrong. We attach where you were in the game, the build, your screen size and browser.'),
     input,
     email,
     status,
@@ -82,12 +79,5 @@ export function openBugReport() {
     ]),
   ]);
 
-  backdrop.append(card);
-  backdrop.addEventListener('click', (e) => e.target === backdrop && close());
-  document.addEventListener('keydown', onKey);
-  document.body.append(backdrop);
-  requestAnimationFrame(() => {
-    backdrop.classList.add('show');
-    input.focus();
-  });
+  close = openModal(card, { label: 'Report an issue', focus: input });
 }

@@ -204,8 +204,21 @@ body {
 .search-item:active {
   background: var(--surface-2);
 }
-.search-item-name {
+.search-item-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.search-item-path {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-item-name {
   min-width: 0;
   font-size: 15px;
   font-weight: 600;
@@ -835,6 +848,8 @@ body {
   position: relative;
   width: 100%;
   max-width: 340px;
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
   background: var(--surface);
   border-radius: 20px;
   padding: 18px 20px 22px;
@@ -916,6 +931,44 @@ body {
   border-radius: 12px;
   padding: 11px 13px;
   text-align: left;
+}
+
+/* "Borders": the places next door, each opening its own card. */
+.card-near {
+  margin-top: 12px;
+  text-align: left;
+}
+.card-near-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 6px 2px;
+}
+.card-near-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+.card-near-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--accent-text);
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.card-near-chip:active {
+  background: var(--surface-2);
+}
+.card:focus {
+  outline: none;
 }
 
 /* ---- Bug report ---------------------------------------------------------- */

@@ -16,7 +16,6 @@ export const shapeOf = (id) => shapes[id];
 
 // The sibling pieces that share a real border with `id` (so they can connect).
 export const adjacentIds = (id) => adjacency[id] || [];
-export const isAdjacent = (a, b) => adjacentIds(a).includes(b);
 
 // The chain of ids from the root down to (and including) `id` — for breadcrumbs
 // and for working out which child to zoom out from when jumping up levels.
@@ -26,22 +25,15 @@ export function pathIds(id) {
   return out;
 }
 
-// The top-level region that contains `id` (for search: jumping to a place lands
-// you in its region). For a region it's the region itself; path is [la, region…].
-export const topRegionOf = (id) => pathIds(id)[1] ?? id;
-
 // Flat index of everything searchable: regions, groups, and individual places.
-// `kind` distinguishes them; `regionId/regionLabel` is the jump target + subtitle.
 // (Nodes are keyed by id in the hierarchy — the key IS the id; there's no id field.)
+// `within` is the chain of containing areas below the county, innermost first
+// ("Pasadena area · San Gabriel Valley").
 export const SEARCH_ITEMS = Object.entries(NODES)
   .filter(([id]) => id !== ROOT)
-  .map(([id, n]) => {
-    const regionId = topRegionOf(id);
-    return {
-      id,
-      label: n.label,
-      kind: n.parent === ROOT ? 'region' : (n.children?.length ? 'group' : 'place'),
-      regionId,
-      regionLabel: NODES[regionId].label,
-    };
-  });
+  .map(([id, n]) => ({
+    id,
+    label: n.label,
+    kind: n.parent === ROOT ? 'region' : n.children?.length ? 'group' : 'place',
+    within: pathIds(id).slice(1, -1).reverse().map(labelOf).join(' · '),
+  }));

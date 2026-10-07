@@ -1,5 +1,5 @@
-// A search overlay: type a place or region, get live autocomplete, pick one to
-// jump to its region. Pure UI — it calls back with the chosen item and the
+// A search overlay: type a place or region, get live autocomplete (each result
+// shows where it sits), pick one to fly there. Pure UI — it calls back with the chosen item and the
 // caller decides where to navigate.
 import { el } from '../ui/dom.js';
 import { SEARCH_ITEMS } from './tree.js';
@@ -34,20 +34,26 @@ export function openSearch({ onPick }) {
     autocapitalize: 'off',
     autocorrect: 'off',
     spellcheck: 'false',
+    'aria-label': 'Search a place or region',
   });
-  const list = el('div', { class: 'search-results' });
+  const list = el('div', { class: 'search-results', role: 'list', 'aria-live': 'polite' });
 
-  function close() {
+  const opener = document.activeElement;
+  // `restore`: hand focus back to the opener (dismissed). Not after a pick —
+  // the Enter that picked would then land on the Search button and reopen it.
+  function close(restore = true) {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
+    if (restore && opener?.isConnected) opener.focus?.();
   }
   function pick(it) {
-    close();
+    close(false);
     onPick(it);
   }
   function onKey(e) {
     if (e.key === 'Escape') close();
-    else if (e.key === 'Enter') {
+    else if (e.key === 'Enter' && document.activeElement === input) {
+      e.preventDefault();
       const first = rank(input.value)[0];
       if (first) pick(first);
     }
@@ -57,12 +63,16 @@ export function openSearch({ onPick }) {
     list.replaceChildren(
       ...results.map((it) =>
         el('button', { class: 'search-item', onClick: () => pick(it) }, [
-          el('span', { class: 'search-item-name' }, it.label),
-          el(
-            'span',
-            { class: `search-tag tag-${it.kind}` },
-            it.kind === 'region' ? 'Region' : it.regionLabel,
-          ),
+          el('span', { class: 'search-item-text' }, [
+            el('span', { class: 'search-item-name' }, it.label),
+            // Where it sits, e.g. "Pasadena area · San Gabriel Valley" — the
+            // nesting is part of what's being learned.
+            it.within ? el('span', { class: 'search-item-path' }, it.within) : null,
+          ]),
+          // Tag the bigger containers; plain places need no badge.
+          it.kind === 'place'
+            ? null
+            : el('span', { class: `search-tag tag-${it.kind}` }, it.kind === 'region' ? 'Region' : 'Area'),
         ]),
       ),
     );
@@ -71,13 +81,19 @@ export function openSearch({ onPick }) {
 
   const overlay = el(
     'div',
-    { class: 'search-overlay', onClick: (e) => e.target === overlay && close() },
+    {
+      class: 'search-overlay',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': 'Search',
+      onClick: (e) => e.target === overlay && close(),
+    },
     [
       el('div', { class: 'search-panel' }, [
         el('div', { class: 'search-bar' }, [
           el('span', { class: 'search-icon' }, '🔍'),
           input,
-          el('button', { class: 'search-cancel', onClick: close }, 'Cancel'),
+          el('button', { class: 'search-cancel', onClick: () => close() }, 'Cancel'),
         ]),
         list,
       ]),

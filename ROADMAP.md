@@ -53,13 +53,13 @@ by name**, for example "Place **Burbank**".
       the scramble saved for that level.
 
 ## 3. Content (what the game teaches)
-- [ ] **Hand-name all 61 groups.** The auto-derived names taught wrong geography:
+- [x] **Hand-name all 61 groups.** The auto-derived names taught wrong geography:
       "Holmby Hills" contained Beverly Hills and Westwood, "Bunker Hill" was all of
       Downtown, "Santa Fe Dam" was Monrovia. Use plain, recognizable names.
-- [ ] **Fact-check the card facts.** Remove or rewrite doubtful claims, such as the
+- [x] **Fact-check the card facts.** Remove or rewrite doubtful claims, such as the
       Canoga Park "Cheesecake Factory test kitchen" and Granada Hills "Sleepless in
       Seattle". A wrong fact poisons the rest.
-- [ ] **Cards show what the place borders.** The neighbors list reinforces the mental
+- [x] **Cards show what the place borders.** The neighbors list reinforces the mental
       map, and the names can be tapped.
 
 ## 4. UX
@@ -73,24 +73,24 @@ by name**, for example "Place **Burbank**".
 - [x] **"Report an issue"** no longer overlaps the board.
 - [x] **Home screen.** Show a real LA map silhouette instead of the 🧩 emoji, plus
       Continue and progress.
-- [ ] **Search results** show the full path ("Pasadena · Pasadena area · San Gabriel
+- [x] **Search results** show the full path ("Pasadena · Pasadena area · San Gabriel
       Valley").
 - [x] **Solved-state tray.** Less dead space. It shows what to do next and Play again.
 
 ## 5. Code health
 - [x] **Split `board.js`** (1,050 lines): gestures, camera, clusters/order (pure),
       effects, tray.
-- [ ] **Remove dead code and data.**
+- [x] **Remove dead code and data.**
   - Simple-mode shapes (63KB shipped but unused)
   - Unused store APIs, `pieceBox`, `inner` paths, the callout label branch, the unwired
     `onHint`/`onSolved` callbacks
   - Duplicated mate-search code
 - [x] **Tests.** `node --test` for the pure modules (placement order, label layout,
       geometry, store), run in CI before deploy.
-- [ ] **`build:shapes` fails loudly** on piece-count or connectivity violations.
+- [x] **`build:shapes` fails loudly** on piece-count or connectivity violations.
 - [x] **Screenshot harness** accepts `CHROMIUM_PATH` for environments whose Playwright
       version doesn't match.
-- [ ] **Update CLAUDE.md** to match reality: labels, piece cap, telemetry, the new
+- [x] **Update CLAUDE.md** to match reality: labels, piece cap, telemetry, the new
       flow.
 
 ## 6. Shipping and caching (Dave must always get the latest build)
@@ -108,7 +108,7 @@ by name**, for example "Place **Burbank**".
 
 ## 7. Accessibility, telemetry, performance
 - [x] Respect `prefers-reduced-motion`.
-- [ ] Dialogs (card, search, report): `role=dialog`, `aria-modal`, focus moved in and
+- [x] Dialogs (card, search, report): `role=dialog`, `aria-modal`, focus moved in and
       restored on close. Toasts and the prompt get `aria-live`.
 - [x] Contrast: the tip and report-link text meet about 4.5:1.
 - [x] **Telemetry.**
