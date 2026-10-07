@@ -10,6 +10,30 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
 2. **Players ignore the names.** You can solve everything from the shapes alone. The
    point of the game is learning the names, so play has to make you read them.
 
+## Batch 2: Dave's playtest of the guided build
+- [x] **Quieter prompt after the tutorial.** The bold "Place ▸ X" pill stays for the
+      coached first run. After that the ask is a subtle, persistent line that's still
+      easy to read at a glance.
+- [x] **Zoom out mid-puzzle.** Zoom out is always available below the county, not
+      only once the map is solved. The in-progress puzzle is saved, so coming back
+      resumes it, and the parent map marks it as in progress.
+- [x] **Neighbor context.** When zoomed in, the surrounding areas show as faint
+      named outlines around the map, so you see where you are. Tapping one goes
+      there.
+- [x] **Progression and trophies.**
+  - A Progress screen with overall and per-region puzzle counts.
+  - A shelf of light, friendly trophies: first piece, first map, each region
+    completed, flawless solves, curiosity (cards, neighbor hops), and milestones.
+  - A small "🏆 unlocked" toast when you earn one.
+  - Region progress shown on solved boards.
+- [ ] **Items from the first review I'd deferred or dropped:**
+  - Smaller map data
+  - Pinch-to-zoom accessibility (`user-scalable=no`)
+  - Lint/format setup
+  - Integrity hash on the analytics script
+  - Facts for the ~85 places without one
+  - Keyboard play stays in "Later"
+
 ## 1. Guided placement: the core design change
 Each puzzle starts the same way: one **anchor** piece sits on the map and the rest wait
 in the tray. Instead of free-for-all dragging, the game asks for **one piece at a time
@@ -133,7 +157,5 @@ by name**, for example "Place **Burbank**".
 ## Later / ideas
 - Keyboard play (tab to the asked-for piece, arrow keys to the slot). Today the game
   needs touch or a mouse.
-- Neighbor context while zoomed in: ghost outlines of the surrounding areas, or a small
-  corner map.
 - Card Battle mode (from the prototype), once the Jigsaw feels finished.
 - Smaller data: quantized TopoJSON or lazy-loading the shapes.

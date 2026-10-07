@@ -5,6 +5,7 @@
 import hierarchy from '../data/hierarchy.json';
 import shapes from '../data/puzzle-shapes.json';
 import adjacency from '../data/puzzle-adjacency.json';
+import neighbors from '../data/neighbors.json';
 
 export const NODES = hierarchy.nodes;
 export const ROOT = hierarchy.root;
@@ -37,3 +38,26 @@ export const SEARCH_ITEMS = Object.entries(NODES)
     kind: n.parent === ROOT ? 'region' : n.children?.length ? 'group' : 'place',
     within: pathIds(id).slice(1, -1).reverse().map(labelOf).join(' · '),
   }));
+
+// The places (leaves) inside `id` — itself if it's a place. Cached.
+const leafCache = new Map();
+export function leavesOf(id) {
+  if (!leafCache.has(id)) leafCache.set(id, hasChildren(id) ? childrenOf(id).flatMap(leavesOf) : [id]);
+  return leafCache.get(id);
+}
+
+// The areas AROUND `id` at its own level of the tree, across group lines: every
+// node at the same depth with a place that borders one of `id`'s places. Shown as
+// faint context around a zoomed-in map, so you can see where you are. Cached.
+const contextCache = new Map();
+export function contextOf(id) {
+  if (!contextCache.has(id)) {
+    const depth = pathIds(id).length;
+    const near = new Set(leavesOf(id).flatMap((l) => neighbors[l] || []));
+    const out = Object.keys(NODES).filter(
+      (o) => o !== id && o !== ROOT && pathIds(o).length === depth && leavesOf(o).some((l) => near.has(l)),
+    );
+    contextCache.set(id, out.filter((o) => !leavesOf(id).includes(o)));
+  }
+  return contextCache.get(id);
+}

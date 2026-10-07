@@ -50,7 +50,8 @@ export class Gestures {
   // h: { mode() → 'play' | 'solved' | null (null = ignore input),
   //      pieceOf(eventTarget) → piece | null,
   //      grab(piece, pt) → bool, drag(pt), drop(), cancelDrag(),
-  //      tap(piece), pan(dx, dy), panEnd(), shake(), pinch(dir, pt) }
+  //      tap(piece), tapEmpty(target) (a tap off the pieces), pan(dx, dy),
+  //      panEnd(), shake(), pinch(dir, pt) }
   constructor(svg, h) {
     this.svg = svg;
     this.h = h;
@@ -100,9 +101,10 @@ export class Gestures {
     }
     const piece = this.h.pieceOf(e.target);
     if (mode === 'play') {
-      this.g = piece && this.h.grab(piece, pt) ? { type: 'drag' } : null;
+      if (piece) this.g = this.h.grab(piece, pt) ? { type: 'drag' } : null;
+      else this.g = { type: 'tap', target: e.target, start: pt }; // e.g. a context area
     } else {
-      this.g = { type: 'pan', piece, start: pt, moved: false, shake: new ShakeDetector() };
+      this.g = { type: 'pan', piece, target: e.target, start: pt, moved: false, shake: new ShakeDetector() };
     }
   }
 
@@ -122,6 +124,8 @@ export class Gestures {
       }
     } else if (g.type === 'drag') {
       this.h.drag(pt);
+    } else if (g.type === 'tap') {
+      if (Math.hypot(pt[0] - g.start[0], pt[1] - g.start[1]) > TAP_SLOP) this.g = { type: 'dead' };
     } else if (g.type === 'pan') {
       const dx = pt[0] - g.start[0];
       const dy = pt[1] - g.start[1];
@@ -147,9 +151,11 @@ export class Gestures {
     }
     this.g = null;
     if (g.type === 'drag') this.h.drop();
+    else if (g.type === 'tap') this.h.tapEmpty(g.target);
     else if (g.type === 'pan') {
       if (g.moved) this.h.panEnd();
       else if (g.piece) this.h.tap(g.piece);
+      else this.h.tapEmpty(g.target); // (the down target: capture retargets up events)
     }
   }
 

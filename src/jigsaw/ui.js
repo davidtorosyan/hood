@@ -21,25 +21,21 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// One small button beside the stats line that swaps with state: "Solve" while
-// assembling (snap the rest into place), "Zoom out" once the map is solved.
-// Hidden on a solved county map — the ⌂ button covers going home.
+// The controls beside the stats line: "Solve" while a puzzle is on, and "↑ Zoom
+// out" whenever there's a level above — even mid-puzzle (the puzzle is saved and
+// picks up where you left off). Both disable mid-animation. On the county there's
+// no Zoom out (⌂ goes home).
 export function actionButton({ onUp, onSolve, isRoot }) {
-  let mode = 'up';
-  const button = el('button', {
-    class: 'jig-btn jig-topbtn',
-    onClick: () => (mode === 'solve' ? onSolve() : onUp()),
-  });
-  // m: 'solve' | 'up' | 'busy' (mid-animation: keep the label, ignore taps).
+  const solve = el('button', { class: 'jig-btn jig-topbtn jig-solve', onClick: () => onSolve() }, 'Solve');
+  solve.title = 'Snap the rest into place';
+  const up = el('button', { class: 'jig-btn jig-topbtn jig-up', onClick: () => onUp() }, '↑ Zoom out');
+  up.title = 'Zoom out one level';
+  if (isRoot) up.style.display = 'none';
+  // m: 'solve' (puzzle on) | 'up' (solved) | 'busy' (mid-animation)
   const setAction = (m) => {
-    button.disabled = m === 'busy';
-    if (m === 'busy') return;
-    mode = m;
-    const solving = m === 'solve';
-    button.textContent = solving ? 'Solve' : '↑ Zoom out';
-    button.title = solving ? 'Snap the rest into place' : 'Zoom out one level';
-    button.style.visibility = !solving && isRoot ? 'hidden' : '';
+    solve.disabled = up.disabled = m === 'busy';
+    if (m !== 'busy') solve.style.display = m === 'solve' ? '' : 'none';
   };
   setAction('up');
-  return { button, setAction };
+  return { button: el('div', { class: 'jig-actions' }, [solve, up]), setAction };
 }

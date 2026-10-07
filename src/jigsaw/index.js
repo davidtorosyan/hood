@@ -17,6 +17,7 @@ import { showCard } from './card.js';
 import { openSearch } from './search.js';
 import { openBugReport } from '../bugreport.js';
 import { countEvent } from '../telemetry.js';
+import { record } from '../progress.js';
 import { store } from '../store.js';
 
 const FLY_DWELL_UP = 140; // extra pause after a zoom-OUT step settles
@@ -37,7 +38,7 @@ window.addEventListener('resize', () => {
     if (!wrap) return;
     const dw = Math.abs(wrap.clientWidth - current.w);
     const dh = Math.abs(wrap.clientHeight - current.h);
-    if (dw > 24 || dh > 24) renderNode(current.app, current.ctx, current.nodeId, {});
+    if (dw > 24 || dh > 24) renderNode(current.app, current.ctx, current.nodeId, { autoPlay: true });
   }, 250);
 });
 
@@ -75,21 +76,32 @@ function renderNode(app, ctx, nodeId, opts = {}) {
     renderNode(app, ctx, id, { zoomOutFrom: childToward });
   };
 
-  // Search "flies" to the chosen place: from here it zooms OUT step by step to the
-  // nearest common ancestor, then back IN step by step to the level where the
-  // place is a visible piece — so you watch how it relates to where you were.
-  const onSearchPick = (it) => {
-    countEvent('search');
-    const isRegion = it.kind === 'region';
-    const displayId = isRegion ? it.id : (NODES[it.id].parent ?? it.id);
+  // A "fly-through" to another board: from here it zooms OUT step by step to the
+  // nearest common ancestor, then back IN step by step to `displayId` — so you
+  // watch how it relates to where you were. `highlight` flashes on arrival.
+  const flyTo = (displayId, highlight = null) => {
     const pCur = pathIds(nodeId);
     const pTgt = pathIds(displayId);
     let lca = 0; // index of the deepest shared ancestor
     while (lca + 1 < pCur.length && lca + 1 < pTgt.length && pCur[lca + 1] === pTgt[lca + 1]) lca++;
     const route = [...pCur.slice(lca, pCur.length - 1).reverse(), ...pTgt.slice(lca + 1)];
-    const fly = { route, step: 0, highlight: isRegion ? null : it.id };
-    if (!route.length) return void me.flashPiece(fly.highlight);
+    const fly = { route, step: 0, highlight };
+    if (!route.length) return void me.flashPiece(highlight);
     flyStep(fly, false);
+  };
+  // Search: a region opens its own board; anything else lands on the board where
+  // it's a visible piece (its parent), flashing.
+  const onSearchPick = (it) => {
+    countEvent('search');
+    if (it.kind === 'region') flyTo(it.id);
+    else flyTo(NODES[it.id].parent, it.id);
+  };
+  // A tapped surrounding area: open its board (or, for a single place, its
+  // parent's, with it flashing).
+  const onGoTo = (id) => {
+    countEvent('context-tap');
+    if (NODES[id].children?.length) flyTo(id);
+    else flyTo(NODES[id].parent, id);
   };
 
   // Take the next hop of a fly-through from the live board, if it's idle (any
@@ -120,9 +132,15 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   const me = new Board(nodeId, {
     onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true }),
     onZoomOut: goUp,
+    onGoTo,
     onSelectLeaf: (id) => showCard(id),
     onAction: (mode) => ctrl.setAction(mode),
-    onEvent: countEvent,
+    onEvent: (name, data) => {
+      countEvent(name);
+      if (name === 'piece-placed') record('placed');
+      else if (name === 'puzzle-solved') record('solved', data);
+      else if (name === 'card-open') record('card');
+    },
     onPersist: () => store.savePuzzle(nodeId, me.serialize()),
   });
   board = me;
@@ -149,6 +167,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
     ]),
   );
   store.saveNav({ node: nodeId });
+  record('visit', { id: nodeId });
 
   // Measure the board so the SVG viewBox matches its aspect, then build and start
   // — synchronously right after the append (reading clientWidth forces layout),

@@ -3,6 +3,7 @@
 //     with the Solve button). Unfinished puzzles start themselves when you
 //     arrive; finished ones open assembled for browsing.
 //   - coached: you've seen the first-drag demo.
+//   - counts / trophies / visited: light progression (see src/progress.js).
 //   - nav: the level you were on, so a reload drops you back in.
 //   - puzzles: each level's puzzle in progress, so leaving a level mid-puzzle
 //     (zooming out, searching, a reload) and coming back picks it up again.
@@ -27,6 +28,9 @@ function save(state) {
 const state = load();
 state.progress ||= {};
 state.puzzles ||= {};
+state.counts ||= {}; // lifetime tallies: placed, cards, hops, flawless
+state.trophies ||= {}; // trophy id → time earned
+state.visited ||= {}; // region id → 1 once you've been inside it
 // Fields from older builds that nothing reads any more.
 delete state.seen;
 delete state.mode;
@@ -48,6 +52,34 @@ export const store = {
   },
   solvedCount() {
     return Object.values(state.progress).filter((v) => v === 'solved').length;
+  },
+
+  // Lifetime tallies (pieces placed, cards opened, …) for trophies.
+  count(name) {
+    return state.counts[name] || 0;
+  },
+  bump(name, by = 1) {
+    state.counts[name] = (state.counts[name] || 0) + by;
+    save(state);
+  },
+  trophies() {
+    return state.trophies;
+  },
+  award(id) {
+    state.trophies[id] = Date.now();
+    save(state);
+  },
+  visited() {
+    return state.visited;
+  },
+  visit(regionId) {
+    if (state.visited[regionId]) return false;
+    state.visited[regionId] = 1;
+    save(state);
+    return true;
+  },
+  solvedIds() {
+    return Object.keys(state.progress).filter((id) => state.progress[id] === 'solved');
   },
 
   coached() {

@@ -3,15 +3,10 @@
 // comes from the hand-authored per-leaf figures. Both roll up the hierarchy, so a
 // group/region/county reports the sum of everything under it.
 import { geoArea } from 'd3-geo';
-import { childrenOf, hasChildren, shapeOf } from './tree.js';
+import { shapeOf, leavesOf } from './tree.js';
 import { PLACES } from '../data/places.js';
 
 const EARTH_R_MI = 3958.8; // mean Earth radius, miles
-
-// Leaf descendants of `id` (or [id] itself if it's already a leaf).
-function leavesOf(id) {
-  return hasChildren(id) ? childrenOf(id).flatMap(leavesOf) : [id];
-}
 
 // Area (sq mi) of one leaf from its boundary. geoArea returns steradians; a small
 // region can come back as the sphere's complement, so take the smaller. Cached.

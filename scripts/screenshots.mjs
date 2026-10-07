@@ -180,6 +180,9 @@ await shot('county-play-first-ask');
   await page.mouse.up();
   await page.waitForTimeout(400);
   if (!(await readPieces()).find((q) => q.name === target).placed) fail('near drop did not snap');
+  if (!(await page.locator('.trophy-toast').count())) fail('no "First Piece" trophy toast');
+  await shot('trophy-toast-and-quiet-prompt');
+  if (!(await page.locator('.jig-prompt.quiet').count())) fail('prompt not quiet after the tutorial');
 }
 
 // Missed drops escalate: 2 misses → neighbour hint, 3 → ghost outline.
@@ -209,6 +212,20 @@ await shot('region-arrived');
 await waitForPrompt();
 await page.waitForTimeout(300);
 await shot('region-play');
+
+// Zoom out mid-puzzle: the county shows the region as in progress; going back in
+// resumes the same ask.
+{
+  const ask = await promptName();
+  await page.getByRole('button', { name: /Zoom out/ }).click();
+  await page.waitForTimeout(1200);
+  if (!(await page.locator('.jig-chip.wip').count())) fail('no "in progress" chip after zooming out mid-puzzle');
+  await shot('zoomed-out-mid-puzzle');
+  await tapPiece(regionName);
+  await page.waitForTimeout(900);
+  if ((await promptName()) !== ask) fail(`zooming back in lost the ask (${ask})`);
+}
+if (!(await page.locator('.jig-ctx').count())) fail('no surrounding-area context when zoomed in');
 await solveByName();
 await page.waitForTimeout(600);
 await shot('region-solved');
@@ -288,10 +305,30 @@ await page.waitForTimeout(300);
   await page.waitForTimeout(900);
 }
 
+// Tap a surrounding area: it flies there.
+{
+  const before = await page.locator('.jig-crumb.current').textContent();
+  const label = page.locator('.jig-ctx-label').first();
+  if (await label.count()) {
+    const name = await label.textContent();
+    await label.click();
+    await page.waitForTimeout(4500);
+    const after = await page.locator('.jig-crumb.current').textContent();
+    if (after === before) fail(`tapping "${name}" didn't navigate`);
+    await shot('context-tap-landed');
+  } else fail('no context label to tap');
+}
+
 // Home: Continue + progress.
 await page.getByRole('button', { name: 'Home' }).click();
 await page.waitForTimeout(300);
 await shot('home-continue');
+await page.locator('.home-progress').click();
+await page.waitForTimeout(300);
+await shot('progress-screen');
+await page.mouse.wheel(0, 900);
+await page.waitForTimeout(300);
+await shot('progress-trophies');
 
 // Desktop / landscape: direct drag (no paddle lift).
 page = await newPage({ viewport: { width: 1280, height: 800 } });

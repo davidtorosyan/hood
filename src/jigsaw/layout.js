@@ -4,6 +4,9 @@
 
 export const VB_W = 1000; // user-space board width; height derived from aspect
 export const FILL = 0.9; // fraction of the build canvas the assembled map fills
+// …a little less when the surrounding areas are drawn around it, so a ring of
+// that context shows.
+export const FILL_CONTEXT = 0.86;
 
 // The board is split into two canvases: a "build" canvas (where the map lives)
 // and a "tray" canvas (loose pieces), plus room for the "Place ▸ X" prompt
@@ -19,14 +22,15 @@ export const PROMPT_GAP = 175; // default prompt room, in user units
 const TRAY_ROOM = 1.3; // tray area needed, as a multiple of the map's bbox area
 
 // `mapAspect` = the assembled map's width / height. `gap` = prompt room in user
-// units (the Board passes ~60 CSS px' worth for its measured size).
-export function layoutFor(vbH, mapAspect = 1, gap = PROMPT_GAP) {
+// units (the Board passes ~60 CSS px' worth for its measured size). `fill` = the
+// fraction of the build canvas the map fills.
+export function layoutFor(vbH, mapAspect = 1, gap = PROMPT_GAP, fill = FILL) {
   const i = INSET;
   const W = VB_W;
   const H = vbH;
   const mapSize = ([x0, y0, x1, y1]) => {
-    const bw = (x1 - x0) * W * FILL;
-    const bh = (y1 - y0) * H * FILL;
+    const bw = (x1 - x0) * W * fill;
+    const bh = (y1 - y0) * H * fill;
     const mw = Math.min(bw, bh * mapAspect);
     return { mw, area: (mw * mw) / mapAspect };
   };

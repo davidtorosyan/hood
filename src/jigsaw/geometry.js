@@ -2,8 +2,8 @@
 // the board's user-space, so each child's path sits at its TRUE position and the
 // map is solved exactly when every piece's translate is (0,0).
 import { geoMercator, geoPath } from 'd3-geo';
-import { childrenOf, hasChildren, shapeOf } from './tree.js';
-import { FILL } from './layout.js';
+import { childrenOf, hasChildren, shapeOf, contextOf } from './tree.js';
+import { FILL, FILL_CONTEXT } from './layout.js';
 
 const featureCollection = (ids) => ({
   type: 'FeatureCollection',
@@ -28,22 +28,28 @@ export function mapAspectOf(nodeId) {
   return aspects.get(nodeId);
 }
 
+// How much of its build canvas a node's map fills: less when there's context
+// (surrounding areas) to show around it.
+export const fillFor = (nodeId) => (contextOf(nodeId).length ? FILL_CONTEXT : FILL);
+
 const ringToPath = (ring) =>
   'M' + ring.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') + 'Z';
 
+// The projection that fits `nodeId`'s map into `buildRect` (user units),
+// centred, filling `fill` of it.
+export function fitProjection(nodeId, buildRect, fill = FILL) {
+  const [x0, y0, x1, y1] = buildRect;
+  const padX = ((x1 - x0) * (1 - fill)) / 2;
+  const padY = ((y1 - y0) * (1 - fill)) / 2;
+  return geoMercator().fitExtent([[x0 + padX, y0 + padY], [x1 - padX, y1 - padY]], featureCollection(childrenOf(nodeId)));
+}
+
 // Project every child of `nodeId` into the board's build canvas (`buildRect`,
-// in user units), centred and scaled to FILL. Returns one geometry record per
+// in user units), centred and scaled to `fill`. Returns one geometry record per
 // child (in sibling order): its path `d`, label anchor candidates, bounding box,
 // and whether it's zoomable. Label and colour are attached later by the caller.
-export function projectChildren(nodeId, buildRect) {
+export function projectChildren(nodeId, buildRect, fill = FILL, proj = fitProjection(nodeId, buildRect, fill)) {
   const kids = childrenOf(nodeId);
-  const [x0, y0, x1, y1] = buildRect;
-  const padX = ((x1 - x0) * (1 - FILL)) / 2;
-  const padY = ((y1 - y0) * (1 - FILL)) / 2;
-  const proj = geoMercator().fitExtent(
-    [[x0 + padX, y0 + padY], [x1 - padX, y1 - padY]],
-    featureCollection(kids),
-  );
 
   return kids.map((id) => {
     const ring = shapeOf(id).map((c) => proj(c));
@@ -68,6 +74,51 @@ export function projectChildren(nodeId, buildRect) {
     };
   });
 }
+
+// The surrounding areas, in the same projection as the map: [{ id, dFull,
+// anchors }] (the caller clips the drawing to the build canvas). `anchors` are
+// label spots inside the visible part (within `clipRect`) with at least
+// `minRoom` clearance, roomiest first — the caller picks one that's clear.
+export function projectContext(nodeId, proj, clipRect, minRoom) {
+  return contextOf(nodeId)
+    .map((id) => {
+      const full = shapeOf(id).map((c) => proj(c));
+      const ring = clipRing(full, clipRect);
+      if (ring.length < 3) return null;
+      const anchors = labelAnchors(ring, 12).filter(([, , room]) => room >= minRoom);
+      return { id, dFull: ringToPath(full), anchors };
+    })
+    .filter(Boolean);
+}
+
+// Clip a polygon to an axis-aligned rect [x0, y0, x1, y1] (Sutherland–Hodgman).
+export function clipRing(ring, [x0, y0, x1, y1]) {
+  const edges = [
+    [(p) => p[0] >= x0, (a, b) => lerpAt(a, b, 0, x0)],
+    [(p) => p[0] <= x1, (a, b) => lerpAt(a, b, 0, x1)],
+    [(p) => p[1] >= y0, (a, b) => lerpAt(a, b, 1, y0)],
+    [(p) => p[1] <= y1, (a, b) => lerpAt(a, b, 1, y1)],
+  ];
+  let out = ring;
+  for (const [inside, cut] of edges) {
+    const src = out;
+    out = [];
+    for (let i = 0; i < src.length; i++) {
+      const a = src[(i + src.length - 1) % src.length];
+      const b = src[i];
+      if (inside(b)) {
+        if (!inside(a)) out.push(cut(a, b));
+        out.push(b);
+      } else if (inside(a)) out.push(cut(a, b));
+    }
+    if (!out.length) break;
+  }
+  return out;
+}
+const lerpAt = (a, b, axis, v) => {
+  const t = (v - a[axis]) / (b[axis] - a[axis]);
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+};
 
 // Candidate label anchors: interior points ranked by clearance from the
 // boundary (the first is the "pole of inaccessibility", the point farthest from

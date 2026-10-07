@@ -28,7 +28,8 @@ export class Stage {
     this.replayBtn = el('button', { class: 'jig-btn jig-replay', onClick: onReplay }, '🔀 Play again');
     this.tip = el('div', { class: 'jig-tip' }, '');
     this.chips = el('div', { class: 'jig-chips' });
-    this.solved = el('div', { class: 'jig-tray-solved' }, [this.tip, this.chips, this.replayBtn]);
+    this.progress = el('div', { class: 'jig-progress' }, '');
+    this.solved = el('div', { class: 'jig-tray-solved' }, [this.tip, this.chips, this.replayBtn, this.progress]);
     this.solved.style.display = 'none';
   }
 
@@ -56,10 +57,12 @@ export class Stage {
   }
 
   // --- the prompt ---
-  ask(name, n, total, sub = '') {
+  // `quiet`: past the tutorial — a light chip instead of the bold dark pill.
+  ask(name, n, total, sub = '', { quiet = false } = {}) {
     this.prompt.style.display = '';
     this.prompt.classList.remove('celebrate');
-    this.promptVerb.textContent = 'Place';
+    this.prompt.classList.toggle('quiet', quiet);
+    this.promptVerb.textContent = quiet ? 'Next' : 'Place';
     this.promptName.textContent = name;
     this.promptCount.textContent = `${n}/${total}`;
     this.setSub(sub);
@@ -89,6 +92,7 @@ export class Stage {
   // The prompt pill turned celebration: "🎉 South Bay & Harbor solved!"
   celebrate(name) {
     this.prompt.style.display = '';
+    this.prompt.classList.remove('quiet');
     this.prompt.classList.add('celebrate');
     this.promptVerb.textContent = '🎉';
     this.promptName.textContent = name;
@@ -102,18 +106,34 @@ export class Stage {
   // --- solved tray ---
   // tip: what to do next · chips: the level's pieces by name ({ label, done,
   // onClick }) — another way in, handy for slivers too small to tap on the map.
-  showSolved({ tip, chips = [] }) {
+  showSolved({ tip, chips = [], progress = '' }) {
     this.tip.textContent = tip;
+    this.progress.textContent = progress;
     this.chips.replaceChildren(
       ...chips.map((c) =>
-        el('button', { class: `jig-chip${c.done ? ' done' : ''}`, onClick: c.onClick }, c.done ? `${c.label} ✓` : c.label),
+        el(
+          'button',
+          { class: `jig-chip${c.done ? ' done' : c.wip ? ' wip' : ''}`, onClick: c.onClick },
+          c.done ? `${c.label} ✓` : c.wip ? `${c.label} · in progress` : c.label,
+        ),
       ),
     );
     this.solved.style.display = '';
-    // The chips are a bonus; if the tray can't fit them all, drop them rather
-    // than show a row sliced in half.
+    // If it doesn't all fit: drop the tip line first (the chips say the same
+    // thing, tappably), then the chips — never show a row sliced in half.
+    // Measured once layout has settled (the board may still be mid-build).
+    const overflows = () => this.chips.scrollHeight > this.chips.clientHeight + 1;
+    this.tip.style.display = '';
     this.chips.style.display = '';
-    if (this.chips.scrollHeight > this.chips.clientHeight + 1) this.chips.style.display = 'none';
+    this.chips.style.visibility = 'hidden';
+    requestAnimationFrame(() => {
+      if (overflows()) this.tip.style.display = 'none';
+      if (overflows()) {
+        this.tip.style.display = '';
+        this.chips.style.display = 'none';
+      }
+      this.chips.style.visibility = '';
+    });
   }
 
   hideSolved() {

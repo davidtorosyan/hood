@@ -8,6 +8,8 @@ import { store } from './store.js';
 import { initTelemetry, BUILD } from './telemetry.js';
 import { openBugReport } from './bugreport.js';
 import { initPwa } from './pwa.js';
+import { renderProgress } from './progressScreen.js';
+import { catchUp, PUZZLES, TROPHIES } from './progress.js';
 
 initTelemetry();
 
@@ -26,8 +28,7 @@ if (import.meta.env.DEV) {
 
 const app = document.querySelector('#app');
 
-// Every puzzle in the game: each node with children is one level to assemble.
-const TOTAL_PUZZLES = Object.values(NODES).filter((n) => n.children?.length).length;
+catchUp(); // trophies already earned (e.g. before trophies existed), awarded quietly
 
 function goHome() {
   unmountJigsaw();
@@ -44,6 +45,10 @@ function homeArt() {
     svg.append(svgEl('path', { d: g.d, style: `fill:${colorForIndex(i)}` }));
   }
   return svg;
+}
+
+function openProgress() {
+  renderProgress(app, { onBack: renderHome, onPlay: (node) => mountJigsaw(app, { back: goHome, node }) });
 }
 
 function renderHome() {
@@ -68,11 +73,12 @@ function renderHome() {
           : el('button', { class: 'btn home-play', onClick: () => play(ROOT) }, solved ? 'Play' : 'Start'),
         resumeAt ? el('button', { class: 'home-secondary', onClick: () => play(ROOT) }, 'Start from the whole county') : null,
       ]),
-      el('p', { class: 'home-note' },
-        solved
-          ? `${solved} of ${TOTAL_PUZZLES} puzzles solved`
-          : 'Rebuild the map one named piece at a time, then tap a piece to zoom in.',
-      ),
+      solved || Object.keys(store.trophies()).length
+        ? el('button', { class: 'home-progress', onClick: openProgress }, [
+            el('span', {}, `🏆 ${solved} of ${PUZZLES.length} puzzles`),
+            el('span', { class: 'home-progress-sub' }, `${Object.keys(store.trophies()).length} of ${TROPHIES.length} trophies · see progress`),
+          ])
+        : el('p', { class: 'home-note' }, 'Rebuild the map one named piece at a time, then tap a piece to zoom in.'),
       el('div', { class: 'home-foot' }, [
         el('button', { class: 'home-report', onClick: openBugReport }, 'Report an issue'),
         el('span', { class: 'home-build' }, BUILD),

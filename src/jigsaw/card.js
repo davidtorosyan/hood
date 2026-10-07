@@ -6,6 +6,7 @@ import { geoMercator } from 'd3-geo';
 import { el, svgEl } from '../ui/dom.js';
 import { openModal } from '../ui/modal.js';
 import NEIGHBORS from '../data/neighbors.json';
+import { record } from '../progress.js';
 import { labelOf, pathIds, shapeOf } from './tree.js';
 import { PLACES } from '../data/places.js';
 import { statsOf, fmtArea } from './stats.js';
@@ -44,6 +45,8 @@ export function showCard(id) {
   let close = () => {};
   const hop = (n) => {
     close();
+    record('hop');
+    record('card');
     showCard(n);
   };
   const closeBtn = el('button', { class: 'card-close', onClick: () => close(), 'aria-label': 'Close' }, '✕');

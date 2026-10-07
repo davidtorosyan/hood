@@ -18,14 +18,15 @@ import { svgEl } from '../ui/dom.js';
 import { store } from '../store.js';
 import { adjacentIds, labelOf } from './tree.js';
 import { colorForIndex } from './palette.js';
-import { VB_W, FILL, layoutFor, rectToUser, fullVB, packTray } from './layout.js';
-import { projectChildren, mapAspectOf, ringContains } from './geometry.js';
+import { VB_W, layoutFor, rectToUser, fullVB, packTray } from './layout.js';
+import { projectChildren, fitProjection, projectContext, fillFor, mapAspectOf, ringContains } from './geometry.js';
 import { layoutLabels, labelBoxes } from './labels.js';
 import { Piece } from './piece.js';
 import { Scheduler } from './scheduler.js';
 import { Gestures } from './gestures.js';
 import { Stage } from './stage.js';
 import { EdgeGlow, Paddle, Coach, snapBurst, ghost, collapseName } from './fx.js';
+import { progressLine } from '../progress.js';
 import { pickAnchor, placementOrder, bestMate, dropSnaps, glowStrength, hintLevel } from './assembly.js';
 
 // A precise pointer (mouse/trackpad) doesn't hide the piece under it, so on
@@ -45,8 +46,8 @@ const FIND_HINT_MS = 9000; // no right grab for this long → pulse the asked-fo
 const INTRO_MS = 750; // an unsolved level shows assembled this long, then breaks apart
 
 export class Board {
-  // cbs: { onPersist(), onZoomInto(childId), onZoomOut(), onSelectLeaf(id),
-  //        onAction('solve' | 'up'), onEvent(name) }
+  // cbs: { onPersist(), onZoomInto(childId), onZoomOut(), onGoTo(id), onSelectLeaf(id),
+  //        onAction('solve' | 'up' | 'busy'), onEvent(name, data) }
   constructor(nodeId, cbs = {}) {
     this.nodeId = nodeId;
     this.cbs = cbs;
@@ -66,12 +67,23 @@ export class Board {
 
   #initSvg() {
     const svg = svgEl('svg', { class: 'jig', preserveAspectRatio: 'xMidYMid meet' });
+    // The surrounding areas (faint, named, tappable), clipped to the build canvas.
+    this.clipRect = svgEl('rect');
+    this.clipId = `jig-clip-${Math.random().toString(36).slice(2, 8)}`;
+    const clip = svgEl('clipPath', { id: this.clipId });
+    clip.append(this.clipRect);
+    const defs = svgEl('defs');
+    defs.append(clip);
+    this.contextLayer = svgEl('g', { class: 'jig-context', 'clip-path': `url(#${this.clipId})` });
+    this.contextShapes = svgEl('g');
+    this.contextLabels = svgEl('g'); // names above every context shape
+    this.contextLayer.append(this.contextShapes, this.contextLabels);
     this.hintLayer = svgEl('g', { class: 'jig-hints' }); // ghost outlines, under the pieces
     this.pieceLayer = svgEl('g');
     this.glowLayer = svgEl('g', { class: 'jig-glows' });
     this.labelLayer = svgEl('g', { class: 'jig-labels' }); // above every piece
     this.fxLayer = svgEl('g', { class: 'jig-fx' }); // sparks, paddle, coach
-    svg.append(this.hintLayer, this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer);
+    svg.append(defs, this.contextLayer, this.hintLayer, this.pieceLayer, this.glowLayer, this.labelLayer, this.fxLayer);
     this.glow = new EdgeGlow(this.glowLayer);
     this.paddle = new Paddle(this.fxLayer, PADDLE_LIFT);
     this.coach = new Coach(this.fxLayer, this.sched);
@@ -85,11 +97,14 @@ export class Board {
   build(vbH, pxWidth = 360) {
     this.vbH = vbH;
     this.gap = (PROMPT_PX * VB_W) / pxWidth; // prompt room, in user units
-    this.layout = layoutFor(vbH, mapAspectOf(this.nodeId), this.gap);
+    this.pxWidth = pxWidth;
+    this.fill = fillFor(this.nodeId);
+    this.layout = layoutFor(vbH, mapAspectOf(this.nodeId), this.gap, this.fill);
     this.stage.place(this.layout);
     this.svg.setAttribute('viewBox', `0 0 ${VB_W} ${vbH}`);
     const buildRect = rectToUser(this.layout.build, vbH);
-    const geoms = projectChildren(this.nodeId, buildRect);
+    const proj = fitProjection(this.nodeId, buildRect, this.fill);
+    const geoms = projectChildren(this.nodeId, buildRect, this.fill, proj);
     this.pieces = geoms.map((geom, i) => new Piece(geom, { label: labelOf(geom.id), color: colorForIndex(i) }));
     // Label size scales with the build canvas width, so names stay proportional
     // to the map in a wide (portrait) or narrower (landscape) canvas.
@@ -104,6 +119,49 @@ export class Board {
       this.glowLayer.append(piece.glowEl);
       this.labelLayer.append(piece.labelEl);
       this.byId.set(piece.id, piece);
+    }
+    this.#buildContext(proj, buildRect, fs * 0.72);
+  }
+
+  // Faint outlines of the areas around this one, each named and tappable.
+  #buildContext(proj, [x0, y0, x1, y1], fs) {
+    const r = (14 * VB_W) / this.pxWidth; // match the canvas panel's rounded corners
+    for (const [k, v] of Object.entries({ x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: r }))
+      this.clipRect.setAttribute(k, v.toFixed(1));
+    const inset = fs * 0.4;
+    // Context names must never sit on the map: a spot is usable only if its
+    // label box stays clear of every piece and every name placed so far.
+    const taken = this.pieces.flatMap((p) => p.labelBoxes);
+    const onMap = ([bx0, by0, bx1, by1]) =>
+      this.pieces.some((p) =>
+        [[bx0, by0], [bx1, by0], [bx0, by1], [bx1, by1], [(bx0 + bx1) / 2, (by0 + by1) / 2]].some(([x, y]) =>
+          ringContains(p.geom.ring, x, y),
+        ),
+      );
+    const hits = (b) => taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
+    for (const c of projectContext(this.nodeId, proj, [x0 + inset, y0 + inset, x1 - inset, y1 - inset], fs * 0.55)) {
+      const g = svgEl('g', { class: 'jig-ctx' });
+      g.dataset.ctx = c.id;
+      g.append(svgEl('path', { d: c.dFull, class: 'jig-ctx-shape' }));
+      const name = labelOf(c.id);
+      const spot = c.anchors
+        // (Measured a little generously: the width estimate runs short.)
+        .map(([x, y]) => ({ x, y, box: labelBoxes([name], fs * 1.12, x, y)[0] }))
+        .find(
+          ({ box }) =>
+            box[0] >= x0 + inset && box[2] <= x1 - inset && box[1] >= y0 && box[3] <= y1 && !onMap(box) && !hits(box),
+        );
+      if (spot) {
+        taken.push(spot.box);
+        const t = svgEl('text', { class: 'jig-ctx-label', 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+        t.setAttribute('x', spot.x.toFixed(1));
+        t.setAttribute('y', spot.y.toFixed(1));
+        t.style.fontSize = `${fs.toFixed(1)}px`;
+        t.textContent = name;
+        t.dataset.ctx = c.id;
+        this.contextLabels.append(t);
+      }
+      this.contextShapes.append(g);
     }
   }
 
@@ -142,7 +200,8 @@ export class Board {
   // Is the board idle (nothing animating, not mid-drag)? The search fly-through
   // only takes its next step from an idle board.
   idle() {
-    return (this.phase === 'solved' || this.phase === 'play') && !this.held;
+    // (The intro and the scatter count: navigating away just abandons them.)
+    return ['solved', 'play', 'intro', 'scattering'].includes(this.phase) && !this.held;
   }
 
   // Serialize for persistence: null when solved (a reload rebuilds it assembled),
@@ -184,7 +243,8 @@ export class Board {
     this.#packLoose();
     for (const p of this.pieces) p.moveTo(p.homeTx, p.homeTy);
     this.byId.get(anchor).g.classList.add('anchor');
-    this.run = { anchor, order, step, misses: 0, finds: 0 };
+    // flawless: unknown for a resumed run, so it doesn't count.
+    this.run = { anchor, order, step, misses: 0, finds: 0, flawless: false };
     this.phase = 'play';
     this.stage.hideSolved();
     this.#emitAction();
@@ -227,7 +287,7 @@ export class Board {
     const ids = this.pieces.map((p) => p.id);
     const anchor = pickAnchor(ids, adjacentIds);
     const order = placementOrder(ids, anchor, adjacentIds);
-    this.run = { anchor, order, step: 0, misses: 0, finds: 0 };
+    this.run = { anchor, order, step: 0, misses: 0, finds: 0, flawless: true };
     this.cbs.onEvent?.('puzzle-start');
 
     for (const p of this.pieces) {
@@ -330,7 +390,7 @@ export class Board {
     const mate = this.byId.get(this.#mate(t)?.id);
     // The very first ask of all time spells out the move.
     const sub = firstEver && mate ? `Drag it ${this.layout.wide ? 'over' : 'up'} next to ${labelOf(mate.id)}` : '';
-    this.stage.ask(labelOf(t.id), step + 2, order.length + 1, sub);
+    this.stage.ask(labelOf(t.id), step + 2, order.length + 1, sub, { quiet: !firstEver });
     if (firstEver) {
       this.coach.play(
         [t.geom.cx + t.homeTx, t.geom.cy + t.homeTy],
@@ -352,6 +412,7 @@ export class Board {
       // Not this one — but you learn a name either way.
       piece.wiggle();
       this.run.finds += 1;
+      this.run.flawless = false;
       this.stage.nope(`That's ${labelOf(piece.id)}`);
       if (this.run.finds >= 2) t.pulse();
       return false;
@@ -397,6 +458,7 @@ export class Board {
     this.#settle(piece, [piece.homeTx, piece.homeTy]);
     if (h.moved) {
       this.run.misses += 1;
+      this.run.flawless = false;
       this.#hint();
     }
   }
@@ -448,6 +510,7 @@ export class Board {
     if (!store.coached()) store.markCoached();
     this.run.step += 1;
     this.run.ready = false;
+    this.cbs.onEvent?.('piece-placed');
     if (this.run.step >= this.run.order.length) {
       // Done. Leave 'play' right away so leaving in the next beat can't keep a
       // stale in-progress save, and Solve can't fire on a finished map.
@@ -456,7 +519,11 @@ export class Board {
       this.stage.hidePrompt();
       store.markDone(this.nodeId, 'solved');
       this.#persist();
-      this.cbs.onEvent?.('puzzle-solved');
+      this.cbs.onEvent?.('puzzle-solved', {
+        id: this.nodeId,
+        flawless: this.run.flawless,
+        size: this.pieces.length,
+      });
       this.sched.after(SNAP_MS, () => this.#enterSolved({ justSolved: true }));
       return;
     }
@@ -483,10 +550,11 @@ export class Board {
     const chips = this.pieces.map((p) => ({
       label: labelOf(p.id),
       done: p.zoomable && store.isSolved(p.id),
+      wip: p.zoomable && !!store.puzzle(p.id),
       onClick: () => this.#open(p),
     }));
     const tip = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece to learn about it';
-    this.stage.showSolved({ tip, chips });
+    this.stage.showSolved({ tip, chips, progress: progressLine(this.nodeId) });
     if (justSolved) this.stage.celebrate(labelOf(this.nodeId));
     for (const p of this.pieces) {
       p.g.classList.remove('anchor');
@@ -521,6 +589,11 @@ export class Board {
       drop: () => this.#drop(),
       cancelDrag: () => this.#cancelHeld(),
       tap: (piece) => this.#open(piece),
+      // A tap on a surrounding area goes there.
+      tapEmpty: (target) => {
+        const id = target?.closest?.('[data-ctx]')?.dataset.ctx;
+        if (id) this.cbs.onGoTo?.(id);
+      },
       pan: (dx, dy) => {
         for (const p of this.pieces) {
           p.setDragging(true);
@@ -553,10 +626,11 @@ export class Board {
   // aspect — so the zoom hands off to the next level with no jump.
   #boxFor(piece) {
     const { geom, tx, ty } = piece;
-    const child = layoutFor(this.vbH, mapAspectOf(piece.id), this.gap);
+    const fill = fillFor(piece.id);
+    const child = layoutFor(this.vbH, mapAspectOf(piece.id), this.gap, fill);
     const [fx0, fy0, fx1, fy1] = child.build;
-    const fw = (fx1 - fx0) * FILL;
-    const fh = (fy1 - fy0) * FILL;
+    const fw = (fx1 - fx0) * fill;
+    const fh = (fy1 - fy0) * fill;
     const aspect = VB_W / this.vbH;
     const vw = Math.max(geom.w / fw, (geom.h / fh) * aspect);
     const vh = vw / aspect;
@@ -574,6 +648,7 @@ export class Board {
     this.gestures.reset();
     this.#emitAction();
     this.stage.hideSolved();
+    this.contextLayer.classList.add('fading');
     this.cbs.onEvent?.('zoom-in');
     for (const p of this.pieces) if (p !== piece) p.fadeOut();
     this.#animateCamera(fullVB(this.vbH), this.#boxFor(piece), () =>
@@ -591,6 +666,7 @@ export class Board {
     this.gestures.reset();
     this.#emitAction();
     this.stage.hideSolved();
+    this.contextLayer.classList.add('fading');
     for (const p of this.pieces) p.g.classList.add('collapsing');
     const cx = this.pieces.reduce((s, p) => s + p.geom.cx, 0) / this.pieces.length;
     const cy = this.pieces.reduce((s, p) => s + p.geom.cy, 0) / this.pieces.length;

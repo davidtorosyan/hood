@@ -1,8 +1,9 @@
-// Label layout for a whole level at once. Every label sits ON its piece at ONE
-// uniform font size, so all names read at the same scale and each name stays
-// with its shape. Each label starts at its piece's roomiest interior point; when
-// that box would collide with a label already placed, it slides to the next-best
-// interior anchor that's clear (e.g. "Westside" vs "Central L.A." on the county
+// Label layout for a whole level at once. Every label sits ON its piece at one
+// uniform font size where possible (a crowded label may step down a little), so
+// names read at the same scale and each name stays with its shape. Each label
+// starts at its piece's roomiest interior point; when that box would collide
+// with a label already placed, it slides to the next-best interior anchor that's
+// clear (e.g. "Westside" vs "Central L.A." on the county
 // map). The <text> renders in a top layer above the pieces, so a name is never
 // painted over by a neighbouring shape.
 
@@ -50,17 +51,23 @@ export function layoutLabels(items, fs) {
   const order = [...items].sort((a, b) => a.geom.w * a.geom.h - b.geom.w * b.geom.h);
   for (const { id, label, geom } of order) {
     const lines = wrapLabel(label);
+    // Try the full size first; on a crowded map a label that can't find a clear
+    // spot steps down in size (never below ~70%) before settling for an overlap.
     let best = null;
-    geom.anchors.forEach(([x, y], rank) => {
-      const boxes = labelBoxes(lines, fs, x, y);
-      let hit = 0;
-      for (const b of boxes) for (const t of taken) hit += overlapArea(b, t);
-      // Collisions dominate; among clear spots, prefer the roomiest (lowest rank).
-      const cost = hit * 10 + rank;
-      if (!best || cost < best.cost) best = { cost, x, y, boxes };
-    });
+    for (const size of [fs, fs * 0.86, fs * 0.72]) {
+      geom.anchors.forEach(([x, y], rank) => {
+        const boxes = labelBoxes(lines, size, x, y);
+        let hit = 0;
+        for (const b of boxes) for (const t of taken) hit += overlapArea(b, t);
+        // Collisions dominate; among clear spots, prefer the roomiest (lowest
+        // rank) at the biggest size.
+        const cost = hit * 10 + rank + (fs - size);
+        if (!best || cost < best.cost) best = { cost, hit, x, y, boxes, size };
+      });
+      if (best.hit === 0) break;
+    }
     taken.push(...best.boxes);
-    plans.set(id, { lines, fs, lineHeight: fs * LINE_H, x: best.x, y: best.y });
+    plans.set(id, { lines, fs: best.size, lineHeight: best.size * LINE_H, x: best.x, y: best.y });
   }
   return plans;
 }

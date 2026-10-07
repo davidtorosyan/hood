@@ -424,7 +424,18 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
-/* "Solve" while assembling, "↑ Zoom out" once solved. */
+/* Solve (puzzle on) + ↑ Zoom out (whenever there's a level above). */
+.jig-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.jig-stats {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .jig-topbtn {
   flex: none;
   min-width: 70px;
@@ -439,8 +450,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 10px 8px;
+  gap: 8px;
+  padding: 8px;
   overflow: hidden;
   pointer-events: none;
 }
@@ -478,12 +489,22 @@ body {
   border-radius: 999px;
   cursor: pointer;
 }
+.jig-chip.wip {
+  color: var(--accent-text);
+  border-style: dashed;
+  border-color: var(--accent);
+}
 .jig-chip.done {
   color: var(--good);
   border-color: rgba(15, 157, 107, 0.35);
 }
 .jig-chip:active {
   background: var(--surface-2);
+}
+.jig-progress {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-dim);
 }
 .jig-replay {
   pointer-events: auto;
@@ -758,6 +779,35 @@ body {
   stroke: #ffffff;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+/* The surrounding areas: faint, named, tappable context around the map. */
+.jig-ctx {
+  cursor: pointer;
+}
+.jig-ctx-shape {
+  fill: #e6eaf1;
+  stroke: #fbfcfe;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.jig-ctx:active .jig-ctx-shape {
+  fill: #d9dfea;
+}
+.jig-ctx-label {
+  fill: #6f7a8c;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  paint-order: stroke;
+  stroke: #e6eaf1;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+  cursor: pointer; /* the name is tappable too */
+}
+.jig-context {
+  transition: opacity 0.35s ease;
+}
+.jig-context.fading {
+  opacity: 0;
 }
 /* A solved sub-puzzle's ✓ beside its name. */
 .jig-check {
@@ -1091,6 +1141,40 @@ body {
   }
 }
 
+/* Past the tutorial: the same ask, quieter — a light chip that reads at a glance
+   without shouting. (The bold dark pill is for the first-ever run.) */
+.jig-prompt.quiet .jig-prompt-main {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(27, 34, 48, 0.08);
+  padding: 5px 14px 6px;
+}
+.jig-prompt.quiet .jig-prompt-verb {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  opacity: 1;
+}
+.jig-prompt.quiet .jig-prompt-verb::after {
+  content: '';
+}
+.jig-prompt.quiet .jig-prompt-name {
+  font-size: 17px;
+  color: var(--accent-text);
+}
+.jig-prompt.quiet .jig-prompt-count {
+  color: var(--text-dim);
+  opacity: 1;
+}
+.jig-prompt.quiet.pop .jig-prompt-main {
+  animation: prompt-fade 0.3s ease;
+}
+@keyframes prompt-fade {
+  from { opacity: 0.2; transform: translateY(3px); }
+}
+
 /* Narrow phones (iPhone SE): the piece name matters more than the verb. */
 @media (max-width: 380px) {
   .jig-prompt-verb {
@@ -1106,4 +1190,198 @@ body {
     padding: 7px 13px 8px;
     gap: 6px;
   }
+}
+
+/* ---- Progress ------------------------------------------------------------ */
+.home-progress {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 9px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  cursor: pointer;
+}
+.home-progress-sub {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--accent-text);
+}
+.pg-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: 12px;
+}
+.pg-hero {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  text-align: center;
+}
+.pg-big {
+  font-size: 22px;
+  color: var(--text-dim);
+}
+.pg-big b {
+  font-size: 40px;
+  color: var(--text);
+  letter-spacing: -1px;
+}
+.pg-sub {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.pg-bar {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.pg-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.pg-h {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 6px 2px 0;
+}
+.pg-regions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pg-region {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 9px 12px 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+.pg-region .pg-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+}
+.pg-region-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.pg-region-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.pg-region.done .pg-region-count {
+  color: var(--good);
+}
+.pg-region.done .pg-bar-fill {
+  background: var(--good);
+}
+.pg-trophies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding-bottom: 12px;
+}
+.pg-trophy {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 10px 11px;
+  text-align: center;
+}
+.pg-trophy:not(.got) {
+  background: var(--surface-2);
+}
+.pg-trophy:not(.got) .pg-trophy-icon {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+.pg-trophy-icon {
+  font-size: 30px;
+  line-height: 1.1;
+}
+.pg-trophy-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text);
+  margin-top: 4px;
+}
+.pg-trophy:not(.got) .pg-trophy-name {
+  color: var(--text-dim);
+}
+.pg-trophy-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.pg-trophy-prog {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent-text);
+  margin-top: 4px;
+}
+/* "Trophy unlocked" toast, top of the screen. */
+.trophy-toast {
+  position: fixed;
+  top: calc(var(--safe-top) + 10px);
+  left: 50%;
+  z-index: 60;
+  transform: translate(-50%, -16px);
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--text);
+  color: #fff;
+  padding: 9px 18px 9px 12px;
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.trophy-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.trophy-toast-icon {
+  font-size: 24px;
+}
+.trophy-toast-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.trophy-toast-kicker {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #ffd27a;
+}
+.trophy-toast b {
+  font-size: 15px;
 }
