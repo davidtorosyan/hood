@@ -26,12 +26,14 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
     completed, flawless solves, curiosity (cards, neighbor hops), and milestones.
   - A small "🏆 unlocked" toast when you earn one.
   - Region progress shown on solved boards.
-- [ ] **Items from the first review I'd deferred or dropped:**
+- [x] **Items from the first review I'd deferred or dropped:**
   - Smaller map data
   - Pinch-to-zoom accessibility (`user-scalable=no`)
   - Lint/format setup
-  - Integrity hash on the analytics script
-  - Facts for the ~85 places without one
+  - Integrity hash on the analytics script: the third-party script is gone instead.
+    Counting now goes through GoatCounter's no-JS pixel.
+  - Facts for the ~85 places without one: 63 added, verified. 22 are left without
+    one, mostly tiny unincorporated slivers with nothing solid to say.
   - Keyboard play stays in "Later"
 
 ## 1. Guided placement: the core design change
