@@ -52,6 +52,14 @@ export function mountJigsaw(app, { back, node } = {}) {
   renderNode(app, { back }, at, { autoPlay: true });
 }
 
+// Play one "Rebuild LA" puzzle: the same board, wired to the campaign's ledger,
+// with its own slim chrome (← Map, the puzzle's name, Solve) and no wandering
+// off — no zooming into pieces, breadcrumbs, search or context jumps.
+// `back` returns to the overworld; `progressLine()` is the tray footnote.
+export function mountCampaignPuzzle(app, { nodeId, back, progressLine }) {
+  renderNode(app, { back, campaign: { progressLine } }, nodeId, {});
+}
+
 // Leaving the jigsaw: stop the live board so nothing keeps running behind home.
 export function unmountJigsaw() {
   board?.destroy();
@@ -126,16 +134,23 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   };
 
   // --- chrome ---
-  const ctrl = actionButton({ onUp: goUp, onSolve: () => me.solve(), isRoot: !node.parent });
+  const campaign = ctx.campaign;
+  const book = campaign ? store.campaign : store.explore;
+  const ctrl = actionButton({ onUp: goUp, onSolve: () => me.solve(), isRoot: !node.parent || !!campaign });
   const boardWrap = el('div', { class: 'jig-board' });
   const st = statsOf(nodeId);
   const statBits = [`${fmtArea(st.area)} sq mi`];
   if (st.pop > 0) statBits.push(`${fmtPeople(st.pop)} people`);
 
+  const nav = campaign
+    ? { onDone: () => ctx.back(), progressLine: campaign.progressLine }
+    : {
+        onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true, arrived: true }),
+        onZoomOut: goUp,
+        onGoTo,
+      };
   const me = new Board(nodeId, {
-    onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true, arrived: true }),
-    onZoomOut: goUp,
-    onGoTo,
+    ...nav,
     onSelectLeaf: (id) => showCard(id),
     onAction: (mode) => ctrl.setAction(mode),
     onEvent: (name, data) => {
@@ -144,19 +159,24 @@ function renderNode(app, ctx, nodeId, opts = {}) {
       else if (name === 'puzzle-solved') record('solved', data);
       else if (name === 'card-open') record('card');
     },
-    onPersist: () => store.savePuzzle(nodeId, me.serialize()),
-  });
+    onPersist: () => book.savePuzzle(nodeId, me.serialize()),
+  }, { book, campaign: !!campaign });
   board = me;
   boardWrap.append(me.root);
 
   clear(app);
   app.append(
     el('div', { class: 'screen' }, [
-      el('div', { class: 'topbar jig-topbar' }, [
-        el('button', { class: 'icon-btn', onClick: () => ctx.back(), 'aria-label': 'Home' }, '⌂'),
-        breadcrumb(nodeId, goTo),
-        el('button', { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }) }, '🔍 Search'),
-      ]),
+      campaign
+        ? el('div', { class: 'topbar jig-topbar' }, [
+            el('button', { class: 'icon-btn', onClick: () => ctx.back(), 'aria-label': 'Back to the map' }, '←'),
+            el('div', { class: 'jig-crumbs' }, [el('span', { class: 'jig-crumb current' }, node.label)]),
+          ])
+        : el('div', { class: 'topbar jig-topbar' }, [
+            el('button', { class: 'icon-btn', onClick: () => ctx.back(), 'aria-label': 'Home' }, '⌂'),
+            breadcrumb(nodeId, goTo),
+            el('button', { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }) }, '🔍 Search'),
+          ]),
       el('div', { class: 'screen-body jig-body' }, [
         el('div', { class: 'jig-subbar' }, [
           el('div', { class: 'jig-stats' }, statBits.join('  ·  ')),
@@ -169,8 +189,10 @@ function renderNode(app, ctx, nodeId, opts = {}) {
       ]),
     ]),
   );
-  store.saveNav({ node: nodeId });
-  record('visit', { id: nodeId });
+  if (!campaign) {
+    store.saveNav({ node: nodeId });
+    record('visit', { id: nodeId });
+  }
 
   // Measure the board so the SVG viewBox matches its aspect, then build and start
   // — synchronously right after the append (reading clientWidth forces layout),
@@ -179,7 +201,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   const h = boardWrap.clientHeight || 360;
   me.build(Math.round((1000 * h) / w), w);
   current = { app, ctx, nodeId, w, h, autoPlay: !!opts.autoPlay, flying: !!opts.fly && opts.fly.step < opts.fly.route.length };
-  const restore = store.puzzle(nodeId);
+  const restore = book.puzzle(nodeId);
   me.start({
     zoomOutFrom: opts.zoomOutFrom,
     restore,
@@ -187,7 +209,8 @@ function renderNode(app, ctx, nodeId, opts = {}) {
     // start was the old stumbling block). After the tutorial run, every level
     // opens assembled for exploring, with a prominent ▶ Play in the tray —
     // auto-scrambling got in the way of just looking around.
-    autoPlay: !!opts.autoPlay && !restore && !store.progress(nodeId) && !store.coached(),
+    // (A campaign puzzle is one you chose to build: it always starts itself.)
+    autoPlay: campaign ? !restore && !book.progress(nodeId) : !!opts.autoPlay && !restore && !book.progress(nodeId) && !store.coached(),
     arrived: !!opts.arrived,
   });
 

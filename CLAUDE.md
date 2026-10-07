@@ -113,9 +113,27 @@ group lines, via `contextOf`) draw as faint named outlines around the map; tap o
 fly there. **Progression** (`src/progress.js`): per-region counts, a Progress screen
 from home, and 19 friendly trophies with a toast — never punitive.
 
+### Rebuild LA — the bottom-up campaign (alongside Explore)
+Home offers two modes. **Explore** is the zoomable jigsaw above. **Rebuild LA**
+(`src/campaign/`) is a campaign: "LA's been scrambled" and you rebuild it bottom-up on
+an **overworld** map of all 240 places (built = region colour, open slots = white with
+a dashed outline, the rest grey fog). You start from one of 3 offered bottom puzzles
+(groups of individual places). After that you can build any bottom puzzle on the
+**frontier** (one bordering what you've built; 3 are offered as cards, and tapping any
+frontier place on the map picks its puzzle), or **connect** a higher puzzle once
+everything inside it is built, all the way up to the county. `state.js` holds the
+rules. `test/campaign.test.js` proves the campaign is finishable from every start.
+The campaign plays the same `Board` with `{ book: store.campaign, campaign: true }`:
+there's no zooming or context navigation, and solving offers "🗺️ Back to the map".
+The campaign keeps its own ledger (`store.campaign`), separate from Explore's
+progress.
+
 ### Modules
-- `src/main.js` — entry: home screen (county-map art, Start / Continue + "N of 69
-  puzzles solved", build stamp), relaunch-where-you-left-off, PWA registration.
+- `src/main.js` — entry: home screen (county-map art, Rebuild LA / Explore buttons,
+  trophies + progress, build stamp), relaunch to the screen you left (`store.screen()`),
+  PWA registration.
+- `src/campaign/` — `state.js` (pure-ish campaign rules: `frontier`, `linkable`,
+  `offers`, `progress`), `overworld.js` (the overworld map + next-up cards).
 - `src/pwa.js` — service-worker registration with update checks on focus/visibility and
   every 5 min; vite-plugin-pwa autoUpdate reloads once the new worker takes control.
 - `src/jigsaw/` — the mode, in small modules:

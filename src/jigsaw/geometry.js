@@ -75,6 +75,16 @@ export function projectChildren(nodeId, buildRect, fill = FILL, proj = fitProjec
   });
 }
 
+// Project any set of nodes together, fitted into `rect` (user units) — for the
+// campaign overworld, which draws every place in the county at once. Also
+// projects `outlines` (e.g. puzzle areas) in the same projection.
+export function projectAll(ids, rect, outlines = []) {
+  const [x0, y0, x1, y1] = rect;
+  const proj = geoMercator().fitExtent([[x0, y0], [x1, y1]], featureCollection(ids));
+  const one = (id) => ({ id, d: ringToPath(shapeOf(id).map((c) => proj(c))) });
+  return { places: ids.map(one), outlines: outlines.map(one), proj };
+}
+
 // The surrounding areas, in the same projection as the map: [{ id, dFull,
 // anchors }] (the caller clips the drawing to the build canvas). `anchors` are
 // label spots inside the visible part (within `clipRect`) with at least

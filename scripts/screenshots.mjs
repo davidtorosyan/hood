@@ -4,7 +4,8 @@
 // glow → missed drops escalate hints → place every asked-for piece → solved →
 // zoom into a region (it starts itself) → solve it → zoom out (✓) → dive with
 // Solve → a place card → search fly-through → reload mid-puzzle (restores) →
-// home with Continue → a landscape desktop pass.
+// home with Continue → Rebuild LA (overworld → build → back → frontier) → a
+// landscape desktop pass.
 //
 // Usage: node scripts/screenshots.mjs [url]
 // Set CHROMIUM_PATH to use a specific Chromium binary (e.g. when the installed
@@ -152,7 +153,7 @@ await page.evaluate(() => localStorage.clear());
 await page.reload();
 await shot('home-first-visit');
 
-await page.getByRole('button', { name: 'Start' }).click();
+await page.locator('.home-play-2').click();
 await page.waitForTimeout(250);
 await shot('county-intro-assembled');
 await waitForPrompt();
@@ -333,12 +334,64 @@ await page.mouse.wheel(0, 900);
 await page.waitForTimeout(300);
 await shot('progress-trophies');
 
+// Rebuild LA: a fresh campaign. Start choices → build one → back to the map,
+// which shows it rebuilt plus the frontier around it.
+page = await newPage({ ...devices['iPhone 13'] });
+await page.goto(URL);
+await page.evaluate(() => localStorage.clear());
+await page.reload();
+await page.locator('.home-play').first().click();
+await page.waitForTimeout(400);
+await shot('campaign-start-choices');
+{
+  const n = await page.locator('.ow-card').count();
+  if (n !== 3) fail(`expected 3 starting choices, got ${n}`);
+  if (await page.locator('.ow-built').count()) fail('fresh campaign already has built places');
+}
+for (let round = 0; round < 3; round++) {
+  const card = page.locator('.ow-card.build').first();
+  const title = await card.locator('b').textContent();
+  await card.click();
+  await page.waitForTimeout(300);
+  if (round === 0) await shot('campaign-puzzle-start');
+  await waitForPrompt();
+  await solveByName();
+  await page.waitForTimeout(900);
+  if (round === 0) await shot('campaign-puzzle-solved');
+  const back = page.getByRole('button', { name: /Back to the map/ }).last();
+  await back.click();
+  await page.waitForTimeout(500);
+  if (round === 0) {
+    await shot('campaign-overworld-after-one');
+    if (!(await page.locator('.ow-built').count())) fail(`${title}: nothing shows as built`);
+    if (!(await page.locator('.ow-card').count())) fail('no offers after the first build');
+  }
+}
+await shot('campaign-overworld-after-three');
+// Tap a frontier place on the map: selects its puzzle + card.
+{
+  const spot = page.locator('.ow-frontier, .ow-offer').first();
+  if (await spot.count()) {
+    await spot.click({ force: true });
+    await page.waitForTimeout(500);
+    if (!(await page.locator('.ow-card.selected').count())) fail('tapping a frontier place selected nothing');
+    await shot('campaign-map-tap-select');
+  } else fail('no frontier on the map');
+}
+// Relaunch lands back on the overworld.
+await page.reload();
+await page.waitForTimeout(500);
+if (!(await page.locator('.ow-map').count())) fail('relaunch did not return to the overworld');
+await page.getByRole('button', { name: 'Home' }).click();
+await page.waitForTimeout(300);
+await shot('home-campaign-started');
+
 // Desktop / landscape: direct drag (no paddle lift).
 page = await newPage({ viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
-await page.getByRole('button', { name: 'Start' }).click();
+await page.locator('.home-play-2').click();
 await waitForPrompt();
 await page.waitForTimeout(400);
 await shot('desktop-play');

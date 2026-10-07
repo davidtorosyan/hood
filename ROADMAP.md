@@ -45,6 +45,20 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
 - [x] **"Start over" (erase progress)** in Report an issue, for testing the
       new-player flow.
 
+## Batch 4: Rebuild LA (bottom-up campaign, alongside Explore)
+- [x] **Overworld.** All 240 places on one map. What you've built is in colour, open
+      slots show as white with a dashed outline, the rest is fog. A freshly built area
+      flashes when you come back to the map.
+- [x] **Frontier growth.** Start from one of 3 offered spots. After that, build any
+      bottom puzzle bordering what you've built, then **connect** higher puzzles once
+      everything inside them is built, up to the whole county.
+- [x] **Own ledger.** Campaign progress is separate from Explore. Relaunch returns you
+      to the map.
+- [x] **Campaign trophies** (🏗️ first area built, 🌆 LA restored), plus a test that
+      the campaign is finishable from every start.
+- [ ] Ideas: pinch/zoom on the overworld (it's small on a phone), names on the
+      overworld, a celebration when a whole region links up.
+
 ## 1. Guided placement: the core design change
 Each puzzle starts the same way: one **anchor** piece sits on the map and the rest wait
 in the tray. Instead of free-for-all dragging, the game asks for **one piece at a time

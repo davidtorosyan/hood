@@ -5,6 +5,7 @@
 // announced with a small toast.
 import { NODES, ROOT, childrenOf, pathIds, labelOf } from './jigsaw/tree.js';
 import { store } from './store.js';
+import { progress as campaignProgress, finished as campaignFinished } from './campaign/state.js';
 import { el } from './ui/dom.js';
 
 // Every puzzle in the game: each node with children is one level to assemble.
@@ -84,6 +85,15 @@ export const TROPHIES = [
       earned: () => solvedIn(ids) === ids.length, progress: () => [solvedIn(ids), ids.length],
     };
   }),
+  {
+    id: 'groundbreaker', icon: '🏗️', name: 'Groundbreaker', desc: 'Rebuild your first area in Rebuild LA.',
+    earned: () => campaignProgress().built >= 1,
+  },
+  {
+    id: 'restored', icon: '🌆', name: 'LA, Restored', desc: 'Put all of LA back together in Rebuild LA.',
+    earned: () => campaignFinished(),
+    progress: () => [campaignProgress().built, campaignProgress().total],
+  },
   {
     id: 'all', icon: '👑', name: 'Know-It-All', desc: 'Solve every puzzle in the game.',
     earned: () => store.solvedCount() >= PUZZLES.length, progress: () => [store.solvedCount(), PUZZLES.length],

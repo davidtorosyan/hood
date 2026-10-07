@@ -27,7 +27,7 @@ export function renderProgress(app, { onBack, onPlay }) {
       el('div', { class: 'screen-body pg-body' }, [
         el('section', { class: 'pg-hero' }, [
           el('div', { class: 'pg-big' }, [el('b', {}, `${solved}`), ` / ${PUZZLES.length}`]),
-          el('div', { class: 'pg-sub' }, 'puzzles solved'),
+          el('div', { class: 'pg-sub' }, 'puzzles solved in Explore'),
           bar(solved, PUZZLES.length),
         ]),
         el('h2', { class: 'pg-h' }, 'Regions'),

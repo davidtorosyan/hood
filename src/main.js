@@ -9,7 +9,10 @@ import { initTelemetry, BUILD } from './telemetry.js';
 import { openBugReport } from './bugreport.js';
 import { initPwa } from './pwa.js';
 import { renderProgress } from './progressScreen.js';
-import { catchUp, PUZZLES, TROPHIES } from './progress.js';
+import { catchUp, record, PUZZLES, TROPHIES } from './progress.js';
+import { renderOverworld, campaignLine } from './campaign/overworld.js';
+import { built, progress } from './campaign/state.js';
+import { mountCampaignPuzzle } from './jigsaw/index.js';
 
 initTelemetry();
 
@@ -33,7 +36,33 @@ catchUp(); // trophies already earned (e.g. before trophies existed), awarded qu
 function goHome() {
   unmountJigsaw();
   store.setAtHome(true);
+  store.setScreen('home');
   renderHome();
+}
+
+// --- Rebuild LA (the campaign) ---
+function openOverworld() {
+  unmountJigsaw();
+  store.setScreen('campaign');
+  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onExplore: () => playExplore() });
+  record('campaign'); // announce any campaign trophy just earned
+}
+
+function playCampaign(id) {
+  const wasBuilt = built(id);
+  mountCampaignPuzzle(app, {
+    nodeId: id,
+    progressLine: campaignLine,
+    back: () => {
+      if (!wasBuilt && built(id)) store.campaign.set('fresh', id); // flash it on the map
+      openOverworld();
+    },
+  });
+}
+
+function playExplore(node) {
+  store.setScreen('explore');
+  mountJigsaw(app, { back: goHome, node });
 }
 
 // The county map as cover art: the seven regions in their map colours.
@@ -56,7 +85,8 @@ function renderHome() {
   const nav = store.nav();
   const resumeAt = nav && NODES[nav.node] && nav.node !== ROOT ? nav.node : null;
   const solved = store.solvedCount();
-  const play = (node) => mountJigsaw(app, { back: goHome, node });
+  const play = playExplore;
+  const cp = progress();
   app.append(
     el('div', { class: 'screen home' }, [
       el('div', { class: 'home-top' }, [
@@ -65,20 +95,23 @@ function renderHome() {
       ]),
       el('div', { class: 'home-art' }, homeArt()),
       el('div', { class: 'home-actions' }, [
-        resumeAt
-          ? el('button', { class: 'btn home-play', onClick: () => play(resumeAt) }, [
-              'Continue',
-              el('span', { class: 'home-play-sub' }, labelOf(resumeAt)),
-            ])
-          : el('button', { class: 'btn home-play', onClick: () => play(ROOT) }, solved ? 'Play' : 'Start'),
-        resumeAt ? el('button', { class: 'home-secondary', onClick: () => play(ROOT) }, 'Start from the whole county') : null,
+        // Two ways to play: the campaign (rebuild LA bottom-up, outward from a
+        // starting spot) and free exploring (the whole zoomable map, any order).
+        el('button', { class: 'btn home-play', onClick: openOverworld }, [
+          '🧩 Rebuild LA',
+          el('span', { class: 'home-play-sub' }, cp.built ? `${cp.built} of ${cp.total} rebuilt` : 'LA’s been scrambled — put it back'),
+        ]),
+        el('button', { class: 'btn home-play home-play-2', onClick: () => play(resumeAt ?? ROOT) }, [
+          '🗺️ Explore',
+          el('span', { class: 'home-play-sub' }, resumeAt ? `Continue · ${labelOf(resumeAt)}` : 'The whole map, any order'),
+        ]),
       ]),
       solved || Object.keys(store.trophies()).length
         ? el('button', { class: 'home-progress', onClick: openProgress }, [
-            el('span', {}, `🏆 ${solved} of ${PUZZLES.length} puzzles`),
-            el('span', { class: 'home-progress-sub' }, `${Object.keys(store.trophies()).length} of ${TROPHIES.length} trophies · see progress`),
+            el('span', {}, `🏆 ${Object.keys(store.trophies()).length} of ${TROPHIES.length} trophies`),
+            el('span', { class: 'home-progress-sub' }, `Explore: ${solved} of ${PUZZLES.length} solved · see progress`),
           ])
-        : el('p', { class: 'home-note' }, 'Rebuild the map one named piece at a time, then tap a piece to zoom in.'),
+        : null,
       el('div', { class: 'home-foot' }, [
         el('button', { class: 'home-report', onClick: openBugReport }, 'Report an issue'),
         el('span', { class: 'home-build' }, BUILD),
@@ -90,5 +123,7 @@ function renderHome() {
 // Relaunch where they left off — unless they'd gone back to home.
 const nav = store.nav();
 if (nav && !NODES[nav.node]) store.clearNav(); // stale (data changed under it)
-if (store.nav() && !store.atHome()) mountJigsaw(app, { back: goHome });
+const last = store.screen();
+if (last === 'campaign') openOverworld();
+else if (last === 'explore' && store.nav()) mountJigsaw(app, { back: goHome });
 else renderHome();

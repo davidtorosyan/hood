@@ -7,6 +7,9 @@
 //   - nav: the level you were on, so a reload drops you back in.
 //   - puzzles: each level's puzzle in progress, so leaving a level mid-puzzle
 //     (zooming out, searching, a reload) and coming back picks it up again.
+//   - campaign: the same two (progress + puzzles) for "Rebuild LA", kept apart
+//     so free exploring doesn't spoil the campaign's order. A Board reads and
+//     writes through a "ledger" (`store.explore` or `store.campaign`).
 const KEY = 'hood.v2';
 
 function load() {
@@ -31,12 +34,54 @@ state.puzzles ||= {};
 state.counts ||= {}; // lifetime tallies: placed, cards, hops, flawless
 state.trophies ||= {}; // trophy id → time earned
 state.visited ||= {}; // region id → 1 once you've been inside it
+state.campaign ||= { progress: {}, puzzles: {} }; // "Rebuild LA" — its own ledger
 // Fields from older builds that nothing reads any more.
 delete state.seen;
 delete state.mode;
 delete state.learnedZoom;
 
+// A ledger: per-puzzle progress + in-progress saves. Explore and the campaign
+// each have one; a Board is handed the one it plays for.
+function ledger(bag) {
+  return {
+    progress: (id) => bag.progress[id],
+    isSolved: (id) => bag.progress[id] === 'solved',
+    // A hand solve always wins over an earlier skip.
+    markDone(id, how) {
+      if (bag.progress[id] === 'solved') return;
+      bag.progress[id] = how;
+      save(state);
+    },
+    puzzle: (id) => bag.puzzles[id] || null,
+    savePuzzle(id, data) {
+      if (data) bag.puzzles[id] = data;
+      else delete bag.puzzles[id];
+      save(state);
+    },
+    solvedCount: () => Object.values(bag.progress).filter((v) => v === 'solved').length,
+    // Built in the campaign: solved by hand OR with the Solve button.
+    doneIds: () => Object.keys(bag.progress),
+    // Small extra state a mode keeps alongside (e.g. the campaign's offered
+    // choices, the last area built).
+    get: (key) => bag[key],
+    set(key, value) {
+      bag[key] = value;
+      save(state);
+    },
+  };
+}
+
 export const store = {
+  explore: ledger(state),
+  campaign: ledger(state.campaign),
+  // Which screen they were on last: 'home' | 'explore' | 'campaign'.
+  screen() {
+    return state.screen || (state.atHome ? 'home' : state.nav ? 'explore' : 'home');
+  },
+  setScreen(v) {
+    state.screen = v;
+    save(state);
+  },
   // 'solved' | 'skipped' | undefined
   progress(id) {
     return state.progress[id];
@@ -76,7 +121,7 @@ export const store = {
   // so counts and trophies only ever reflect real puzzles.
   prune(validIds) {
     let changed = false;
-    for (const bag of [state.progress, state.puzzles]) {
+    for (const bag of [state.progress, state.puzzles, state.campaign.progress, state.campaign.puzzles]) {
       for (const id of Object.keys(bag)) if (!validIds.has(id)) {
         delete bag[id];
         changed = true;

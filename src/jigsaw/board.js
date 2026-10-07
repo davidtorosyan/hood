@@ -48,9 +48,14 @@ const INTRO_MS = 750; // an unsolved level shows assembled this long, then break
 export class Board {
   // cbs: { onPersist(), onZoomInto(childId), onZoomOut(), onGoTo(id), onSelectLeaf(id),
   //        onAction('solve' | 'up' | 'busy'), onEvent(name, data) }
-  constructor(nodeId, cbs = {}) {
+  // opts: { book: the progress ledger to read/write (store.explore by default),
+  //         campaign: true → a "Rebuild LA" puzzle: no zooming into pieces or
+  //         flying off via context; the solved tray offers "Back to the map" }
+  constructor(nodeId, cbs = {}, { book = store.explore, campaign = false } = {}) {
     this.nodeId = nodeId;
     this.cbs = cbs;
+    this.book = book;
+    this.campaign = campaign;
     this.pieces = [];
     this.byId = new Map();
     this.phase = 'building';
@@ -59,7 +64,8 @@ export class Board {
     this.run = null; // the guided run: { anchor, order, step, misses, finds, findTimer }
     this.held = null; // the piece being dragged: { piece, start, moved, startPt }
     this.ghostEl = null;
-    this.stage = new Stage({ onReplay: () => this.scramble() });
+    // In the campaign the tray's button leads back to the overworld instead.
+    this.stage = new Stage({ onReplay: () => (this.campaign ? this.cbs.onDone?.() : this.scramble()) });
     this.svg = this.#initSvg();
     this.root = this.stage.mount(this.svg);
     this.gestures = new Gestures(this.svg, this.#gestureHandlers());
@@ -112,7 +118,7 @@ export class Board {
     const plans = layoutLabels(this.pieces.map((p) => ({ id: p.id, label: labelOf(p.id), geom: p.geom })), fs);
     for (const piece of this.pieces) {
       const plan = plans.get(piece.id);
-      piece.setLabel(plan, { done: piece.zoomable && store.isSolved(piece.id) });
+      piece.setLabel(plan, { done: piece.zoomable && this.book.isSolved(piece.id) });
       piece.labelBoxes = labelBoxes(plan.lines, plan.fs, plan.x, plan.y);
       piece.moveTo(0, 0);
       this.pieceLayer.append(piece.g);
@@ -334,7 +340,7 @@ export class Board {
     if (this.phase === 'intro') {
       // Not even started: just settle on the assembled map.
       this.sched.cancelAll();
-      store.markDone(this.nodeId, 'skipped');
+      this.book.markDone(this.nodeId, 'skipped');
       this.cbs.onEvent?.('puzzle-skip');
       return this.#enterSolved();
     }
@@ -349,7 +355,7 @@ export class Board {
     this.cbs.onEvent?.('puzzle-skip');
     this.#animatePieces(null, () => [0, 0], () => {
       this.#assembleAll();
-      store.markDone(this.nodeId, 'skipped');
+      this.book.markDone(this.nodeId, 'skipped');
       this.#enterSolved();
     });
   }
@@ -531,7 +537,7 @@ export class Board {
       this.phase = 'solving';
       this.#emitAction();
       this.stage.hidePrompt();
-      store.markDone(this.nodeId, 'solved');
+      this.book.markDone(this.nodeId, 'solved');
       this.#persist();
       this.cbs.onEvent?.('puzzle-solved', {
         id: this.nodeId,
@@ -561,17 +567,20 @@ export class Board {
     this.stage.hidePrompt();
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Not played yet: Play is the call to action. Played: a quieter Play again.
-    const fresh = !store.progress(this.nodeId);
-    this.stage.replayBtn.textContent = fresh ? '▶ Play this puzzle' : '🔀 Play again';
-    this.stage.replayBtn.classList.toggle('primary', fresh);
+    const fresh = !this.book.progress(this.nodeId);
+    this.stage.replayBtn.textContent = this.campaign ? '🗺️ Back to the map' : fresh ? '▶ Play this puzzle' : '🔀 Play again';
+    this.stage.replayBtn.classList.toggle('primary', fresh || this.campaign);
     const chips = this.pieces.map((p) => ({
       label: labelOf(p.id),
-      done: p.zoomable && store.isSolved(p.id),
-      wip: p.zoomable && !!store.puzzle(p.id),
+      done: p.zoomable && this.book.isSolved(p.id),
+      wip: p.zoomable && !!this.book.puzzle(p.id),
       onClick: () => this.#open(p),
     }));
-    const tip = zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece to learn about it';
-    this.stage.showSolved({ tip, chips, progress: progressLine(this.nodeId) });
+    const tip = this.campaign
+      ? zoomable ? '' : '👆 Tap a place to learn about it'
+      : zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece to learn about it';
+    const progress = this.cbs.progressLine?.() ?? progressLine(this.nodeId);
+    this.stage.showSolved({ tip, chips: this.campaign && zoomable ? [] : chips, progress });
     if (justSolved) this.stage.celebrate(labelOf(this.nodeId));
     for (const p of this.pieces) {
       p.g.classList.remove('anchor');
@@ -585,7 +594,8 @@ export class Board {
   // Open a piece on a solved map: groups zoom in, places show their card.
   #open(piece) {
     if (this.phase !== 'solved') return;
-    if (piece.zoomable) return this.zoomInto(piece.id);
+    if (piece.zoomable) return this.campaign ? undefined : this.zoomInto(piece.id); // campaign: stay put
+
     this.cbs.onEvent?.('card-open');
     this.cbs.onSelectLeaf?.(piece.id);
   }
@@ -610,6 +620,7 @@ export class Board {
       // Mid-puzzle only the NAME counts (a deliberate target) — a near-miss
       // beside the map mustn't whisk you away from the puzzle.
       tapEmpty: (target) => {
+        if (this.campaign) return; // no flying off mid-campaign
         const hit = target?.closest?.('[data-ctx]');
         if (!hit || (this.phase === 'play' && !hit.classList.contains('jig-ctx-label'))) return;
         this.cbs.onGoTo?.(hit.dataset.ctx);
@@ -628,13 +639,15 @@ export class Board {
       },
       shake: () => {
         for (const p of this.pieces) p.setDragging(false);
+        // The campaign doesn't re-scramble a built area: just let it settle.
+        if (this.campaign) return void this.pieces.forEach((p) => this.#settle(p, [0, 0]));
         this.scramble();
       },
       pinch: (dir, [mx, my]) => {
         if (dir === 'in') return this.cbs.onZoomOut?.();
         if (this.phase !== 'solved') return;
         const piece = this.pieces.find((p) => ringContains(p.geom.ring, mx - p.tx, my - p.ty));
-        if (piece?.zoomable) this.zoomInto(piece.id);
+        if (piece?.zoomable && !this.campaign) this.zoomInto(piece.id);
       },
     };
   }
