@@ -1,7 +1,7 @@
 // One puzzle piece. Its visual is split into two elements that move together:
 //   - `g`        — the draggable BODY (shape + faint inner subdivisions). Lives
 //                  in the board's piece layer; carries all the state classes.
-//   - `labelEl`  — the label group (text, plus a leader line for callouts). Lives
+//   - `labelEl`  — the label group (the name). Lives
 //                  in the board's LABEL layer, which sits above every piece, so a
 //                  label is never painted over by a neighbouring piece.
 // Both share the same transform, so the label tracks the piece as it moves.
@@ -17,7 +17,9 @@ export class Piece {
     this.zoomable = geom.zoomable;
     this.tx = 0;
     this.ty = 0;
-    this.cluster = null; // Set of pieces it moves/snaps with (managed by Board)
+    this.placed = false; // on the map (vs loose in the tray)
+    this.homeTx = 0; // its spot in the tray while loose
+    this.homeTy = 0;
     this.labelEl = null;
     this.g = this.#buildBody(geom, color, label);
     // A glowing overlay of just the edge facing a piece we're connecting to.
@@ -38,19 +40,10 @@ export class Piece {
     return g;
   }
 
-  // Build the label element from a layout plan (see layoutLabels). Sets labelEl.
-  setLabel(plan) {
-    const wrap = svgEl('g', { class: `jig-label-wrap${plan.callout ? ' callout' : ''}` });
-    if (plan.callout) {
-      wrap.append(svgEl('line', {
-        class: 'jig-leader',
-        x1: plan.anchorX.toFixed(1), y1: plan.anchorY.toFixed(1),
-        x2: plan.x.toFixed(1), y2: plan.y.toFixed(1),
-      }));
-      wrap.append(svgEl('circle', {
-        class: 'jig-dot', cx: plan.anchorX.toFixed(1), cy: plan.anchorY.toFixed(1), r: 5,
-      }));
-    }
+  // Build the label element from a layout plan (see layoutLabels). `done` adds
+  // a small ✓ — this piece's own puzzle has been solved. Sets labelEl.
+  setLabel(plan, { done = false } = {}) {
+    const wrap = svgEl('g', { class: 'jig-label-wrap' });
     const text = svgEl('text', { class: 'jig-label', 'text-anchor': 'middle' });
     text.style.fontSize = `${plan.fs.toFixed(1)}px`;
     text.style.strokeWidth = `${(plan.fs * 0.2).toFixed(1)}px`;
@@ -63,10 +56,26 @@ export class Piece {
       ts.textContent = ln;
       text.append(ts);
     });
+    if (done) {
+      const check = svgEl('tspan', { class: 'jig-check', dx: (plan.fs * 0.15).toFixed(1) });
+      check.textContent = '✓';
+      text.append(check);
+    }
     wrap.append(text);
     this.labelEl = wrap;
     this.applyTransform(); // keep the new label in sync with the piece position
     return wrap;
+  }
+
+  // The piece's extent [minX, minY, maxX, maxY] including its label, in its
+  // assembled coordinates — used to pack the tray without hiding names.
+  extent(labelBoxes) {
+    const { minX, minY, w, h } = this.geom;
+    let box = [minX, minY, minX + w, minY + h];
+    for (const b of labelBoxes) {
+      box = [Math.min(box[0], b[0]), Math.min(box[1], b[1]), Math.max(box[2], b[2]), Math.max(box[3], b[3])];
+    }
+    return box;
   }
 
   // --- placement -----------------------------------------------------------
@@ -88,9 +97,9 @@ export class Piece {
     this.g.dataset.ty = this.ty.toFixed(1);
   }
 
-  // "Placed" = joined into a multi-piece cluster → shows its map colour (vs the
-  // grey of a loose singleton).
+  // "Placed" = on the map → shows its map colour (vs the grey of a loose piece).
   setPlaced(on) {
+    this.placed = on;
     this.g.classList.toggle('placed', on);
     if (on) {
       this.g.classList.remove('exploding', 'dragging');
@@ -100,7 +109,7 @@ export class Piece {
 
   // Back to a loose look (used when the player scrambles an assembled map).
   reset() {
-    this.g.classList.remove('placed', 'zoomable', 'selectable', 'dragging', 'seed');
+    this.g.classList.remove('placed', 'zoomable', 'selectable', 'dragging', 'anchor', 'hinted');
     this.setGlow(0, '');
   }
 
@@ -160,10 +169,7 @@ export class Piece {
 
   // Pulse the piece a few times to draw the eye (a search just landed on it).
   flash() {
-    this.g.classList.remove('flash');
-    void this.g.getBoundingClientRect(); // restart the CSS animation from the top
-    this.g.classList.add('flash');
-    setTimeout(() => this.g.classList.remove('flash'), 1700);
+    this.#restartClass('flash', 1700);
   }
 
   // Fade the piece (body + label) out — used for the siblings when zooming in.
@@ -174,11 +180,22 @@ export class Piece {
     }
   }
 
-  // Centre of this piece in board user-space, given its current translate.
-  get centerX() {
-    return this.geom.cx + this.tx;
+  // A quick side-to-side shake: "not this one".
+  wiggle() {
+    this.#restartClass('wiggle', 450);
   }
-  get centerY() {
-    return this.geom.cy + this.ty;
+
+  // A soft pulse that says "this one" — the find-it hint in the tray, or the
+  // neighbour named in a placement hint.
+  pulse() {
+    this.#restartClass('pulse', 1900);
+  }
+
+  #restartClass(cls, ms) {
+    this.g.classList.remove(cls);
+    void this.g.getBoundingClientRect(); // restart the CSS animation from the top
+    this.g.classList.add(cls);
+    clearTimeout(this[`_${cls}`]);
+    this[`_${cls}`] = setTimeout(() => this.g.classList.remove(cls), ms);
   }
 }

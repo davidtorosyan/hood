@@ -1,5 +1,11 @@
-// Minimal localStorage: which pieces the player has placed (seen). Light state,
-// no scoring or streaks — the game stays forgiving and pressure-free.
+// Minimal localStorage. Light state only — no scores, no streaks:
+//   - progress: which puzzles you've finished ('solved' by hand, or 'skipped'
+//     with the Solve button). Unfinished puzzles start themselves when you
+//     arrive; finished ones open assembled for browsing.
+//   - coached: you've seen the first-drag demo.
+//   - nav: the level you were on, so a reload drops you back in.
+//   - puzzles: each level's puzzle in progress, so leaving a level mid-puzzle
+//     (zooming out, searching, a reload) and coming back picks it up again.
 const KEY = 'hood.v2';
 
 function load() {
@@ -19,36 +25,41 @@ function save(state) {
 }
 
 const state = load();
-state.seen ||= {};
+state.progress ||= {};
+state.puzzles ||= {};
+// Fields from older builds that nothing reads any more.
+delete state.seen;
+delete state.mode;
+delete state.learnedZoom;
 
 export const store = {
-  markSeen(id) {
-    state.seen[id] = (state.seen[id] || 0) + 1;
+  // 'solved' | 'skipped' | undefined
+  progress(id) {
+    return state.progress[id];
+  },
+  isSolved(id) {
+    return state.progress[id] === 'solved';
+  },
+  // A hand solve always wins over an earlier skip.
+  markDone(id, how) {
+    if (state.progress[id] === 'solved') return;
+    state.progress[id] = how;
     save(state);
   },
-  seenCount(id) {
-    return state.seen[id] || 0;
+  solvedCount() {
+    return Object.values(state.progress).filter((v) => v === 'solved').length;
   },
-  // Has the player ever solved a puzzle? Once they have, the "tap to zoom" cue
-  // sticks around on every solved board (they've learned the loop).
-  learnedZoom() {
-    return !!state.learnedZoom;
+
+  coached() {
+    return !!state.coached;
   },
-  markLearnedZoom() {
-    state.learnedZoom = true;
+  markCoached() {
+    state.coached = true;
     save(state);
   },
-  // View mode: 'normal' | 'clean' | 'simple'.
-  mode() {
-    return state.mode || 'normal';
-  },
-  setMode(m) {
-    state.mode = m;
-    save(state);
-  },
-  // Where the player last was: { node, board } — `board` is the serialized
-  // in-progress puzzle (or null when solved), so a reload drops them right back
-  // in instead of on the home screen. Cleared when they return home.
+
+  // Where the player last was: { node }. Kept when they go home, so the home
+  // screen can offer Continue.
   nav() {
     return state.nav || null;
   },
@@ -56,8 +67,25 @@ export const store = {
     state.nav = nav;
     save(state);
   },
+  // A level's serialized puzzle in progress (null/undefined when none).
+  puzzle(id) {
+    return state.puzzles[id] || null;
+  },
+  savePuzzle(id, data) {
+    if (data) state.puzzles[id] = data;
+    else delete state.puzzles[id];
+    save(state);
+  },
   clearNav() {
     delete state.nav;
+    save(state);
+  },
+  // Were they on the home screen last? Then a relaunch opens home, not the game.
+  atHome() {
+    return !!state.atHome;
+  },
+  setAtHome(v) {
+    state.atHome = v;
     save(state);
   },
 };

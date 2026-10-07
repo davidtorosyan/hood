@@ -1,187 +1,161 @@
-// The Jigsaw mode: a zoomable map of LA. Assemble a level's pieces by dragging
-// true neighbours together, then tap a piece to zoom into it and assemble the
-// next level down — regions → groups → individual neighbourhoods.
+// The Jigsaw mode: a zoomable map of LA. Assemble a level's pieces, then tap a
+// piece to zoom into it and assemble the next level down — regions → groups →
+// individual places.
 //
 // This module is just the wiring: for one node it builds the chrome + a Board,
 // connects the Board's events to the chrome, and handles navigation between
-// nodes (up, breadcrumb jumps, and zooming into a child). All the mechanics live
-// in the Board.
+// nodes (up, breadcrumb jumps, zooming into a child, the search fly-through).
+// All the mechanics live in the Board. Exactly one Board is alive at a time:
+// every render destroys the previous one first, so nothing stale can fire.
 import { el, clear } from '../ui/dom.js';
-import { screen } from '../ui/chrome.js';
 import { ROOT, NODES, pathIds, childrenOf } from './tree.js';
 import { colorForIndex } from './palette.js';
-import { Board } from './board.js';
-import { breadcrumb, actionButton, showToast } from './ui.js';
+import { Board, ZOOM_MS } from './board.js';
+import { breadcrumb, actionButton } from './ui.js';
 import { statsOf, fmtArea, fmtPeople } from './stats.js';
 import { showCard } from './card.js';
 import { openSearch } from './search.js';
 import { openBugReport } from '../bugreport.js';
+import { countEvent } from '../telemetry.js';
 import { store } from '../store.js';
 
-// A token identifying the active search "fly-through" (zoom out to the county,
-// then dive level by level to the searched place). Any manual navigation clears
-// it, so a stale fly step can't hijack the screen. See onSearchPick / the descent.
-let flyToken = null;
-const FLY_ZOOM_MS = 600; // matches the Board's camera zoom; a zoom-out step waits this out
 const FLY_DWELL_UP = 140; // extra pause after a zoom-OUT step settles
 const FLY_DWELL_DOWN = 220; // pause before each zoom-IN step
 
-// `resume` (optional) is a saved { node, board } to drop straight back into.
-export function mountJigsaw(app, { back, resume } = {}) {
-  const at = resume && NODES[resume.node] ? resume.node : ROOT;
-  renderNode(app, { back }, at, { restore: at === resume?.node ? resume.board : null });
+let board = null; // the one live Board
+
+// Open the jigsaw at `node` (default: the saved spot, else the county).
+export function mountJigsaw(app, { back, node } = {}) {
+  const saved = store.nav()?.node;
+  const at = node ?? (saved && NODES[saved] ? saved : ROOT);
+  store.setAtHome(false);
+  renderNode(app, { back }, at, { autoPlay: true });
 }
 
-function renderNode(app, ctx, nodeId, opts) {
-  const node = NODES[nodeId];
-  const mode = store.mode(); // 'normal' | 'clean' | 'simple'
+// Leaving the jigsaw: stop the live board so nothing keeps running behind home.
+export function unmountJigsaw() {
+  board?.destroy();
+  board = null;
+}
 
-  // --- navigation --- (every level arrives already assembled). Any deliberate
-  // move cancels an in-flight search fly-through.
-  const cancelFly = () => (flyToken = null);
+// opts: { autoPlay, zoomOutFrom, fly: { route, step, highlight } }
+function renderNode(app, ctx, nodeId, opts = {}) {
+  board?.destroy();
+  const node = NODES[nodeId];
+
+  // --- navigation ---
   const goUp = () => {
-    cancelFly();
     if (!node.parent) return ctx.back();
     const up = () => renderNode(app, ctx, node.parent, { zoomOutFrom: nodeId });
-    // Two-step zoom-out: first smoosh this level's pieces into the single parent
-    // region (in the parent's colour), then camera-zoom out to it. Only when the
-    // map is solved; otherwise go straight up.
-    if (board.phase === 'solved') {
-      const color = colorForIndex(childrenOf(node.parent).indexOf(nodeId));
-      board.collapse(color, NODES[nodeId].label, up);
-    } else {
-      up();
-    }
+    // Two-step zoom-out: smoosh this level's pieces into the single parent region
+    // (in the parent's colour), then camera-zoom out to it. Skipped mid-puzzle.
+    me.collapse(colorIn(node.parent, nodeId), node.label, up);
   };
   const goTo = (id) => {
     if (id === nodeId) return;
-    cancelFly();
-    const childToward = pathIds(nodeId)[pathIds(id).length];
+    const childToward = pathIds(id).length < pathIds(nodeId).length ? pathIds(nodeId)[pathIds(id).length] : null;
     renderNode(app, ctx, id, { zoomOutFrom: childToward });
   };
-  const zoomInto = (childId) => {
-    cancelFly();
-    renderNode(app, ctx, childId, {});
-  };
 
-  // Search "flies" to the chosen place: from where you are now it zooms OUT step
-  // by step to the nearest common ancestor, then back IN step by step to the
-  // smallest grouping that actually contains the place — so the place is a visible
-  // piece on the board you land on and you've watched how it relates to where you
-  // were. We render the picked item's PARENT (its children include the item) and
-  // flash the item on arrival.
+  // Search "flies" to the chosen place: from here it zooms OUT step by step to the
+  // nearest common ancestor, then back IN step by step to the level where the
+  // place is a visible piece — so you watch how it relates to where you were.
   const onSearchPick = (it) => {
+    countEvent('search');
     const isRegion = it.kind === 'region';
-    // A region: dive INTO it (its board shows its groups). A place/group: land on
-    // its PARENT, where the item is one of the visible pieces.
     const displayId = isRegion ? it.id : (NODES[it.id].parent ?? it.id);
     const pCur = pathIds(nodeId);
     const pTgt = pathIds(displayId);
-    let lca = 0; // index of the deepest shared ancestor on both paths
+    let lca = 0; // index of the deepest shared ancestor
     while (lca + 1 < pCur.length && lca + 1 < pTgt.length && pCur[lca + 1] === pTgt[lca + 1]) lca++;
-    const up = pCur.slice(lca, pCur.length - 1).reverse(); // current's parent … up to the LCA
-    const down = pTgt.slice(lca + 1); // the LCA's child … down to displayId
-    const route = [...up, ...down];
-    const token = (flyToken = {});
-    // Re-render where we are with the fly attached; its step driver walks `route`.
-    renderNode(app, ctx, nodeId, {
-      flyRoute: route,
-      flyStep: 0,
-      highlight: isRegion ? null : it.id,
-      fly: token,
+    const route = [...pCur.slice(lca, pCur.length - 1).reverse(), ...pTgt.slice(lca + 1)];
+    const fly = { route, step: 0, highlight: isRegion ? null : it.id };
+    if (!route.length) return void me.flashPiece(fly.highlight);
+    flyStep(fly, false);
+  };
+
+  // Take the next hop of a fly-through from the live board, if it's idle (any
+  // tap/zoom the player started in the meantime simply wins).
+  const flyStep = (fly, arrivedByZoomOut) => {
+    const dwell = arrivedByZoomOut ? ZOOM_MS + FLY_DWELL_UP : FLY_DWELL_DOWN;
+    me.sched.after(dwell, () => {
+      if (!me.idle()) return;
+      const next = fly.route[fly.step];
+      const nextFly = { ...fly, step: fly.step + 1 };
+      if (NODES[nodeId].parent === next) {
+        me.collapse(colorIn(next, nodeId), node.label, () =>
+          renderNode(app, ctx, next, { zoomOutFrom: nodeId, fly: nextFly }),
+        );
+      } else {
+        me.zoomInto(next, () => renderNode(app, ctx, next, { fly: nextFly }));
+      }
     });
   };
-  const searchBtn = el(
-    'button',
-    { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }), 'aria-label': 'Search' },
-    '🔍 Search',
-  );
-  const tools = el('div', { class: 'topbar-tools' }, [searchBtn]);
-  // A quiet "Report an issue" affordance in the bottom-left corner of the screen.
-  const reportLink = el('button', { class: 'report-link', onClick: openBugReport }, 'Report an issue');
 
   // --- chrome ---
-  // The Solve/zoom-out control rides the breadcrumb row (no dedicated header bar).
-  const ctrl = actionButton({ onUp: goUp, onSolve: () => board.solve() });
-  const boardWrap = el('div', { class: `jig-board mode-${mode}` });
-
-  // --- board ---
-  const board = new Board(nodeId, {
-    onToast: (msg) => showToast(boardWrap, msg),
-    onZoomInto: zoomInto,
-    onZoomOut: goUp,
-    onSelectLeaf: (id) => showCard(app, id),
-    onAction: (mode) => ctrl.setAction(mode),
-    // Remember where we are + the puzzle in progress, so a reload restores it.
-    onPersist: () => store.saveNav({ node: nodeId, board: board.serialize() }),
-  });
-  boardWrap.append(board.root);
-
-  // Aggregate area + population for the level you're on, under the breadcrumb.
+  const ctrl = actionButton({ onUp: goUp, onSolve: () => me.solve(), isRoot: !node.parent });
+  const boardWrap = el('div', { class: 'jig-board' });
   const st = statsOf(nodeId);
   const statBits = [`${fmtArea(st.area)} sq mi`];
   if (st.pop > 0) statBits.push(`${fmtPeople(st.pop)} people`);
 
+  const me = new Board(nodeId, {
+    onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true }),
+    onZoomOut: goUp,
+    onSelectLeaf: (id) => showCard(app, id),
+    onAction: (mode) => ctrl.setAction(mode),
+    onEvent: countEvent,
+    onPersist: () => store.savePuzzle(nodeId, me.serialize()),
+  });
+  board = me;
+  boardWrap.append(me.root);
+
   clear(app);
   app.append(
-    screen('Jigsaw', goUp, [
-      el('div', { class: 'jig-header' }, [
-        el('div', { class: 'jig-crumb-row' }, [breadcrumb(nodeId, goTo), ctrl.button]),
-        el('div', { class: 'jig-stats' }, statBits.join('  ·  ')),
+    el('div', { class: 'screen' }, [
+      el('div', { class: 'topbar jig-topbar' }, [
+        el('button', { class: 'icon-btn', onClick: () => ctx.back(), 'aria-label': 'Home' }, '⌂'),
+        breadcrumb(nodeId, goTo),
+        el('button', { class: 'search-btn', onClick: () => openSearch({ onPick: onSearchPick }) }, '🔍 Search'),
       ]),
-      boardWrap,
-      reportLink,
-    ], { bodyClass: 'jig-body', action: tools }),
+      el('div', { class: 'screen-body jig-body' }, [
+        el('div', { class: 'jig-subbar' }, [
+          el('div', { class: 'jig-stats' }, statBits.join('  ·  ')),
+          ctrl.button,
+        ]),
+        boardWrap,
+        el('div', { class: 'jig-footer' }, [
+          el('button', { class: 'report-link', onClick: openBugReport }, 'Report an issue'),
+        ]),
+      ]),
+    ]),
   );
+  store.saveNav({ node: nodeId });
 
-  // Measure the board so the SVG viewBox matches its aspect (the map fills it with
-  // no letterboxing), then build the pieces and start — synchronously right after
-  // the append (reading clientWidth forces layout), so a zoom-out never flashes an
-  // empty board for a frame before the map appears.
-  {
-    const w = boardWrap.clientWidth || 360;
-    const h = boardWrap.clientHeight || 360;
-    const vbH = Math.round((1000 * h) / w);
-    board.build(vbH, mode);
-    board.start({ zoomOutFrom: opts.zoomOutFrom, restore: opts.restore });
+  // Measure the board so the SVG viewBox matches its aspect, then build and start
+  // — synchronously right after the append (reading clientWidth forces layout),
+  // so a zoom-out never flashes an empty board for a frame.
+  const w = boardWrap.clientWidth || 360;
+  const h = boardWrap.clientHeight || 360;
+  me.build(Math.round((1000 * h) / w), w);
+  const restore = store.puzzle(nodeId);
+  me.start({
+    zoomOutFrom: opts.zoomOutFrom,
+    restore,
+    // A puzzle you haven't finished starts itself when you arrive the normal way
+    // (Play, or zooming in). Browsing (search, breadcrumbs, zooming out) shows it
+    // assembled, with a button to play.
+    autoPlay: !!opts.autoPlay && !restore && !store.progress(nodeId),
+  });
 
-    const flying = opts.fly && opts.fly === flyToken;
-    if (!flying) return;
-    const arrivedByZoomOut = opts.zoomOutFrom != null; // this node played a reverse-zoom intro
-
-    if (opts.flyStep < opts.flyRoute.length) {
-      // Take the next hop along the route: a step UP zooms out (render the parent,
-      // which reverse-zooms from us); a step DOWN zooms the camera into the child.
-      const next = opts.flyRoute[opts.flyStep];
-      const goingUp = NODES[nodeId].parent === next;
-      const dwell = arrivedByZoomOut ? FLY_ZOOM_MS + FLY_DWELL_UP : FLY_DWELL_DOWN;
-      const nextOpts = {
-        flyRoute: opts.flyRoute,
-        flyStep: opts.flyStep + 1,
-        highlight: opts.highlight,
-        fly: opts.fly,
-      };
-      setTimeout(() => {
-        if (opts.fly !== flyToken) return; // cancelled by a manual move
-        if (goingUp) {
-          // Same two-step as a manual zoom-out: smoosh this level into its region,
-          // then render the parent (which reverse-zooms out to it).
-          const color = colorForIndex(childrenOf(next).indexOf(nodeId));
-          board.collapse(color, NODES[nodeId].label, () => {
-            if (opts.fly === flyToken) renderNode(app, ctx, next, { ...nextOpts, zoomOutFrom: nodeId });
-          });
-        } else {
-          board.zoomToChild(next, () => {
-            if (opts.fly === flyToken) renderNode(app, ctx, next, nextOpts);
-          });
-        }
-      }, dwell);
-    } else if (opts.highlight) {
-      // Arrived: flash the found piece (after any reverse-zoom intro has played).
-      setTimeout(
-        () => opts.fly === flyToken && board.flashPiece(opts.highlight),
-        arrivedByZoomOut ? FLY_ZOOM_MS + 60 : 150,
-      );
+  const fly = opts.fly;
+  if (fly) {
+    if (fly.step < fly.route.length) flyStep(fly, opts.zoomOutFrom != null);
+    else if (fly.highlight) {
+      me.sched.after(opts.zoomOutFrom != null ? ZOOM_MS + 60 : 150, () => me.flashPiece(fly.highlight));
     }
   }
 }
+
+// The colour `childId` wears on its parent's board (for the zoom-out smoosh).
+const colorIn = (parentId, childId) => colorForIndex(childrenOf(parentId).indexOf(childId));

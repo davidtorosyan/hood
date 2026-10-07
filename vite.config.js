@@ -16,10 +16,35 @@ try {
 
 export default defineConfig({
   base,
-  define: { __COMMIT__: JSON.stringify(commit) },
+  define: {
+    __COMMIT__: JSON.stringify(commit),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     VitePWA({
+      // Updates must reach players right away (Dave tests on his phone straight
+      // after a push). The new service worker activates immediately
+      // (skipWaiting + clientsClaim) and src/pwa.js reloads the page once it takes
+      // control. Saved game state restores across that reload.
       registerType: 'autoUpdate',
+      injectRegister: false, // registered by src/pwa.js (update checks on focus)
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        // Never serve a precached (possibly stale) index.html: page navigations
+        // go to the network first and use the cached copy only when offline or
+        // slow. Hashed JS/CSS assets stay precached (their names change per build).
+        globPatterns: ['**/*.{js,css,png,svg,ico,webmanifest}'],
+        navigateFallback: null,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: { cacheName: 'hood-pages', networkTimeoutSeconds: 4 },
+          },
+        ],
+      },
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
         name: 'Hood — Learn LA Neighborhoods',

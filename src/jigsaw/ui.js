@@ -1,6 +1,5 @@
 // Presentational chrome around a Board: the breadcrumb (where you are in the
-// nesting, each level tappable), the status banner (hint + debug controls +
-// pieces-left counter), and a transient toast over the board. No game logic.
+// nesting, each level tappable) and the Solve / Zoom out button. No game logic.
 import { el } from '../ui/dom.js';
 import { pathIds, labelOf } from './tree.js';
 
@@ -22,38 +21,22 @@ export function breadcrumb(nodeId, onNavigate) {
   );
 }
 
-// One small button that rides the breadcrumb row and swaps with state: "Solve"
-// while assembling (snap the pieces together), and the "↑" zoom-out control once
-// the map is solved. (Scramble lives in the tray; the shake gesture still works.)
-export function actionButton({ onUp, onSolve }) {
-  let mode = 'scramble'; // 'solve' (assembling) → "Solve"; otherwise → "↑"
+// One small button beside the stats line that swaps with state: "Solve" while
+// assembling (snap the rest into place), "Zoom out" once the map is solved.
+// Hidden on a solved county map — the ⌂ button covers going home.
+export function actionButton({ onUp, onSolve, isRoot }) {
+  let mode = 'up';
   const button = el('button', {
-    class: 'jig-btn jig-topbtn jig-up',
+    class: 'jig-btn jig-topbtn',
     onClick: () => (mode === 'solve' ? onSolve() : onUp()),
-  }, '↑');
-
-  return {
-    button,
-    // mode: 'solve' while assembling → "Solve"; otherwise the up/zoom-out control.
-    setAction: (m) => {
-      mode = m;
-      const solving = m === 'solve';
-      button.textContent = solving ? 'Solve' : '↑';
-      button.classList.toggle('jig-solve', solving);
-      button.classList.toggle('jig-up', !solving);
-      button.title = solving ? 'Snap the pieces together' : 'Zoom out one level';
-      button.setAttribute('aria-label', solving ? 'Solve' : 'Zoom out');
-    },
+  });
+  const setAction = (m) => {
+    mode = m;
+    const solving = m === 'solve';
+    button.textContent = solving ? 'Solve' : '↑ Zoom out';
+    button.title = solving ? 'Snap the rest into place' : 'Zoom out one level';
+    button.style.visibility = !solving && isRoot ? 'hidden' : '';
   };
-}
-
-// A transient cue floating over the board; doesn't reflow it, lets taps through.
-export function showToast(boardWrap, msg) {
-  const t = el('div', { class: 'jig-toast' }, msg);
-  boardWrap.append(t);
-  requestAnimationFrame(() => t.classList.add('show'));
-  setTimeout(() => {
-    t.classList.remove('show');
-    setTimeout(() => t.remove(), 300);
-  }, 2600);
+  setAction('up');
+  return { button, setAction };
 }

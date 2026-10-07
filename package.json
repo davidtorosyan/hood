@@ -1,9 +1,9 @@
 {
   "name": "hood",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
-  "description": "A mobile-first game for learning the neighborhoods of Los Angeles — a zoomable jigsaw map.",
+  "description": "A mobile-first game for learning the neighborhoods of Los Angeles \u2014 a zoomable jigsaw map.",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
@@ -11,7 +11,8 @@
     "shots": "node scripts/screenshots.mjs",
     "build:shapes": "node scripts/build-puzzle-shapes.mjs",
     "build:boundaries": "node scripts/build-boundaries.mjs",
-    "build:icons": "node scripts/icons.mjs"
+    "build:icons": "node scripts/icons.mjs",
+    "test": "node --test test/*.test.js"
   },
   "devDependencies": {
     "@mapbox/geojson-rewind": "^0.5.2",

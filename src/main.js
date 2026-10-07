@@ -1,54 +1,88 @@
 import './style.css';
-import { el, clear } from './ui/dom.js';
-import { mountJigsaw } from './jigsaw/index.js';
-import { NODES } from './jigsaw/tree.js';
+import { el, svgEl, clear } from './ui/dom.js';
+import { mountJigsaw, unmountJigsaw } from './jigsaw/index.js';
+import { NODES, ROOT, labelOf } from './jigsaw/tree.js';
+import { projectChildren } from './jigsaw/geometry.js';
+import { colorForIndex } from './jigsaw/palette.js';
 import { store } from './store.js';
-import { initTelemetry } from './telemetry.js';
+import { initTelemetry, BUILD } from './telemetry.js';
 import { openBugReport } from './bugreport.js';
+import { initPwa } from './pwa.js';
 
 initTelemetry();
 
-// In dev, kill any stale PWA service worker + caches. The dev server's port can
-// cycle (5173/5175/…) and come back; a service worker registered for this
-// host:port in an earlier session then intercepts `/hood/` and serves stale
-// assets — which shows up as only being able to load weird paths like
-// `/hood/hood`. We never want a SW during local dev. (Production keeps its PWA.)
-if (import.meta.env.DEV && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
-  if (window.caches) caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+if (import.meta.env.DEV) {
+  // In dev, kill any stale PWA service worker + caches. The dev server's port can
+  // cycle (5173/5175/…) and come back; a service worker registered for this
+  // host:port in an earlier session then intercepts `/hood/` and serves stale
+  // assets. We never want a SW during local dev. (Production keeps its PWA.)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+    if (window.caches) caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+  }
+} else {
+  initPwa();
 }
 
 const app = document.querySelector('#app');
 
-// Leaving the jigsaw for home also forgets the saved spot, so the next launch
-// opens on home (until they play again).
+// Every puzzle in the game: each node with children is one level to assemble.
+const TOTAL_PUZZLES = Object.values(NODES).filter((n) => n.children?.length).length;
+
 function goHome() {
-  store.clearNav();
+  unmountJigsaw();
+  store.setAtHome(true);
   renderHome();
+}
+
+// The county map as cover art: the seven regions in their map colours.
+function homeArt() {
+  const W = 1000;
+  const H = 560;
+  const svg = svgEl('svg', { class: 'home-map', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of LA County regions' });
+  for (const [i, g] of projectChildren(ROOT, [0, 0, W, H]).entries()) {
+    svg.append(svgEl('path', { d: g.d, style: `fill:${colorForIndex(i)}` }));
+  }
+  return svg;
 }
 
 function renderHome() {
   clear(app);
+  const nav = store.nav();
+  const resumeAt = nav && NODES[nav.node] && nav.node !== ROOT ? nav.node : null;
+  const solved = store.solvedCount();
+  const play = (node) => mountJigsaw(app, { back: goHome, node });
   app.append(
     el('div', { class: 'screen home' }, [
       el('div', { class: 'home-top' }, [
         el('h1', { class: 'home-title' }, 'Hood'),
         el('p', { class: 'home-tag' }, 'Get to know Los Angeles County — piece by piece.'),
       ]),
-      el('div', { class: 'home-art' }, '🧩'),
-      el('button', { class: 'btn home-play', onClick: () => mountJigsaw(app, { back: goHome }) }, 'Play'),
-      el('p', { class: 'home-note' }, 'Drag the pieces together, then tap one to zoom in.'),
-      el('button', { class: 'home-report', onClick: openBugReport }, 'Report an issue'),
+      el('div', { class: 'home-art' }, homeArt()),
+      el('div', { class: 'home-actions' }, [
+        resumeAt
+          ? el('button', { class: 'btn home-play', onClick: () => play(resumeAt) }, [
+              'Continue',
+              el('span', { class: 'home-play-sub' }, labelOf(resumeAt)),
+            ])
+          : el('button', { class: 'btn home-play', onClick: () => play(ROOT) }, solved ? 'Play' : 'Start'),
+        resumeAt ? el('button', { class: 'home-secondary', onClick: () => play(ROOT) }, 'Start from the whole county') : null,
+      ]),
+      el('p', { class: 'home-note' },
+        solved
+          ? `${solved} of ${TOTAL_PUZZLES} puzzles solved`
+          : 'Rebuild the map one named piece at a time, then tap a piece to zoom in.',
+      ),
+      el('div', { class: 'home-foot' }, [
+        el('button', { class: 'home-report', onClick: openBugReport }, 'Report an issue'),
+        el('span', { class: 'home-build' }, BUILD),
+      ]),
     ]),
   );
 }
 
-// Resume the last spot (node + in-progress puzzle) if we have a valid one — so a
-// reload / PWA restart drops you back in instead of on home.
+// Relaunch where they left off — unless they'd gone back to home.
 const nav = store.nav();
-if (nav && NODES[nav.node]) {
-  mountJigsaw(app, { back: goHome, resume: nav });
-} else {
-  if (nav) store.clearNav(); // stale (data changed under it)
-  renderHome();
-}
+if (nav && !NODES[nav.node]) store.clearNav(); // stale (data changed under it)
+if (store.nav() && !store.atHome()) mountJigsaw(app, { back: goHome });
+else renderHome();

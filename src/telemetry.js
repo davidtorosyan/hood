@@ -14,13 +14,23 @@ const FORM_ENDPOINT = 'https://formspree.io/f/xqevnyeo';
 
 const SUPPORT_EMAIL = 'support@jimbo84.com';
 const VERSION = typeof __COMMIT__ === 'string' ? __COMMIT__ : 'dev';
+const BUILT = typeof __BUILD_TIME__ === 'string' ? new Date(__BUILD_TIME__) : null;
+// Shown in small print on the home screen, so "am I on the latest?" is one glance.
+export const BUILD = BUILT
+  ? `build ${VERSION} · ${BUILT.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${BUILT.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+  : `build ${VERSION}`;
+
+// Only count real visits: not local dev, not automated browsers (the screenshot
+// harness), so the numbers mean something.
+const ENABLED = import.meta.env.PROD && !navigator.webdriver;
 
 let ready = false;
+const pending = []; // events from before the beacon script loaded
 
 // Load the GoatCounter beacon (no cookies) and start counting crashes. Called
 // once at startup.
 export function initTelemetry() {
-  if (GOATCOUNTER) {
+  if (GOATCOUNTER && ENABLED) {
     // Don't auto-count on load here — we do it explicitly so it also works if the
     // script loads late.
     window.goatcounter = { no_onload: true };
@@ -30,6 +40,7 @@ export function initTelemetry() {
     s.setAttribute('data-goatcounter', GOATCOUNTER);
     s.addEventListener('load', () => {
       ready = true;
+      for (const name of pending.splice(0)) countEvent(name);
       window.goatcounter?.count?.(); // the single page view for this visit
     });
     document.head.appendChild(s);
@@ -41,8 +52,15 @@ export function initTelemetry() {
 }
 
 // Record a named event (a no-op until analytics is configured + loaded).
+// Gameplay events: puzzle-start / puzzle-solved / puzzle-skip, hint-neighbor /
+// hint-ghost, zoom-in, card-open, search.
 export function countEvent(name) {
-  if (ready) window.goatcounter?.count?.({ path: name, title: name, event: true });
+  if (!ENABLED || !GOATCOUNTER) return;
+  if (!ready) {
+    if (pending.length < 30) pending.push(name);
+    return;
+  }
+  window.goatcounter?.count?.({ path: name, title: name, event: true });
 }
 
 // The context we attach to a bug report — where they were and which build.

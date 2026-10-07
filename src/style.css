@@ -263,49 +263,106 @@ body {
 }
 .home-art {
   flex: 1;
+  min-height: 0;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 110px;
-  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.12));
+}
+.home-map {
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  filter: drop-shadow(0 10px 16px rgba(27, 34, 48, 0.14));
+}
+.home-map path {
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.home-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 .home-play {
   width: 100%;
   max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+.home-play-sub {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.home-secondary {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px;
+  cursor: pointer;
 }
 .home-note {
   color: var(--text-dim);
   font-size: 14px;
   margin: 2px 0 0;
+  max-width: 22em;
+}
+.home-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.home-build {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Jigsaw -------------------------------------------------------------- */
 .jig-body {
-  gap: 8px;
+  gap: 6px;
+  padding-bottom: calc(var(--safe-bottom) + 6px);
   overflow: hidden; /* the board fills the space; nothing scrolls */
 }
 
-/* Breadcrumb: where you are in the nesting; each level is tappable. */
-/* The header: breadcrumb row + an aggregate area/population line for the level. */
-.jig-header {
+/* The jigsaw top bar: ⌂ home, the breadcrumb (it leads — it says where you
+   are), and search. */
+.jig-topbar {
+  align-items: center;
+}
+.jig-topbar .jig-crumbs {
+  flex: 1;
+}
+/* Under the top bar: the level's area/population, and Solve / Zoom out. */
+.jig-subbar {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   flex: none;
+  min-height: 32px;
+}
+.jig-footer {
+  flex: none;
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -2px;
 }
 .jig-stats {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
-}
-/* The breadcrumb row: crumbs on the left, the Solve/zoom-out button on the right,
-   sharing one row (no dedicated header bar just for the button). */
-.jig-crumb-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
 }
 .jig-crumbs {
   display: flex;
@@ -321,14 +378,15 @@ body {
   background: none;
   border: none;
   padding: 1px 2px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
   color: var(--accent-text);
   cursor: pointer;
 }
 .jig-crumb.current {
   color: var(--text);
   font-weight: 800;
+  font-size: 16px;
   cursor: default;
 }
 .jig-crumb-sep {
@@ -349,65 +407,159 @@ body {
 .jig-btn:active {
   background: var(--line);
 }
-/* The top-right button: "Solve" while assembling, "↑" (zoom out) once solved.
-   Fixed width so it doesn't jump as the label swaps. */
+/* "Solve" while assembling, "↑ Zoom out" once solved. */
 .jig-topbtn {
   flex: none;
   min-width: 70px;
+  min-height: 32px;
   text-align: center;
 }
-/* The Scramble call-to-action — pops in the empty tray of a solved board. */
-.jig-scramble {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--ink);
-}
-.jig-scramble:active {
-  background: var(--accent);
-  filter: brightness(0.94);
-}
-/* Solved-board tray content: the Scramble button plus the "what next" tips,
-   centred in the tray. The container lets taps fall through to the map; only the
-   button is interactive. */
+/* Solved-board tray content: what to do next, and Play again. The container
+   lets taps fall through to the map; only the button is interactive. */
 .jig-tray-solved {
   position: absolute;
-  left: 0;
-  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 8px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.jig-tray-solved > * {
+  flex: none;
+}
+.jig-tip {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  transition: transform 0.35s ease;
+}
+/* Just solved? One gentle size bump on the tip to catch the eye. */
+.jig-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: flex-start;
+  gap: 6px;
+  max-width: 96%;
+  flex: 0 1 auto !important;
+  min-height: 0;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.jig-chip {
+  pointer-events: auto;
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.jig-chip.done {
+  color: var(--good);
+  border-color: rgba(15, 157, 107, 0.35);
+}
+.jig-chip:active {
+  background: var(--surface-2);
+}
+.jig-replay {
+  pointer-events: auto;
+  font-size: 14px;
+  padding: 10px 18px;
+  border-radius: 999px;
+}
+
+/* The ask: "Place ▸ Burbank 3/6", between the map and the tray. */
+.jig-prompt {
+  position: absolute;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 9px;
+  gap: 3px;
   pointer-events: none;
+  z-index: 2;
 }
-.jig-tray-solved .jig-scramble {
-  pointer-events: auto;
-  font-size: 15px;
-  padding: 12px 24px;
+.jig-prompt-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+  background: var(--text);
+  color: #fff;
   border-radius: 999px;
-  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.32);
+  padding: 7px 16px 8px;
+  box-shadow: 0 6px 18px rgba(27, 34, 48, 0.22);
+  white-space: nowrap;
 }
-.jig-tray-solved .jig-scramble:active {
-  transform: scale(0.97);
-  filter: brightness(0.94);
+.jig-prompt-verb {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.75;
 }
-.jig-tip {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-  opacity: 0.55; /* a little grayed out until we call attention to it */
-  transition: opacity 0.35s ease;
+.jig-prompt-verb::after {
+  content: ' ▸';
 }
-/* Just solved? Wake the hint to full strength and give it a single gentle size
-   bump to catch the eye — then it settles back. Nothing more. */
-.jig-tip.cue {
+.jig-prompt.celebrate .jig-prompt-verb {
   opacity: 1;
-  animation: tip-nudge 0.5s ease both;
 }
-@keyframes tip-nudge {
-  0% { transform: scale(1); }
-  45% { transform: scale(1.13); }
+.jig-prompt.celebrate .jig-prompt-verb::after {
+  content: '';
+}
+.jig-prompt.celebrate .jig-prompt-count {
+  font-size: 15px;
+  opacity: 1;
+  color: #fff;
+}
+.jig-prompt-name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: #ffd27a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jig-prompt-count {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+.jig-prompt-sub {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 8px;
+  padding: 2px 8px;
+  text-align: center;
+  max-width: 96%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jig-prompt.pop .jig-prompt-main {
+  animation: prompt-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.jig-prompt.nope .jig-prompt-main {
+  animation: prompt-nope 0.4s ease;
+}
+@keyframes prompt-pop {
+  0% { transform: scale(0.85); }
   100% { transform: scale(1); }
+}
+@keyframes prompt-nope {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
 }
 .jig-board {
   position: relative;
@@ -433,40 +585,6 @@ body {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: inset 0 1px 3px rgba(27, 34, 48, 0.05);
-}
-.jig-tray-hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  transform: translateY(-50%);
-  text-align: center;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  color: var(--text-dim);
-  pointer-events: none;
-}
-/* Toast cue over the map; doesn't reflow the board, taps pass through. */
-.jig-toast {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translate(-50%, -10px);
-  background: rgba(27, 34, 48, 0.94);
-  color: #fff;
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 700;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  opacity: 0;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-  pointer-events: none;
-  white-space: nowrap;
-}
-.jig-toast.show {
-  opacity: 1;
-  transform: translate(-50%, 0);
 }
 .jig {
   position: absolute;
@@ -542,12 +660,9 @@ body {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-/* The seed: the anchor piece left in place after a scramble. It already stands
-   out as the one COLOURED piece among the grey loose ones; a soft shadow lifts it
-   so it reads as the thing to build onto. No accent outline — that colour is
-   reserved for the connection glow, and tracing the jagged border just adds
-   irrelevant highlight. */
-.jig-piece.seed .jig-shape {
+/* The anchor: the piece left on the map to build onto. It already stands out as
+   the one COLOURED piece among the grey loose ones; a soft shadow lifts it. */
+.jig-piece.anchor .jig-shape {
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.22));
 }
 /* Spring a panned map back to centre. */
@@ -627,16 +742,49 @@ body {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-/* Callout: a thin leader line from a too-small piece out to its label, with a
-   dot anchoring it on the piece. The label's white halo masks the line's end. */
-.jig-leader {
-  stroke: rgba(20, 28, 46, 0.5);
-  stroke-width: 1.6;
+/* A solved sub-puzzle's ✓ beside its name. */
+.jig-check {
+  fill: var(--good);
 }
-.jig-dot {
-  fill: rgba(20, 28, 46, 0.88);
-  stroke: #ffffff;
-  stroke-width: 1.5;
+/* "Not this one": a quick shake of a wrongly grabbed piece. */
+.jig-piece.wiggle {
+  animation: jig-wiggle 0.42s ease;
+  transform-box: fill-box;
+}
+@keyframes jig-wiggle {
+  0%, 100% { translate: 0 0; }
+  20% { translate: -9px 0; }
+  40% { translate: 8px 0; }
+  60% { translate: -5px 0; }
+  80% { translate: 3px 0; }
+}
+/* "This one": a soft accent pulse (find-it hint, or the neighbour in a hint). */
+.jig-piece.pulse .jig-shape {
+  animation: jig-pulse 0.62s ease-in-out 3;
+}
+@keyframes jig-pulse {
+  0%, 100% { stroke: #ffffff; stroke-width: 3; }
+  50% { stroke: var(--accent); stroke-width: 12; }
+}
+/* Late hint: where the asked-for piece goes. */
+.jig-ghost {
+  fill: rgba(245, 158, 11, 0.12);
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-dasharray: 12 9;
+  stroke-linejoin: round;
+  animation: ghost-in 0.4s ease;
+}
+@keyframes ghost-in {
+  from { opacity: 0; }
+}
+.jig-coach {
+  font-size: 84px;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+}
+.jig-hints {
+  pointer-events: none;
 }
 /* Search landing: pulse the found piece in the accent colour a few times so the
    eye catches it. Transient, so it doesn't clash with the connection glow. */
@@ -782,24 +930,17 @@ body {
   cursor: pointer;
   margin-top: 4px;
 }
-/* Quiet corner affordance inside the game, bottom-left. */
+/* Quiet affordance under the board. */
 .report-link {
-  position: fixed;
-  left: 12px;
-  bottom: 10px;
-  z-index: 20;
   appearance: none;
   border: none;
   background: none;
+  padding: 2px 4px;
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 600;
   text-decoration: underline;
-  opacity: 0.65;
   cursor: pointer;
-}
-.report-link:hover {
-  opacity: 1;
 }
 .bug-card {
   max-width: 400px;
@@ -879,4 +1020,16 @@ body {
 .bug-mail {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Respect "reduce motion": no flying, shaking or pulsing — state still changes,
+   it just doesn't animate. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
