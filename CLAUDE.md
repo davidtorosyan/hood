@@ -133,6 +133,28 @@ there's no zooming or context navigation, and solving offers "🗺️ Back to th
 The campaign keeps its own ledger (`store.campaign`), separate from Explore's
 progress.
 
+### Freeways — a prototype (Oct 2026, try-it-out quality)
+A third mode from home ("🛣️ Freeways"). The prompt is "Drive from Encino to Pico-Union".
+The map, framed on the drive, shows the two places plus a few landmark names. The tray
+holds freeway **pieces**: one per freeway on the route (the 101, the 405, the 10) plus a
+decoy or two. Drag each piece to where that freeway really runs, and it clicks in within
+a finger's width. Placing a decoy gets "isn't on the way". Misses escalate: 2 misses →
+"runs through X, Y", 3 → a dashed outline. Placing the whole route drives a 🚗 along it,
+and the tray then lists each freeway's name. Skip and Show me are always there.
+- **Data:** `scripts/freeway-routes.mjs` is a **hand-traced schematic**: named
+  interchanges plus waypoints, accurate to about 1 km. OSM wasn't reachable from the
+  build sandbox, and Natural Earth's roads were too coarse and mislabelled.
+  `npm run build:freeways` turns it into a routing graph. It finds a place with a
+  freeway through it at each end, takes the shortest route (switching freeways costs
+  extra), keeps drives with 2–4 freeways, and adds decoys from nearby freeways. The
+  result is `src/data/freeways.json` (90 drives, easier first).
+  `npm run build:freeways -- --through` prints the places each freeway runs through.
+  **Check that list after editing a route.**
+- **Code:** `src/freeways/puzzles.js` holds the data and the small rules. `game.js` is the
+  screen: its own pointer handling (captured on the svg root), CSS-transform moves, a
+  Scheduler, and shields counter-scaled so they read the same size in the tray.
+  `store.freeways` is its ledger. `test/freeways.test.js` checks the data.
+
 ### Modules
 - `src/main.js` — entry: home screen (county-map art, Rebuild LA / Explore buttons,
   trophies + progress, build stamp), relaunch to the screen you left (`store.screen()`),

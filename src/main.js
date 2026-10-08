@@ -13,6 +13,8 @@ import { catchUp, record, PUZZLES, TROPHIES } from './progress.js';
 import { renderOverworld, campaignLine } from './campaign/overworld.js';
 import { built, progress } from './campaign/state.js';
 import { mountCampaignPuzzle } from './jigsaw/index.js';
+import { renderFreeways, unmountFreeways } from './freeways/game.js';
+import { PUZZLES as DRIVES, idOf as driveId } from './freeways/puzzles.js';
 
 initTelemetry();
 
@@ -35,14 +37,23 @@ catchUp(); // trophies already earned (e.g. before trophies existed), awarded qu
 
 function goHome() {
   unmountJigsaw();
+  unmountFreeways();
   store.setAtHome(true);
   store.setScreen('home');
   renderHome();
 }
 
+// --- Freeways (prototype) ---
+function openFreeways() {
+  unmountJigsaw();
+  store.setScreen('freeways');
+  renderFreeways(app, { onBack: goHome });
+}
+
 // --- Rebuild LA (the campaign) ---
 function openOverworld() {
   unmountJigsaw();
+  unmountFreeways();
   store.setScreen('campaign');
   renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onExplore: () => playExplore() });
   record('campaign'); // announce any campaign trophy just earned
@@ -87,6 +98,7 @@ function renderHome() {
   const solved = store.solvedCount();
   const play = playExplore;
   const cp = progress();
+  const drivesDone = DRIVES.filter((d) => store.freeways.isSolved(driveId(d))).length;
   app.append(
     el('div', { class: 'screen home' }, [
       el('div', { class: 'home-top' }, [
@@ -104,6 +116,11 @@ function renderHome() {
         el('button', { class: 'btn home-play home-play-2', onClick: () => play(resumeAt ?? ROOT) }, [
           '🗺️ Explore',
           el('span', { class: 'home-play-sub' }, resumeAt ? `Continue · ${labelOf(resumeAt)}` : 'The whole map, any order'),
+        ]),
+        // A prototype to try: connect two places with freeway pieces.
+        el('button', { class: 'btn home-play home-play-3', onClick: openFreeways }, [
+          '🛣️ Freeways',
+          el('span', { class: 'home-play-sub' }, drivesDone ? `New · ${drivesDone} of ${DRIVES.length} drives` : 'New · get there by freeway (prototype)'),
         ]),
       ]),
       solved || Object.keys(store.trophies()).length
@@ -125,5 +142,6 @@ const nav = store.nav();
 if (nav && !NODES[nav.node]) store.clearNav(); // stale (data changed under it)
 const last = store.screen();
 if (last === 'campaign') openOverworld();
+else if (last === 'freeways') openFreeways();
 else if (last === 'explore' && store.nav()) mountJigsaw(app, { back: goHome });
 else renderHome();

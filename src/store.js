@@ -35,6 +35,7 @@ state.counts ||= {}; // lifetime tallies: placed, cards, hops, flawless
 state.trophies ||= {}; // trophy id → time earned
 state.visited ||= {}; // region id → 1 once you've been inside it
 state.campaign ||= { progress: {}, puzzles: {} }; // "Rebuild LA" — its own ledger
+state.freeways ||= { progress: {}, puzzles: {} }; // Freeways (prototype) — its own ledger
 // Fields from older builds that nothing reads any more.
 delete state.seen;
 delete state.mode;
@@ -74,7 +75,8 @@ function ledger(bag) {
 export const store = {
   explore: ledger(state),
   campaign: ledger(state.campaign),
-  // Which screen they were on last: 'home' | 'explore' | 'campaign'.
+  freeways: ledger(state.freeways),
+  // Which screen they were on last: 'home' | 'explore' | 'campaign' | 'freeways'.
   screen() {
     return state.screen || (state.atHome ? 'home' : state.nav ? 'explore' : 'home');
   },

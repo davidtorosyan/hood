@@ -60,8 +60,21 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
       grey map that looks already built. Built-but-unlinked puzzles are separate
       outlined islands that merge when you connect them. Offers favour finishing
       your district, so connecting groups into districts happens every few builds.
+- [ ] **Parked:** make the campaign follow Explore's structure (zoom in, build groups,
+      connect up). Options are written up in `docs/ideas/rebuild-la-structure.md`.
 - [ ] Ideas: pinch/zoom on the overworld (it's small on a phone), names on the
       overworld, a celebration when a whole region links up.
+
+## Batch 5: Freeways (prototype, for Dave to try)
+- [x] **New mode from home.** Drive from A to B by dragging freeway pieces (one per
+      freeway on the route, plus a decoy) onto the map. Hints escalate; a car drives the
+      finished route. 90 generated drives, easier first.
+- [ ] **Real freeway geometry.** The schematic is hand-traced to about 1 km. Swap in
+      OpenStreetMap motorways once the build can reach Overpass. The build only needs the
+      same named interchanges.
+- [ ] Ideas: real exits/on-ramps as the ends; "which way?" (direction) pieces; famous
+      interchanges (the Four Level, the East LA Interchange) as their own pieces; the
+      60's and 170's names in hints; trophies for drives.
 
 ## 1. Guided placement: the core design change
 Each puzzle starts the same way: one **anchor** piece sits on the map and the rest wait

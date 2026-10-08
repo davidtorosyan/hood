@@ -1632,3 +1632,279 @@ body {
 .ow-card.link .ow-card-go {
   color: var(--good);
 }
+
+/* ---- Freeways (prototype) ------------------------------------------------ */
+.home-play-3 {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px dashed #b9c2d0;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  font-size: 16px;
+}
+.home-play-3 .home-play-sub {
+  color: var(--text-dim);
+  opacity: 1;
+}
+.fw-screen {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+.fw-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.fw-ask {
+  padding: 0 16px 8px;
+  flex: none;
+}
+.fw-ask-line {
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.fw-from {
+  color: #0b7a53;
+}
+.fw-to {
+  color: var(--accent-text);
+}
+.fw-ask-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.fw-board {
+  flex: 1;
+  min-height: 0;
+  padding: 0 12px;
+}
+.fw-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fw-sea {
+  fill: #e8ebf0;
+}
+.fw-place {
+  fill: #f4f5f8;
+  stroke: #d9dee7;
+  stroke-width: 1.2;
+}
+.fw-place.from {
+  fill: #a7e3c9;
+  stroke: #0f9d6b;
+  stroke-width: 2.5;
+}
+.fw-place.to {
+  fill: #fcd9a0;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.fw-landmark {
+  font: 600 22px system-ui, sans-serif;
+  fill: #8a94a6;
+  pointer-events: none;
+}
+.fw-labels {
+  pointer-events: none;
+}
+.fw-end line {
+  stroke: #1b2230;
+  stroke-width: 2;
+  opacity: 0.35;
+}
+.fw-recap-name {
+  font: 700 26px system-ui, sans-serif;
+  fill: var(--text);
+}
+.fw-end rect {
+  fill: #ffffff;
+  stroke-width: 3;
+}
+.fw-end text {
+  font: 800 25px system-ui, sans-serif;
+  fill: var(--text);
+}
+.fw-end.from rect,
+.fw-end.from circle {
+  stroke: #0f9d6b;
+}
+.fw-end.from circle,
+.fw-end.from .fw-end-icon {
+  fill: #0f9d6b;
+}
+.fw-end.to rect {
+  stroke: var(--accent);
+}
+.fw-end.to circle,
+.fw-end.to .fw-end-icon {
+  fill: var(--accent-text);
+}
+.fw-end circle {
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+.fw-tray {
+  fill: #f8f9fc;
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.fw-tray-label {
+  font: 800 20px system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  fill: #8a94a6;
+}
+.fw-block,
+.fw-shield {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  cursor: grab;
+}
+.fw-block.held {
+  cursor: grabbing;
+}
+.fw-block.placed {
+  cursor: default;
+}
+.fw-block.gone {
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.fw-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 34px;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+.fw-casing,
+.fw-road {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.fw-casing {
+  stroke: #ffffff;
+  stroke-width: 11px;
+}
+.fw-road {
+  stroke: #556074;
+  stroke-width: 6px;
+}
+.fw-block.held .fw-casing {
+  stroke-width: 14px;
+}
+.fw-block.held {
+  filter: drop-shadow(0 6px 6px rgba(27, 34, 48, 0.25));
+}
+.fw-block.placed .fw-road {
+  stroke: #2d3748;
+}
+.fw-block.nope {
+  animation: fw-nope 0.4s;
+}
+@keyframes fw-nope {
+  30% { opacity: 0.4; }
+}
+.fw-shield rect {
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+.fw-shield text {
+  font: 800 24px system-ui, sans-serif;
+}
+.fw-shield.I rect {
+  fill: #1f4fbf;
+}
+.fw-shield.I .fw-shield-top {
+  fill: #d23b3b;
+  stroke: none;
+}
+.fw-shield.I text,
+.fw-shield.CA text {
+  fill: #ffffff;
+}
+.fw-shield.US rect {
+  fill: #ffffff;
+  stroke: #1b2230;
+}
+.fw-shield.US text {
+  fill: #1b2230;
+}
+.fw-shield.CA rect {
+  fill: #15803d;
+}
+.fw-ghost {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 5px;
+  stroke-dasharray: 10 8;
+  vector-effect: non-scaling-stroke;
+  animation: fw-ghost 1.2s ease-in-out infinite;
+}
+@keyframes fw-ghost {
+  50% { opacity: 0.35; }
+}
+.fw-route {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4px;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.fw-car circle {
+  fill: #ffffff;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.fw-car text {
+  font-size: 22px;
+}
+.fw-msg {
+  flex: none;
+  min-height: 40px;
+  padding: 8px 16px 0;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-dim);
+}
+.fw-msg.good {
+  color: #0b7a53;
+}
+.fw-msg.warn {
+  color: var(--accent-text);
+}
+.fw-foot {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 16px calc(var(--safe-bottom) + 14px);
+}
+.fw-foot .btn {
+  padding: 11px 22px;
+  font-size: 15px;
+}
+.btn-quiet {
+  background: var(--surface-2);
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fw-ghost {
+    animation: none;
+  }
+}

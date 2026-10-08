@@ -381,9 +381,21 @@ if (!linked) fail('no Connect offered within 9 builds');
 
 // Tap a frontier place on the map: selects its puzzle + card.
 {
-  const spot = page.locator('.ow-slot').first();
-  if (await spot.count()) {
-    await spot.click({ force: true });
+  // A screen point that really hits a slot (a slot's box center can fall
+  // outside a concave shape).
+  const spot = await page.evaluate(() => {
+    for (const slot of document.querySelectorAll('.ow-slot')) {
+      const r = slot.getBoundingClientRect();
+      for (let iy = 1; iy < 8; iy++) for (let ix = 1; ix < 8; ix++) {
+        const x = r.x + (r.width * ix) / 8;
+        const y = r.y + (r.height * iy) / 8;
+        if (document.elementFromPoint(x, y) === slot) return [x, y];
+      }
+    }
+    return null;
+  });
+  if (spot) {
+    await page.mouse.click(...spot);
     await page.waitForTimeout(500);
     if (!(await page.locator('.ow-card.selected').count())) fail('tapping a frontier place selected nothing');
     await shot('campaign-map-tap-select');
@@ -397,6 +409,65 @@ await page.getByRole('button', { name: 'Home' }).click();
 await page.waitForTimeout(300);
 await shot('home-campaign-started');
 
+// Freeways (prototype): a decoy bounces, misses escalate to a ghost, placing
+// the route drives the car.
+{
+  await page.locator('.home-play-3').click();
+  await page.waitForTimeout(500);
+  await shot('freeways-start');
+  // Screen point of a piece's grab spot (its shield) and of where its center
+  // belongs on the map.
+  const geo = (ref) =>
+    page.evaluate((r) => {
+      const g = document.querySelector(`.fw-block[data-ref="${r}"]`);
+      const svg = g.ownerSVGElement;
+      const toScreen = (x, y) => {
+        const pt = svg.createSVGPoint();
+        pt.x = x;
+        pt.y = y;
+        const s = pt.matrixTransform(svg.getScreenCTM());
+        return [s.x, s.y];
+      };
+      const sb = g.querySelector('.fw-shield').getBoundingClientRect();
+      const bb = g.querySelector('.fw-road').getBBox();
+      return { grab: [sb.x + sb.width / 2, sb.y + sb.height / 2], home: toScreen(bb.x + bb.width / 2, bb.y + bb.height / 2) };
+    }, ref);
+  const dragPiece = async (ref, to) => {
+    const { grab } = await geo(ref);
+    await page.mouse.move(...grab);
+    await page.mouse.down();
+    await page.mouse.move(...to, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(450);
+  };
+  const refs = (route) => page.$$eval(`.fw-block[data-route="${route}"]`, (gs) => gs.map((g) => g.dataset.ref));
+  const route = await refs('yes');
+  const decoys = await refs('no');
+  if (route.length < 2 || !decoys.length) fail(`freeways: odd puzzle (${route} / ${decoys})`);
+  // A decoy dropped right on the map: bounces back with a "not this one".
+  await dragPiece(decoys[0], (await geo(route[0])).home);
+  if (!/Not this one/.test(await page.locator('.fw-msg').textContent())) fail('freeways: decoy not rejected');
+  await shot('freeways-decoy');
+  // Three misses on one piece → its dashed outline.
+  const svgBox = await page.locator('.fw-svg').boundingBox();
+  for (let i = 0; i < 3; i++) await dragPiece(route[0], [svgBox.x + 30, svgBox.y + 30]);
+  if (!(await page.locator('.fw-ghost').count())) fail('freeways: no ghost after 3 misses');
+  await shot('freeways-ghost-hint');
+  for (const ref of route) {
+    await dragPiece(ref, (await geo(ref)).home);
+    if (ref === route[0]) await shot('freeways-first-placed');
+  }
+  await page.waitForTimeout(4800);
+  if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: route placed but not solved');
+  await shot('freeways-solved');
+  await page.getByRole('button', { name: /Next drive/ }).click();
+  await page.waitForTimeout(500);
+  await shot('freeways-next');
+  await page.getByRole('button', { name: 'Home' }).click();
+  await page.waitForTimeout(300);
+  await shot('home-with-freeways');
+}
+
 // Desktop / landscape: direct drag (no paddle lift).
 page = await newPage({ viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
@@ -409,6 +480,11 @@ await shot('desktop-play');
 await solveByName({ lift: 0 });
 await page.waitForTimeout(600);
 await shot('desktop-solved');
+await page.getByRole('button', { name: 'Home' }).click();
+await page.waitForTimeout(300);
+await page.locator('.home-play-3').click();
+await page.waitForTimeout(500);
+await shot('desktop-freeways');
 
 await browser.close();
 
