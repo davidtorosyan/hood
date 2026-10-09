@@ -1,9 +1,10 @@
 // Freeways: the pieces. Each leg of the drive is one piece in two forms:
 //   - a SIGN TILE in the tray (identical road tiles, so the tray reads like
 //     directions — 101 → 5 → 710 — not like a shape puzzle), and
-//   - its SHAPE: that stretch of freeway at true map scale, with its sign
-//     riding on it. Picking up a tile unfolds it into the shape; the shape is
-//     what you lay on the map, and it clicks in at its real position.
+//   - its SHAPE: the WHOLE freeway at true map scale (not just this leg —
+//     a leg-shaped piece just lines up with the car; playtesters solved it
+//     without knowing anything), its sign riding on it. You lay the freeway
+//     where it runs; once it clicks in, this drive's stretch of it lights up.
 // Moves go through the CSS `transform` property (never the SVG attribute —
 // only Chromium transitions that) with a forced reflow so transitions run.
 import { svgEl } from '../ui/dom.js';
@@ -40,9 +41,10 @@ export function along(pts, t) {
   return pts.at(-1);
 }
 
-// legs: [{ ref, pts (board coords) }] in driving order. Tiles go in a row in
-// the tray with arrows between; shapes start hidden.
-export function makePieces(legs, tileLayer, shapeLayer, [tx0, ty0, tx1, ty1]) {
+// legs: [{ ref, pts (board coords) }] in driving order; wholeOf(ref): the
+// freeway's lines (board coords); view: [x0, y0, x1, y1] of the map. Tiles go
+// in a row in the tray with arrows between; shapes start hidden.
+export function makePieces(legs, tileLayer, shapeLayer, [tx0, ty0, tx1, ty1], wholeOf, [vx0, vy0, vx1, vy1]) {
   const n = legs.length;
   const gap = 56;
   const rowW = n * TILE.w + (n - 1) * gap;
@@ -66,15 +68,23 @@ export function makePieces(legs, tileLayer, shapeLayer, [tx0, ty0, tx1, ty1]) {
     const home = [x0 + k * (TILE.w + gap), y];
     tile.style.transform = `translate(${home[0]}px, ${home[1]}px)`;
 
-    // The shape, drawn at its true position (translate 0,0 = in place).
-    const xs = leg.pts.map((q) => q[0]);
-    const ys = leg.pts.map((q) => q[1]);
-    const center = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+    // The shape, drawn at its true position (translate 0,0 = in place): the
+    // whole freeway, plus this leg (shown once it's laid).
+    const lines = wholeOf(leg.ref);
+    const inView = lines.flat().filter(([x, y]) => x > vx0 && x < vx1 && y > vy0 && y < vy1);
+    const pool = inView.length ? inView : leg.pts;
+    const center = pool.reduce((a, q) => [a[0] + q[0] / pool.length, a[1] + q[1] / pool.length], [0, 0]);
+    // Its sign sits on the freeway where it's nearest the middle of the map.
+    const vm = [(vx0 + vx1) / 2, (vy0 + vy1) / 2];
+    const signAt = pool.reduce((b, q) => (Math.hypot(q[0] - vm[0], q[1] - vm[1]) < Math.hypot(b[0] - vm[0], b[1] - vm[1]) ? q : b));
     const mid = along(leg.pts, 0.5);
     const d = 'M' + leg.pts.map(fmt).join('L');
     const shape = svgEl('g', { class: `fw-shape ${REFS[leg.ref]?.kind || 'CA'}` });
     shape.dataset.ref = leg.ref;
-    shape.append(svgEl('path', { d, class: 'fw-shape-casing' }), svgEl('path', { d, class: 'fw-shape-road' }), shield(leg.ref, mid, 0.8));
+    for (const l of lines) shape.append(svgEl('path', { d: 'M' + l.map(fmt).join('L'), class: 'fw-shape-whole' }));
+    const sign = shield(leg.ref, signAt, 0.8);
+    sign.classList.add('fw-shape-sign');
+    shape.append(svgEl('path', { d, class: 'fw-shape-casing' }), svgEl('path', { d, class: 'fw-shape-road' }), sign);
     shapeLayer.append(shape);
     return { ...leg, leg: k, tile, home, shape, center, mid, d, tx: 0, ty: 0 };
   });

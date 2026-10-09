@@ -2034,3 +2034,33 @@ body {
 .fw-recap-name {
   font-size: 21px;
 }
+.fw-net.learned {
+  stroke: #c9d0dc;
+  stroke-width: 4px;
+}
+.fw-shape-whole {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  stroke-width: 7px;
+  opacity: 0.55;
+}
+.fw-shape.I .fw-shape-whole { stroke: #1f4fbf; }
+.fw-shape.US .fw-shape-whole { stroke: #1b2230; }
+.fw-shape.CA .fw-shape-whole { stroke: #15803d; }
+.fw-shape.placed .fw-shape-whole {
+  opacity: 0.22;
+}
+.fw-shape.held .fw-shape-whole {
+  opacity: 0.85;
+}
+/* While carried, only the whole freeway shows (the leg would give it away). */
+.fw-shape.held .fw-shape-casing,
+.fw-shape.held .fw-shape-road {
+  display: none;
+}
+.fw-shape.near .fw-shape-whole {
+  stroke: #f59e0b;
+  opacity: 1;
+}

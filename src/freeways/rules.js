@@ -36,15 +36,6 @@ export const drivable = (placed, n) => nextLeg(placed, n);
 // map), 3+ → a dashed outline of exactly where it goes.
 export const placeHint = (misses) => (misses >= 3 ? 'ghost' : misses === 2 ? 'via' : misses === 1 ? 'dir' : null);
 
-// How well a carried shape lies along its road: the mean distance from the
-// shape (shifted by [dx, dy]) to the true line. Sliding it along its own
-// road still fits — it's on the right freeway, just a little up or down it.
-export function fit(pts, line, [dx, dy]) {
-  let sum = 0;
-  for (const [x, y] of pts) sum += nearestOnLine([x + dx, y + dy], line).d;
-  return sum / pts.length;
-}
-
 // Magnetism for a held shape: within `radius` of its true spot it's pulled
 // in (the closer, the stronger — no jump at the edge).
 export function pull(dx, dy, radius) {

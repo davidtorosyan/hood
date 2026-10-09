@@ -50,13 +50,20 @@ export function drawMap(svg, p, W, MH, learned = [], inTray = [], { roads: showR
   }
   const roads = svgEl('g', { 'clip-path': 'url(#fw-clip)', class: 'fw-roads' });
   if (showRoads) for (const n of NETWORK) roads.append(svgEl('path', { d: pathD(lineOf(n).map(P)), class: 'fw-net' }));
-  // Signs for learned freeways that aren't in this drive's tray (a sign on
-  // the map would give away which tray signs are decoys), one per freeway.
+  // Freeways you've learned (and that aren't on this drive): their signs on
+  // the grey roads — or, with the roads hidden, the learned freeways
+  // themselves as faint named roads, so what you know builds up.
   const onRoute = new Set(inTray);
-  const known = svgEl('g', { class: 'fw-known' });
+  const known = svgEl('g', { class: 'fw-known', 'clip-path': 'url(#fw-clip)' });
+  if (!showRoads) {
+    for (const n of NETWORK) {
+      if (onRoute.has(n.ref) || !learned.includes(n.ref)) continue;
+      known.append(svgEl('path', { d: pathD(lineOf(n).map(P)), class: 'fw-net learned' }));
+    }
+  }
   const seen = new Set();
   for (const n of NETWORK) {
-    if (!showRoads || onRoute.has(n.ref) || !learned.includes(n.ref) || seen.has(n.ref)) continue;
+    if (onRoute.has(n.ref) || !learned.includes(n.ref) || seen.has(n.ref)) continue;
     const inView = lineOf(n).map(P).filter(([x, y]) => x > 60 && x < W - 60 && y > 50 && y < MH - 50);
     if (!inView.length) continue;
     const mid = inView[Math.floor(inView.length / 2)];
