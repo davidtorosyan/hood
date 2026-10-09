@@ -2064,3 +2064,24 @@ body {
   stroke: #f59e0b;
   opacity: 1;
 }
+.fw-grip {
+  fill: #ffffff;
+  stroke: #1b2230;
+  stroke-width: 4;
+  display: none;
+}
+.fw-shape.held .fw-grip {
+  display: inline;
+}
+.fw-shape.warm .fw-shape-whole {
+  stroke: #fbbf24;
+  stroke-dasharray: 14 10;
+  opacity: 0.9;
+}
+.fw-hinted {
+  fill: var(--accent-text);
+  font-weight: 800;
+}
+.fw-end.fw-hinted rect {
+  stroke-width: 6;
+}

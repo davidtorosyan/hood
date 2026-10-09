@@ -24,11 +24,13 @@ import { makePieces, moveShape, shield } from './pieces.js';
 
 const book = store.freeways;
 const W = 1000;
-const MAGNET = 170; // board units: within this of its spot a held shape is pulled in
+const MAGNET = 200; // board units: within this of its spot a held shape is pulled in
 // A drop counts when the freeway is within this of its true position (board
-// units; ~30px on a phone with the roads drawn, ~24px without). The glow uses
-// the same test, so a glow always means "let go here and it clicks in".
-const ACCEPT = { roads: 70, blind: 55 };
+// units, ~34px on a phone — the same on every drive). The yellow glow uses
+// the same test, so it always means "let go here and it clicks in"; inside
+// WARM × that, a softer amber glow says "almost — nudge it".
+const ACCEPT = 80;
+const WARM = 1.9;
 const IDLE_MS = 12000;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -116,9 +118,9 @@ export function renderFreeways(app, { onBack }) {
     const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
     const wholeOf = (ref) => NETWORK.filter((n) => n.ref === ref).map((n) => lineOf(n).map(P));
     const pieces = makePieces(p.blocks.map((b, leg) => ({ ...b, pts: legPts(leg) })), tileLayer, dragLayer, TRAY, wholeOf, [0, 0, W, MH]);
-    const accept = ACCEPT[tier];
+    const accept = ACCEPT;
     for (const x of pieces) {
-      x.tile.dataset.goal = x.center.map((v) => v.toFixed(1)).join(','); // (harness only)
+      x.tile.dataset.goal = x.grip.map((v) => v.toFixed(1)).join(','); // (harness only: where the grip goes)
       if (run.placed.has(x.leg)) layDown(x, false);
       else x.shape.style.display = 'none';
     }
@@ -171,7 +173,7 @@ export function renderFreeways(app, { onBack }) {
     const news = !run.done && !run.placed.size && lastTier && lastTier !== tier && tier === 'blind' ? 'New: no roads drawn now. ' : '';
     if (!run.done) book.set('tier', tier);
     if (run.done) {
-      subEl.hidden = true;
+      subEl.textContent = 'Nice driving! Your route is below.';
       say1(madeIt(), run.shownLegs >= legs ? '' : 'good');
     } else if (run.placed.size) say1(`Keep going — ${legs - run.placed.size} to lay.`);
     else say1(`${news}Pick up a freeway and lay the whole thing where it runs. The drive starts at the 🚗 in ${from}.`);
@@ -185,12 +187,21 @@ export function renderFreeways(app, { onBack }) {
       const boxes = [...labels.querySelectorAll('.fw-landmark, .fw-end rect')].map((n) => n.getBBox());
       const onLabel = (x, y, w) => boxes.some((b) => x + w / 2 > b.x && x - w / 2 < b.x + b.width && y + 19 > b.y && y - 19 < b.y + b.height);
       for (const id of ids) {
+        // Already labelled on the map? Light that label up instead of adding a second.
+        const existing = labels.querySelector(`[data-place="${CSS.escape(id)}"]`);
+        if (existing) {
+          existing.classList.add('fw-hinted');
+          continue;
+        }
         const r = shapeOf(id).map(P);
         const cc = r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
         const c0 = nearestOnLine(cc, alongPts).point;
         const name = labelOf(id);
         const w = name.length * 15 + 26;
-        const spots = [[0, -40], [0, 40], [w / 2 + 24, 0], [-w / 2 - 24, 0], [0, -84], [0, 84]].map(([dx, dy]) => [c0[0] + dx, c0[1] + dy]);
+        // On the place's own side of the road.
+        const side = Math.hypot(cc[0] - c0[0], cc[1] - c0[1]) || 1;
+        const u = [(cc[0] - c0[0]) / side, (cc[1] - c0[1]) / side];
+        const spots = [44, 70, 100].map((k) => [c0[0] + u[0] * (k + w / 4), c0[1] + u[1] * k]).concat([[cc[0], cc[1]]]);
         const cost = ([x, y]) =>
           alongPts.filter(([qx, qy]) => Math.abs(qx - x) < w / 2 && Math.abs(qy - y) < 22).length * 3 +
           used.filter(([ux, uy]) => Math.abs(ux - x) < 200 && Math.abs(uy - y) < 42).length * 100 +
@@ -209,6 +220,7 @@ export function renderFreeways(app, { onBack }) {
     const clearHints = () => {
       hintLayer.replaceChildren();
       slots.replaceChildren();
+      for (const n of labels.querySelectorAll('.fw-hinted')) n.classList.remove('fw-hinted');
     };
 
     // A gentle nudge if nothing happens for a while: the next tile bounces.
@@ -245,8 +257,9 @@ export function renderFreeways(app, { onBack }) {
       clearHints();
       const lift = e.pointerType === 'touch' ? 80 : 0;
       const q = toSvg(e);
-      // The shape unfolds with its middle under the finger.
-      const off = [-x.center[0], -x.center[1] - lift];
+      // You hold the freeway by its grip (the dot on it, near this drive's
+      // stretch), just above the finger.
+      const off = [-x.grip[0], -x.grip[1] - lift];
       drag = { x, id: e.pointerId, off, raw: [q[0] + off[0], q[1] + off[1]] };
       tile.classList.add('lifted');
       x.shape.style.display = '';
@@ -260,7 +273,9 @@ export function renderFreeways(app, { onBack }) {
       const q = toSvg(e);
       drag.raw = [q[0] + drag.off[0], q[1] + drag.off[1]];
       const [dx, dy] = pull(drag.raw[0], drag.raw[1], MAGNET);
-      drag.x.shape.classList.toggle('near', Math.hypot(dx, dy) < accept);
+      const off = Math.hypot(dx, dy);
+      drag.x.shape.classList.toggle('near', off < accept);
+      drag.x.shape.classList.toggle('warm', off >= accept && off < WARM * accept);
       drag.shown = [dx, dy];
       moveShape(drag.x, dx, dy);
     });
@@ -270,7 +285,7 @@ export function renderFreeways(app, { onBack }) {
       const shown = drag.shown || raw;
       const q = toSvg(e);
       drag = null;
-      x.shape.classList.remove('held', 'near');
+      x.shape.classList.remove('held', 'near', 'warm');
       if (!cancelled && Math.hypot(shown[0], shown[1]) < accept) return place(x);
       putBack(x);
       if (cancelled || q[1] > MH) return; // dropped back on the tray: no harm done
@@ -370,7 +385,7 @@ export function renderFreeways(app, { onBack }) {
       book.markDone(idOf(p), run.shownLegs >= legs ? 'skipped' : 'solved');
       countEvent(run.shownLegs >= legs ? 'freeway-shown' : 'freeway-solved');
       countEl.textContent = `${solvedN()} / ${PUZZLES.length} drives`;
-      subEl.hidden = true;
+      subEl.textContent = 'Nice driving! Your route is below.';
       refreshHead();
       recap();
       say1(madeIt(), run.shownLegs >= legs ? '' : 'good');

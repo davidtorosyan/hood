@@ -30,8 +30,9 @@ export function drawMap(svg, p, W, MH, learned = [], inTray = [], { roads: showR
   const lons = pts.map((q) => q[0]);
   const lats = pts.map((q) => q[1]);
   const [x0, x1, y0, y1] = [Math.min(...lons), Math.max(...lons), Math.min(...lats), Math.max(...lats)];
-  const dx = Math.max(x1 - x0, 0.14) * 0.2;
-  const dy = Math.max(y1 - y0, 0.12) * 0.2;
+  // Room around the drive for the two ends' name pills.
+  const dx = Math.max(x1 - x0, 0.14) * 0.26;
+  const dy = Math.max(y1 - y0, 0.12) * 0.22;
   const frame = { type: 'MultiPoint', coordinates: [[x0 - dx, y0 - dy], [x1 + dx, y1 + dy], [x0 - dx, y1 + dy], [x1 + dx, y0 - dy]] };
   const proj = geoMercator().fitExtent([[20, 20], [W - 20, MH - 20]], frame);
   const P = (c) => proj(c);
@@ -110,6 +111,7 @@ export function drawMap(svg, p, W, MH, learned = [], inTray = [], { roads: showR
     };
     const [lx, ly] = spots.reduce((best, sp) => (cost(sp) < cost(best) ? sp : best));
     const g = svgEl('g', { class: `fw-end ${cls}` });
+    g.dataset.place = id;
     g.append(
       svgEl('line', { x1: x, y1: y, x2: Math.max(lx, Math.min(lx + w, x)), y2: Math.max(ly, Math.min(ly + h, y)) }),
       svgEl('rect', { x: lx, y: ly, width: w, height: h, rx: 23 }),

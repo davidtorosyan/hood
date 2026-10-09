@@ -13,7 +13,7 @@ export function nextIndex(isSolved, from, n, idAt) {
 // How much the map helps. Early drives show the whole freeway network as
 // grey roads to line a shape up against; later ones hide it, so you place
 // each freeway from where the places are.
-export const ROADS_DRIVES = 4; // a short tutorial; testers found road-following too easy
+export const ROADS_DRIVES = 2; // a short tutorial; testers found road-following too easy
 export const tierOf = (index) => (index < ROADS_DRIVES ? 'roads' : 'blind');
 
 // "northeast", "south"… from a leg's start to its end (screen coords: y down).
@@ -41,7 +41,7 @@ export const placeHint = (misses) => (misses >= 3 ? 'ghost' : misses === 2 ? 'vi
 export function pull(dx, dy, radius) {
   const d = Math.hypot(dx, dy);
   if (d >= radius || d === 0) return [dx, dy];
-  const k = 0.35 + 0.65 * (d / radius);
+  const k = 0.25 + 0.75 * (d / radius);
   return [dx * k, dy * k];
 }
 

@@ -126,12 +126,32 @@ if (process.argv.includes('--through')) {
   for (const [ref, seq] of Object.entries(through)) console.log(`${ref}: ${seq.join(' · ')}\n`);
 }
 
-// --- on-ramps: every vertex inside each place (any freeway through it) ---
+// --- on-ramps: vertices inside each place (any freeway through it) — and
+// well inside, not on a freeway that only clips its edge (a playtester's
+// "Hawthorne → Arcadia" ended at El Monte because the 605 nicks Arcadia).
+const edgeDist = ([x, y], r) => {
+  let m = Infinity;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, ay] = r[j];
+    const [bx, by] = r[i];
+    const L2 = (bx - ax) ** 2 + (by - ay) ** 2 || 1e-9;
+    const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L2));
+    m = Math.min(m, Math.hypot(x - (ax + (bx - ax) * t), y - (ay + (by - ay) * t)));
+  }
+  return m;
+};
 const ramps = new Map();
 for (const id of PLACE_IDS) {
   const r = placeRing.get(id);
-  const vs = [];
-  for (let v = 0; v < V.length; v++) if (inside(xy(v), r)) vs.push(v);
+  const inner = [];
+  const any = [];
+  for (let v = 0; v < V.length; v++) {
+    if (!inside(xy(v), r)) continue;
+    any.push(v);
+    if (edgeDist(xy(v), r) > 0.6) inner.push(v);
+  }
+  // Small places can't be "well inside"; there, any vertex inside will do.
+  const vs = inner.length >= 2 ? inner : any;
   if (vs.length) ramps.set(id, vs);
 }
 

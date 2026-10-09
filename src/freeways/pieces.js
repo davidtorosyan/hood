@@ -78,15 +78,18 @@ export function makePieces(legs, tileLayer, shapeLayer, [tx0, ty0, tx1, ty1], wh
     const vm = [(vx0 + vx1) / 2, (vy0 + vy1) / 2];
     const signAt = pool.reduce((b, q) => (Math.hypot(q[0] - vm[0], q[1] - vm[1]) < Math.hypot(b[0] - vm[0], b[1] - vm[1]) ? q : b));
     const mid = along(leg.pts, 0.5);
+    // Where you hold it: the point on the freeway nearest this drive's stretch.
+    const all = lines.flat();
+    const grip = all.length ? all.reduce((b, q) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(b[0] - mid[0], b[1] - mid[1]) ? q : b)) : mid;
     const d = 'M' + leg.pts.map(fmt).join('L');
     const shape = svgEl('g', { class: `fw-shape ${REFS[leg.ref]?.kind || 'CA'}` });
     shape.dataset.ref = leg.ref;
     for (const l of lines) shape.append(svgEl('path', { d: 'M' + l.map(fmt).join('L'), class: 'fw-shape-whole' }));
     const sign = shield(leg.ref, signAt, 0.8);
     sign.classList.add('fw-shape-sign');
-    shape.append(svgEl('path', { d, class: 'fw-shape-casing' }), svgEl('path', { d, class: 'fw-shape-road' }), sign);
+    shape.append(svgEl('path', { d, class: 'fw-shape-casing' }), svgEl('path', { d, class: 'fw-shape-road' }), sign, svgEl('circle', { cx: grip[0], cy: grip[1], r: 13, class: 'fw-grip' }));
     shapeLayer.append(shape);
-    return { ...leg, leg: k, tile, home, shape, center, mid, d, tx: 0, ty: 0 };
+    return { ...leg, leg: k, tile, home, shape, center, mid, grip, d, tx: 0, ty: 0 };
   });
 }
 
