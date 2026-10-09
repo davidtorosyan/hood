@@ -205,7 +205,13 @@ function costFrom(sources) {
 }
 
 // Interchanges with a name locals use; the rest are "the 5/110 interchange".
-const NAMED = { ELA: 'the East LA Interchange', FOUR_LEVEL: 'the Four Level', HOLLYWOOD_SPLIT: 'the Hollywood Split', KELLOGG: 'the Kellogg Interchange' };
+const NAMED = {
+  ELA: 'the East LA Interchange',
+  FOUR_LEVEL: 'the Four Level',
+  HOLLYWOOD_SPLIT: 'the Hollywood Split',
+  KELLOGG: 'the Kellogg Interchange',
+  I110_105: 'the Judge Harry Pregerson Interchange',
+};
 const junctionAt = (pt) => {
   const hit = Object.entries(JUNCTIONS).find(([, ll]) => dist(toXY(ll), pt) < 0.05);
   return hit && NAMED[hit[0]];
@@ -297,7 +303,8 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
   const refs = new Set(blocks.map((x) => x.ref));
   if (blocks.length < 2 || blocks.length > 4) continue;
   if (refs.size !== blocks.length) continue; // no 10 → 110 → 10 doglegs
-  if (blocks.some((x) => x.km < 4)) continue; // no stub legs
+  if (blocks.some((x) => x.km < 5)) continue; // no stub legs
+  if (blocks.length >= 3 && straight < 16) continue; // no 3-freeway hops for a short trip
   if (total > 1.45 * straight) continue;
   if (doublesBack(path, cOf(b))) continue;
   // Decoys must be truly wrong: no freeway that's part of a reasonable
@@ -337,7 +344,8 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
       ref: x.ref,
       line: enc(x.pts),
       via: via(x.pts),
-      ...(k && junctionAt(x.pts[0]) ? { at: junctionAt(x.pts[0]) } : {}),
+      // Where you switch onto this freeway: a name locals use, else "the 5/110 interchange".
+      ...(k ? { at: junctionAt(x.pts[0]) || `the ${blocks[k - 1].ref}/${x.ref} interchange` } : {}),
     })),
     decoys: decoys.map((x) => ({ ref: x.ref, line: enc(x.pts) })),
   });

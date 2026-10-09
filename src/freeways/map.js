@@ -3,7 +3,7 @@
 // network as unlabeled grey roads (something to attach to), the two ends as
 // name pills placed clear of the route, and a few landmark names for bearings.
 // Freeways you've already learned get their signs back on the map — except
-// the ones on this drive's route (that would give the answer away).
+// the ones in this drive's tray (that would give the answer away).
 import { geoMercator } from 'd3-geo';
 import { svgEl } from '../ui/dom.js';
 import { ROOT, leavesOf, shapeOf, labelOf } from '../jigsaw/tree.js';
@@ -18,13 +18,18 @@ export const pathD = (pts) => 'M' + pts.map(fmt).join('L');
 // Returns { P (lon/lat → board), routeD(blocks), layers } with the layers
 // appended to `svg` in paint order: base, roads, slots, (pieces go after),
 // labels on top. The caller appends pieces between `slots` and `labels`.
-export function drawMap(svg, p, W, MH, learned = []) {
-  const pts = [...p.blocks.flatMap(lineOf), ...p.decoys.flatMap(lineOf), ...shapeOf(p.from), ...shapeOf(p.to)];
+export function drawMap(svg, p, W, MH, learned = [], inTray = []) {
+  // Frame the drive itself (route + both places' middles), not the decoys.
+  const mid = (id) => {
+    const r = shapeOf(id);
+    return r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
+  };
+  const pts = [...p.blocks.flatMap(lineOf), mid(p.from), mid(p.to)];
   const lons = pts.map((q) => q[0]);
   const lats = pts.map((q) => q[1]);
   const [x0, x1, y0, y1] = [Math.min(...lons), Math.max(...lons), Math.min(...lats), Math.max(...lats)];
-  const dx = Math.max(x1 - x0, 0.12) * 0.12;
-  const dy = Math.max(y1 - y0, 0.1) * 0.12;
+  const dx = Math.max(x1 - x0, 0.14) * 0.2;
+  const dy = Math.max(y1 - y0, 0.12) * 0.2;
   const frame = { type: 'MultiPoint', coordinates: [[x0 - dx, y0 - dy], [x1 + dx, y1 + dy], [x0 - dx, y1 + dy], [x1 + dx, y0 - dy]] };
   const proj = geoMercator().fitExtent([[20, 20], [W - 20, MH - 20]], frame);
   const P = (c) => proj(c);
@@ -43,9 +48,9 @@ export function drawMap(svg, p, W, MH, learned = []) {
   }
   const roads = svgEl('g', { 'clip-path': 'url(#fw-clip)', class: 'fw-roads' });
   for (const n of NETWORK) roads.append(svgEl('path', { d: pathD(lineOf(n).map(P)), class: 'fw-net' }));
-  // Signs for learned freeways that aren't on this route, where each crosses
-  // the middle of the map (one per freeway).
-  const onRoute = new Set(p.blocks.map((b) => b.ref));
+  // Signs for learned freeways that aren't in this drive's tray (a sign on
+  // the map would give away which tray signs are decoys), one per freeway.
+  const onRoute = new Set(inTray);
   const known = svgEl('g', { class: 'fw-known' });
   const seen = new Set();
   for (const n of NETWORK) {
@@ -113,5 +118,5 @@ export function drawMap(svg, p, W, MH, learned = []) {
     n++;
   }
 
-  return { P, slots, labels };
+  return { P, slots, labels, known };
 }

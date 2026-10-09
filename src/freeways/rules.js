@@ -35,8 +35,8 @@ export const nextLeg = (placed, n) => {
 export const drivable = (placed, n) => nextLeg(placed, n);
 
 // Misses on the current leg → help, one step at a time, never stuck:
-// 1 → where it runs ("through X, Y", labelled on the map), 2 → show its
-// road / pulse the right sign, 3+ → name it outright.
+// 1 → which way it heads and the places it runs through (labelled on the
+// map), 2 → dash its road (you still pick the sign), 3+ → name it outright.
 export const legHint = (misses) => (misses >= 3 ? 'name' : misses === 2 ? 'slot' : misses === 1 ? 'via' : null);
 
 // The closest point on a polyline to `p`: { d, point }. (Drops and magnetism

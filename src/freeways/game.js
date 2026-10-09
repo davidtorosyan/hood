@@ -18,7 +18,7 @@ import { Scheduler } from '../jigsaw/scheduler.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
 import {
-  REFS, PUZZLES, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, legHint, nearestOnLine, magnet, compass,
+  REFS, PUZZLES, NETWORK, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, legHint, nearestOnLine, magnet, compass,
 } from './puzzles.js';
 import { drawMap, pathD } from './map.js';
 import { makeTiles, moveTile, goHome, shield } from './pieces.js';
@@ -113,14 +113,15 @@ export function renderFreeways(app, { onBack }) {
 
     const svg = svgEl('svg', { class: 'fw-svg', viewBox: `0 0 ${W} ${H}`, role: 'application', 'aria-label': `Map: drive from ${from} to ${to}` });
     const learned = book.get('learned') || [];
-    const { P, slots, labels } = drawMap(svg, p, W, MH, learned);
-    const built = svgEl('g', { class: 'fw-builtroads' });
+    const { P, slots, labels, known } = drawMap(svg, p, W, MH, learned, items.map((x) => x.ref));
+    const built = svgEl('g', { class: 'fw-builtroads', 'clip-path': 'url(#fw-clip)' });
     const carLayer = svgEl('g');
     const hintLayer = svgEl('g', { class: 'fw-hints' });
     const trayHead = svgEl('text', { x: TRAY[0] + 26, y: TRAY[1] + 40, class: 'fw-tray-label' });
     const tileLayer = svgEl('g');
     svg.append(
       built,
+      known, // learned signs sit above lit-up roads
       carLayer,
       labels,
       hintLayer,
@@ -137,12 +138,38 @@ export function renderFreeways(app, { onBack }) {
     const lineFor = (t) => lineOf(t).map(P); // a route leg's road, or a decoy's own road
     const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
     const tileForLeg = (leg) => tiles.find((t) => t.leg === leg);
+    // Every freeway on the map, projected — so a drop is judged against the
+    // road it's actually nearest, not just "near enough" to the right one.
+    const net = NETWORK.map((n) => ({ ref: n.ref, pts: lineOf(n).map(P) }));
+    const nearestRoad = (pos) => {
+      let best = { ref: null, d: Infinity };
+      for (const n of net) {
+        const { d } = nearestOnLine(pos, n.pts);
+        if (d < best.d) best = { ref: n.ref, d };
+      }
+      return best;
+    };
+    // Flash where a freeway really runs. Returns how to point at it: '' when
+    // it's on the map, else "further north" (it's off this map).
+    const flashRoad = (ref, cls = 'decoy') => {
+      const all = net.filter((n) => n.ref === ref).flatMap((n) => n.pts);
+      for (const n of net) {
+        if (n.ref !== ref) continue;
+        const f = svgEl('path', { d: pathD(n.pts), class: `fw-preview ${cls}` });
+        built.append(f);
+        sched.after(1600, () => f.remove());
+      }
+      const inView = all.some(([x, y]) => x > 0 && x < W && y > 0 && y < MH);
+      if (inView || !all.length) return '';
+      const nearest = all.reduce((b, q) => (Math.hypot(q[0] - W / 2, q[1] - MH / 2) < Math.hypot(b[0] - W / 2, b[1] - MH / 2) ? q : b));
+      return `further ${compass([W / 2, MH / 2], nearest)}, off this map`;
+    };
     for (const t of tiles) if (t.route) t.g.dataset.goal = along(lineFor(t), 0.5).map((v) => v.toFixed(1)).join(','); // (harness only)
     svgWrap.append(svg);
 
     // --- the car ---
     const car = svgEl('g', { class: 'fw-car' });
-    car.append(svgEl('circle', { r: 26 }), Object.assign(svgEl('text', { y: 10, 'text-anchor': 'middle' }), { textContent: '🚗' }));
+    car.append(svgEl('circle', { r: 20 }), Object.assign(svgEl('text', { y: 8, 'text-anchor': 'middle' }), { textContent: '🚗' }));
     carLayer.append(car);
     const parkAt = ([x, y]) => car.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
 
@@ -170,10 +197,9 @@ export function renderFreeways(app, { onBack }) {
     for (const t of tiles) if (!t.g.classList.contains('placed')) goHome(t, 0);
 
     // --- the current leg: tray heading, dashed road (guided), hint labels ---
-    // "Leaving Encino" / "At the Four Level" / "From the 405" / "Into Downey".
+    // "Leaving Encino" / "From the 405" (where you switch is named once it's placed).
     const legName = (leg, lower = false) => {
-      const at = p.blocks[leg]?.at;
-      const [verb, rest] = leg === 0 ? ['Leaving', from] : at ? ['At', at] : leg === legs - 1 ? ['Into', to] : ['From', say(p.blocks[leg - 1].ref)];
+      const [verb, rest] = leg === 0 ? ['Leaving', from] : ['From', say(p.blocks[leg - 1].ref)];
       return `${lower ? verb.toLowerCase() : verb} ${rest}`;
     };
     const current = () => nextLeg(run.placed, legs);
@@ -313,7 +339,7 @@ export function renderFreeways(app, { onBack }) {
       let shown = drag.pos;
       const isNear = t.route && !run.placed.has(t.leg) && drag.pos[1] < MH;
       const n = isNear ? nearestOnLine(drag.pos, lineFor(t)) : null;
-      if (n && n.d < MAGNET) {
+      if (n && n.d < MAGNET && n.d <= nearestRoad(drag.pos).d + 8) {
         shown = magnet(drag.pos, n.point, n.d, MAGNET);
         if (!preview) {
           preview = svgEl('path', { d: pathD(lineFor(t)), class: 'fw-preview' });
@@ -342,10 +368,12 @@ export function renderFreeways(app, { onBack }) {
       armIdle();
       const inTray = pos[1] > MH;
       const own = nearestOnLine(pos, lineFor(t));
-      if (!inTray && t.route && own.d < MAGNET) return place(t);
+      const road = nearestRoad(pos); // the road they actually dropped it on
+      const onOwn = own.d < MAGNET && own.d <= road.d + 8;
+      if (!inTray && t.route && onOwn) return place(t);
       goHome(t);
       if (inTray) return; // put back: no harm done
-      if (!t.route && own.d < MAGNET) {
+      if (!t.route && onOwn) {
         say1(`That is ${say(t.ref)}’s road — but this drive doesn’t use ${say(t.ref)}.`, 'warn');
         const flash = svgEl('path', { d: pathD(lineFor(t)), class: 'fw-preview decoy' });
         built.append(flash);
@@ -359,7 +387,14 @@ export function renderFreeways(app, { onBack }) {
       run.misses[leg] = (run.misses[leg] || 0) + 1;
       const right = tileForLeg(leg);
       const onLeg = nearestOnLine(pos, legPts(leg)).d < MAGNET;
-      const lead = onLeg ? `Not ${say(t.ref)} — wrong freeway for this leg.` : t.route ? `Not there — ${say(t.ref)} runs somewhere else.` : 'Not quite.';
+      // Teach from the miss: show where the sign's freeway really runs.
+      const off = flashRoad(t.ref);
+      const where = off ? `it runs ${off}` : 'it runs where it’s flashing';
+      const lead = onLeg
+        ? `Not ${say(t.ref)} — ${where}.`
+        : road.d < MAGNET && road.ref !== t.ref
+          ? `That’s ${say(road.ref)}’s road, not ${say(t.ref)} — ${where}.`
+          : `Not there — ${say(t.ref)} ${where.replace(/^it /, '')}.`;
       const help = legHint(run.misses[leg]);
       const pts = legPts(leg);
       const heads = compass(pts[0], pts.at(-1));
@@ -370,8 +405,7 @@ export function renderFreeways(app, { onBack }) {
         countEvent('freeway-hint-via');
       } else if (help === 'slot') {
         if (!slotShown) showSlot(leg, true);
-        right.g.classList.add('pulse');
-        say1(`${lead} Here’s its road, dashed — try the pulsing sign.`, 'warn');
+        say1(`${lead} This leg’s road is dashed now — which sign is it?`, 'warn');
         countEvent('freeway-hint-slot');
       } else if (help === 'name') {
         if (!slotShown) showSlot(leg, true);
@@ -388,10 +422,11 @@ export function renderFreeways(app, { onBack }) {
       run.placed.add(t.leg);
       buildRoad(t.leg, true);
       refreshLeg();
+      const at = p.blocks[t.leg].at ? ` You switched at ${p.blocks[t.leg].at}.` : '';
       const name = `${say(t.ref)} — ${REFS[t.ref]?.name ?? ''}`;
-      if (run.placed.size === legs) say1(`✓ ${name}. That’s the whole drive — here we go!`, 'good');
-      else if (shown) say1(`Here’s ${name}. Your turn: ${legName(current(), true)}.`);
-      else if (wasCurrent) say1(`✓ ${name}! Next: ${legName(current(), true)} — which freeway?`, 'good');
+      if (run.placed.size === legs) say1(`✓ ${name}.${at} That’s the whole drive — here we go!`, 'good');
+      else if (shown) say1(`Here’s ${name}.${at} Your turn: ${legName(current(), true)}.`);
+      else if (wasCurrent) say1(`✓ ${name}!${at} Next: ${legName(current(), true)} — which freeway?`, 'good');
       else say1(`✓ ${name} — that’s later in the drive. Still need: ${legName(current(), true)}.`, 'good');
       renderFooter();
       sched.after(reduceMotion() ? 0 : 450, driveOn);

@@ -1789,13 +1789,19 @@ body {
   stroke-width: 3;
 }
 .fw-car text {
-  font-size: 22px;
+  font-size: 18px;
+}
+.fw-car {
+  opacity: 0.9;
 }
 .fw-msg {
   flex: none;
-  min-height: 40px;
+  /* Room for three lines always, so a longer message never shifts the board
+     (a shift under a finger makes the next grab miss). */
+  min-height: calc(3 * 1.3em + 8px);
+  line-height: 1.3;
   padding: 8px 16px 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   text-align: center;
   color: var(--text-dim);
@@ -1808,6 +1814,7 @@ body {
 }
 .fw-foot {
   flex: none;
+  min-height: 62px;
   display: flex;
   justify-content: center;
   gap: 10px;
