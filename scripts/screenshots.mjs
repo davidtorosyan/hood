@@ -447,9 +447,10 @@ await shot('home-campaign-started');
   await page.mouse.up();
   await page.waitForTimeout(450);
   if (!/further/.test(await page.locator('.fw-msg').textContent())) fail('freeways: a miss should say which way to move it');
-  // Another miss → its exact spot, dashed.
+  // More misses → the places it runs through, then its exact spot, dashed.
   await carry(route[0], [g0[0] - 100, g0[1] + 90]);
-  if (!(await page.locator('.fw-slot').count())) fail('freeways: no dashed outline after 2 misses');
+  await carry(route[0], [g0[0] - 110, g0[1] - 80]);
+  if (!(await page.locator('.fw-slot').count())) fail('freeways: no dashed outline after 3 misses');
   await shot('freeways-hint-outline');
   // Back on the tray: no harm done.
   const tb = await page.locator('.fw-tray').boundingBox();

@@ -13,7 +13,7 @@ export function nextIndex(isSolved, from, n, idAt) {
 // How much the map helps. Early drives show the whole freeway network as
 // grey roads to line a shape up against; later ones hide it, so you place
 // each freeway from where the places are.
-export const ROADS_DRIVES = 16;
+export const ROADS_DRIVES = 4; // a short tutorial; testers found road-following too easy
 export const tierOf = (index) => (index < ROADS_DRIVES ? 'roads' : 'blind');
 
 // "northeast", "south"… from a leg's start to its end (screen coords: y down).
@@ -32,20 +32,27 @@ export const nextLeg = (placed, n) => {
 export const drivable = (placed, n) => nextLeg(placed, n);
 
 // Misses placing one freeway → help, one step at a time, never stuck:
-// 1 → which way it heads and the places it runs through (labelled on the
-// map), 2+ → a dashed outline of exactly where it goes.
-export const placeHint = (misses) => (misses >= 2 ? 'ghost' : misses === 1 ? 'via' : null);
+// 1 → which way to move it, 2 → the places it runs through (labelled on the
+// map), 3+ → a dashed outline of exactly where it goes.
+export const placeHint = (misses) => (misses >= 3 ? 'ghost' : misses === 2 ? 'via' : misses === 1 ? 'dir' : null);
+
+// How well a carried shape lies along its road: the mean distance from the
+// shape (shifted by [dx, dy]) to the true line. Sliding it along its own
+// road still fits — it's on the right freeway, just a little up or down it.
+export function fit(pts, line, [dx, dy]) {
+  let sum = 0;
+  for (const [x, y] of pts) sum += nearestOnLine([x + dx, y + dy], line).d;
+  return sum / pts.length;
+}
 
 // Magnetism for a held shape: within `radius` of its true spot it's pulled
-// in (the closer, the stronger — no jump at the edge), and it clicks in
-// within `snap`.
+// in (the closer, the stronger — no jump at the edge).
 export function pull(dx, dy, radius) {
   const d = Math.hypot(dx, dy);
   if (d >= radius || d === 0) return [dx, dy];
   const k = 0.35 + 0.65 * (d / radius);
   return [dx * k, dy * k];
 }
-export const snaps = (dx, dy, snap) => Math.hypot(dx, dy) <= snap;
 
 // The closest point on a polyline to `p`: { d, point }. (Drops and magnetism
 // are about "how near the road is this sign?")

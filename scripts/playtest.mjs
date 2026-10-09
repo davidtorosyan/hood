@@ -5,6 +5,8 @@
 // Usage: node scripts/playtest.mjs <actions.json> <outdir> [--drive N]
 //   actions.json: [ {"drag":[x,y],"to":[x,y]}, {"tap":[x,y]}, {"button":"Skip"},
 //                   {"wait":1500} ]  — coordinates are screenshot pixels.
+//   Add "hold": true to a drag to also get a screenshot mid-drag, before the
+//   finger lifts (to see what you're carrying).
 // The viewport is a 430×932 phone at 1× scale, so screenshot pixels = tap points.
 // Needs the dev server (npm run dev). Set CHROMIUM_PATH if needed.
 import { chromium } from 'playwright';
@@ -48,6 +50,10 @@ for (const a of actions) {
     await page.mouse.move(...a.drag);
     await page.mouse.down();
     await page.mouse.move(...a.to, { steps: 16 });
+    if (a.hold) {
+      await page.waitForTimeout(250);
+      await report(`${i}-held`, `holding at ${a.to} (not released yet)`);
+    }
     await page.mouse.up();
     await page.waitForTimeout(a.wait ?? 2800);
     await report(i, `drag ${a.drag} → ${a.to}`);

@@ -43,7 +43,7 @@ test('each drive is continuous: one freeway ends where the next begins', () => {
 });
 
 // --- the pure rules ---
-import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, pull, snaps, placeHint, compass, ROADS_DRIVES } from '../src/freeways/rules.js';
+import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, pull, fit, placeHint, compass, ROADS_DRIVES } from '../src/freeways/rules.js';
 
 test('next drive: first unsolved after the current one, wrapping', () => {
   const solved = new Set(['b', 'c']);
@@ -74,11 +74,18 @@ test('magnetism pulls a held shape in near its spot, never jumps at the edge', (
   assert.ok(Math.abs(pull(169.9, 0, 170)[0] - 169.9) < 1);
   const [close] = pull(40, 0, 170);
   assert.ok(close < 40 && close > 0);
-  assert.ok(snaps(60, 20, 85) && !snaps(90, 0, 85));
+});
+
+test('a shape fits when it lies along its road — even slid a little along it', () => {
+  const road = [[0, 0], [400, 0]];
+  const shape = [[100, 0], [200, 0], [300, 0]];
+  assert.equal(fit(shape, road, [0, 0]), 0);
+  assert.equal(fit(shape, road, [60, 0]), 0); // slid along the road: still on it
+  assert.equal(fit(shape, road, [0, 50]), 50); // off to the side: not
 });
 
 test('help escalates one step per miss; early drives draw the roads', () => {
-  assert.deepEqual([0, 1, 2, 5].map(placeHint), [null, 'via', 'ghost', 'ghost']);
+  assert.deepEqual([0, 1, 2, 3, 6].map(placeHint), [null, 'dir', 'via', 'ghost', 'ghost']);
   assert.equal(tierOf(0), 'roads');
   assert.equal(tierOf(ROADS_DRIVES), 'blind');
   assert.equal(compass([0, 0], [10, 0]), 'east');

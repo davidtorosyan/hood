@@ -17,15 +17,18 @@ import { Scheduler } from '../jigsaw/scheduler.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
 import {
-  REFS, PUZZLES, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, placeHint, pull, snaps, compass, nearestOnLine,
+  REFS, PUZZLES, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, placeHint, pull, fit, compass, nearestOnLine,
 } from './puzzles.js';
 import { drawMap, pathD } from './map.js';
-import { makePieces, moveShape, shield } from './pieces.js';
+import { makePieces, moveShape, shield, along } from './pieces.js';
 
 const book = store.freeways;
 const W = 1000;
 const MAGNET = 170; // board units: within this of its spot a held shape is pulled in
-const SNAP = 85; // …and within this (~35px on a phone) it clicks in
+// A drop counts when the shape lies along its road: mean distance from it
+// under this (~32px on a phone). The glow uses the same test, so a glow
+// always means "let go here and it clicks in".
+const ACCEPT = 75;
 const IDLE_MS = 12000;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -113,6 +116,9 @@ export function renderFreeways(app, { onBack }) {
     const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
     const pieces = makePieces(p.blocks.map((b, leg) => ({ ...b, pts: legPts(leg) })), tileLayer, dragLayer, TRAY);
     for (const x of pieces) {
+      // ~24 points along the shape, for judging how well it lies on its road.
+      const n = Math.max(2, Math.min(24, x.pts.length * 3));
+      x.sample = Array.from({ length: n }, (_, i) => along(x.pts, i / (n - 1)));
       x.tile.dataset.goal = x.center.map((v) => v.toFixed(1)).join(','); // (harness only)
       if (run.placed.has(x.leg)) layDown(x, false);
       else x.shape.style.display = 'none';
@@ -175,18 +181,21 @@ export function renderFreeways(app, { onBack }) {
     // Name places on the map (for hints), along the freeway they're about.
     const labelPlaces = (ids, alongPts) => {
       hintLayer.replaceChildren();
-      for (const t of labels.querySelectorAll('.fw-landmark')) t.style.display = 'none';
+      // Keep the map's own labels; place the hint tags clear of them.
       const used = [];
+      const boxes = [...labels.querySelectorAll('.fw-landmark, .fw-end rect')].map((n) => n.getBBox());
+      const onLabel = (x, y, w) => boxes.some((b) => x + w / 2 > b.x && x - w / 2 < b.x + b.width && y + 19 > b.y && y - 19 < b.y + b.height);
       for (const id of ids) {
         const r = shapeOf(id).map(P);
         const cc = r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
         const c0 = nearestOnLine(cc, alongPts).point;
         const name = labelOf(id);
         const w = name.length * 15 + 26;
-        const spots = [[0, -40], [0, 40], [w / 2 + 24, 0], [-w / 2 - 24, 0]].map(([dx, dy]) => [c0[0] + dx, c0[1] + dy]);
+        const spots = [[0, -40], [0, 40], [w / 2 + 24, 0], [-w / 2 - 24, 0], [0, -84], [0, 84]].map(([dx, dy]) => [c0[0] + dx, c0[1] + dy]);
         const cost = ([x, y]) =>
           alongPts.filter(([qx, qy]) => Math.abs(qx - x) < w / 2 && Math.abs(qy - y) < 22).length * 3 +
           used.filter(([ux, uy]) => Math.abs(ux - x) < 200 && Math.abs(uy - y) < 42).length * 100 +
+          (onLabel(x, y, w) ? 60 : 0) +
           (x - w / 2 < 4 || x + w / 2 > W - 4 || y < 24 || y > MH - 24 ? 100 : 0);
         const c = spots.reduce((b, sp) => (cost(sp) < cost(b) ? sp : b));
         used.push(c);
@@ -201,7 +210,6 @@ export function renderFreeways(app, { onBack }) {
     const clearHints = () => {
       hintLayer.replaceChildren();
       slots.replaceChildren();
-      for (const t of labels.querySelectorAll('.fw-landmark')) t.style.display = '';
     };
 
     // A gentle nudge if nothing happens for a while: the next tile bounces.
@@ -253,19 +261,21 @@ export function renderFreeways(app, { onBack }) {
       const q = toSvg(e);
       drag.raw = [q[0] + drag.off[0], q[1] + drag.off[1]];
       const [dx, dy] = pull(drag.raw[0], drag.raw[1], MAGNET);
-      drag.x.shape.classList.toggle('near', Math.hypot(drag.raw[0], drag.raw[1]) < MAGNET);
+      drag.x.shape.classList.toggle('near', fit(drag.x.sample, drag.x.pts, [dx, dy]) < ACCEPT);
+      drag.shown = [dx, dy];
       moveShape(drag.x, dx, dy);
     });
     const end = (e, cancelled) => {
       if (!drag || e.pointerId !== drag.id) return;
       const { x, raw } = drag;
+      const shown = drag.shown || raw;
       const q = toSvg(e);
       drag = null;
       x.shape.classList.remove('held', 'near');
-      if (!cancelled && snaps(raw[0], raw[1], SNAP)) return place(x);
+      if (!cancelled && fit(x.sample, x.pts, shown) < ACCEPT) return place(x);
       putBack(x);
       if (cancelled || q[1] > MH) return; // dropped back on the tray: no harm done
-      miss(x, raw);
+      miss(x, shown);
     };
     svg.addEventListener('pointerup', (e) => end(e, false));
     svg.addEventListener('pointercancel', (e) => end(e, true));
@@ -280,9 +290,11 @@ export function renderFreeways(app, { onBack }) {
       armIdle();
       run.misses[x.leg] = (run.misses[x.leg] || 0) + 1;
       const dir = compass([x.center[0] + dx, x.center[1] + dy], x.center);
-      const lead = `Close — ${say(x.ref)} runs further ${dir}.`;
+      const close = fit(x.sample, x.pts, [dx, dy]) < 2 * ACCEPT;
+      const lead = close ? `Close — ${say(x.ref)} runs a little further ${dir}.` : `Not quite — ${say(x.ref)} runs further ${dir}.`;
       const help = placeHint(run.misses[x.leg]);
-      if (help === 'via' && x.via?.length) {
+      if (help === 'dir') say1(lead, 'warn');
+      else if (help === 'via' && x.via?.length) {
         labelPlaces(x.via, x.pts);
         say1(`${lead} It goes through ${x.via.map(labelOf).join(' and ')}.`, 'warn');
         countEvent('freeway-hint-via');

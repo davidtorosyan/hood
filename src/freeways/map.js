@@ -115,18 +115,20 @@ export function drawMap(svg, p, W, MH, learned = [], inTray = [], { roads: showR
   };
   endLabel(p.from, 'from');
   endLabel(p.to, 'to');
-  const big = ALL.filter((id) => id !== p.from && id !== p.to && (PLACES[id]?.pop ?? 0) >= 60000)
-    .sort((a, b) => (PLACES[b].pop ?? 0) - (PLACES[a].pop ?? 0));
+  // Landmarks for bearings: Downtown always (when it's in view), then the
+  // biggest places, as many as fit without crowding.
+  const pop = (id) => (id === 'Downtown' ? Infinity : PLACES[id]?.pop ?? 0);
+  const big = ALL.filter((id) => id !== p.from && id !== p.to && pop(id) >= 40000).sort((a, b) => pop(b) - pop(a));
   let n = 0;
   for (const id of big) {
-    if (n >= 6) break;
+    if (n >= 9) break;
     const [cx, cy] = centroid(id);
     const name = labelOf(id);
     const w = name.length * 14;
-    if (cx - w / 2 < 6 || cx + w / 2 > W - 6 || cy < 20 || cy > MH - 20 || overlaps(cx - w / 2, cy - 14, w, 28)) continue;
+    if (cx - w / 2 < 6 || cx + w / 2 > W - 6 || cy < 20 || cy > MH - 20 || overlaps(cx - w / 2 - 10, cy - 18, w + 20, 36)) continue;
     taken.push([cx - w / 2, cy - 14, cx + w / 2, cy + 14]);
     const t = Object.assign(svgEl('text', { x: cx, y: cy + 8, class: 'fw-landmark', 'text-anchor': 'middle' }), { textContent: name });
-    t.dataset.place = id; // (a hint naming the same place hides it)
+    t.dataset.place = id;
     labels.append(t);
     n++;
   }
