@@ -133,27 +133,59 @@ there's no zooming or context navigation, and solving offers "🗺️ Back to th
 The campaign keeps its own ledger (`store.campaign`), separate from Explore's
 progress.
 
-### Freeways — a prototype (Oct 2026, try-it-out quality)
-A third mode from home ("🛣️ Freeways"). The prompt is "Drive from Encino to Pico-Union".
-The map, framed on the drive, shows the two places plus a few landmark names. The tray
-holds freeway **pieces**: one per freeway on the route (the 101, the 405, the 10) plus a
-decoy or two. Drag each piece to where that freeway really runs, and it clicks in within
-a finger's width. Placing a decoy gets "isn't on the way". Misses escalate: 2 misses →
-"runs through X, Y", 3 → a dashed outline. Placing the whole route drives a 🚗 along it,
-and the tray then lists each freeway's name. Skip and Show me are always there.
+### Freeways — a prototype (Oct 2026; v2 shaped by 5 rounds of agent playtests)
+A third mode from home ("🛣️ Freeways"): "Drive from Echo Park to Downey". The map, framed on
+the drive, shows the two places and the whole freeway network as **unlabeled grey roads**.
+The car 🚗 waits at the start. The tray holds freeway **signs on identical road tiles**: the
+route's freeways plus 2–3 decoys. Every tile looks the same apart from its sign, so you
+choose by **name**. (v1's shaped pieces were solved by shape-matching, and players learned
+nothing, the same lesson as the jigsaw's.)
+- **Leg by leg, in driving order.** "LEG 1 OF 2 · LEAVING ECHO PARK". Dragging a sign near
+  its road pulls it in (magnetism) and previews the road. Dropping it lights the road up in
+  the sign's colour, and the car drives that leg. Placing a later leg first is allowed.
+- **Fair drops.** A right sign counts within a finger-pad of its road, anywhere along its
+  own freeway, or anywhere near a dashed leg. Off-road, the right sign hears "Right sign!",
+  never "wrong". It must not count when it's nearer another freeway. A sweep script drops
+  every right sign 20px off at each leg's start, middle and end on all drives.
+- **Misses teach.** A wrong sign flashes where that freeway really runs, or says "further
+  southeast, off this map". A decoy on its own road hears "That is the 60's road — but
+  this drive doesn't use the 60."
+- **Help ladder per leg.** 1 miss: the heading plus the places the leg runs through, with
+  their names labelled on the map. 2 misses: the leg's road is dashed. 3 misses: the right
+  sign is named and pulses. Show me does one leg; a drive finished with a peek still counts.
+- **Difficulty ramp.**
+  - Drives 0–7 dash each leg's whole road.
+  - Drives 8–15 dash only its first stretch.
+  - Later drives show only the car. The first drive of each new tier says what changed.
+- **Learning carries over.** Freeways you've placed get their signs on later maps (never
+  the ones in the current tray, which would give away the decoys). Switches name their
+  interchange ("the Four Level", "the East LA Interchange", "the Judge Harry Pregerson
+  Interchange", else "the 5/110 interchange").
 - **Data:** `scripts/freeway-routes.mjs` is a **hand-traced schematic**: named
   interchanges plus waypoints, accurate to about 1 km. OSM wasn't reachable from the
   build sandbox, and Natural Earth's roads were too coarse and mislabelled.
-  `npm run build:freeways` turns it into a routing graph. It finds a place with a
-  freeway through it at each end, takes the shortest route (switching freeways costs
-  extra), keeps drives with 2–4 freeways, and adds decoys from nearby freeways. The
-  result is `src/data/freeways.json` (90 drives, easier first).
+  `npm run build:freeways` turns it into a routing graph. The route may start and end on
+  any freeway through each place. Switching freeways costs 4 km-equivalent, so the route
+  stays on one freeway like a local would. The build rejects stub legs (<5 km), routes
+  that double back, and 3-freeway hops for short trips. Decoys are nearby freeways that
+  are not part of any reasonable alternative route (within 30%), so a local's valid
+  choice is never marked wrong. The
+  result is `src/data/freeways.json` (72 drives: 2-leg ones to learn on, then 2- and 3-leg
+  ones alternating).
   `npm run build:freeways -- --through` prints the places each freeway runs through.
   **Check that list after editing a route.**
-- **Code:** `src/freeways/puzzles.js` holds the data and the small rules. `game.js` is the
-  screen: its own pointer handling (captured on the svg root), CSS-transform moves, a
-  Scheduler, and shields counter-scaled so they read the same size in the tray.
-  `store.freeways` is its ledger. `test/freeways.test.js` checks the data.
+- **Code:** `src/freeways/`:
+  - `rules.js`: pure and unit-tested. Tiers, leg order, nearest-point and magnet maths,
+    compass, the hint ladder.
+  - `puzzles.js`: the data.
+  - `map.js`: framing, the network, labels and learned signs.
+  - `pieces.js`: sign tiles.
+  - `game.js`: the screen and flow. Pointer events are captured on the svg root, moves
+    use the CSS transform, and timers go through a Scheduler.
+  `store.freeways` is its ledger (`learned`, `tier`, `at`). `test/freeways.test.js` checks
+  the data (real ends, continuous drives, 2+ decoys, no stub legs) and the rules.
+  `scripts/playtest.mjs` lets tester agents play from screenshots: it replays an action list
+  and saves a screenshot after each action.
 
 ### Modules
 - `src/main.js` — entry: home screen (county-map art, Rebuild LA / Explore buttons,

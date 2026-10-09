@@ -180,6 +180,7 @@ export function renderFreeways(app, { onBack }) {
       t.g.dataset.goal = along(lineFor(t), 0.5).map((v) => v.toFixed(1)).join(',');
       t.g.dataset.start = along(lineFor(t), 0.04).map((v) => v.toFixed(1)).join(',');
       t.g.dataset.end = along(lineFor(t), 0.96).map((v) => v.toFixed(1)).join(',');
+      t.g.dataset.mid = t.g.dataset.goal;
     }
     svgWrap.append(svg);
 
@@ -255,7 +256,8 @@ export function renderFreeways(app, { onBack }) {
       msg.className = `fw-msg ${tone}`;
     };
     const routeLine = () => `${p.blocks.map((b) => b.ref).join(' → ')} · about ${Math.round(p.km * 0.621)} mi`;
-    const madeIt = () => (run.shown ? `Here’s the whole route: ${routeLine()}. Try the next one!` : `🎉 You made it! ${routeLine()}`);
+    const madeIt = () =>
+      run.shown ? `Here’s the whole route: ${routeLine()}. Try the next one!` : `🎉 You made it${run.peeked ? ' (with a peek)' : ''}! ${routeLine()}`;
     const renderFooter = () => {
       clear(footer);
       if (run.done) {
@@ -268,9 +270,15 @@ export function renderFreeways(app, { onBack }) {
       }
     };
     const decoyLine = `(${NUM[p.decoys.length] ?? p.decoys.length} of the signs ${p.decoys.length === 1 ? 'is a decoy' : 'are decoys'}.)`;
+    // First drive at a harder level: say what changed.
+    const lastTier = book.get('tier');
+    const tierNews = !run.done && !run.placed.size && lastTier && lastTier !== tier
+      ? { bridge: 'New: only the start of each leg is dashed now. ', open: 'New: no more dashes — find each road from the 🚗. ' }[tier] ?? ''
+      : '';
+    if (!run.done) book.set('tier', tier);
     if (run.done) say1(madeIt(), run.shown ? '' : 'good');
     else if (run.placed.size) say1(`Keep going — ${legName(current(), true)}.`);
-    else say1(`Leg 1: which freeway takes you out of ${from}? ${decoyLine}`);
+    else say1(`${tierNews}Leg 1: which freeway takes you out of ${from}? ${decoyLine}`);
     if (run.done) subEl.hidden = true;
     renderFooter();
 
@@ -293,6 +301,7 @@ export function renderFreeways(app, { onBack }) {
         const spots = [[0, -40], [0, 40], [w / 2 + 24, 0], [-w / 2 - 24, 0], [0, -84], [0, 84]].map(([dx, dy]) => [c0[0] + dx, c0[1] + dy]);
         const cost = ([x, y]) =>
           (Math.abs(x - carAt[0]) < w / 2 + 30 && Math.abs(y - carAt[1]) < 50 ? 100 : 0) +
+          net.filter((n) => n.pts.some(([qx, qy]) => Math.abs(qx - x) < w / 2 && Math.abs(qy - y) < 22)).length * 6 +
           routePts.filter(([qx, qy]) => Math.abs(qx - x) < w / 2 && Math.abs(qy - y) < 22).length * 3 +
           used.filter(([ux, uy]) => Math.abs(ux - x) < 200 && Math.abs(uy - y) < 42).length * 100 +
           (x - w / 2 < 4 || x + w / 2 > W - 4 || y < 24 || y > MH - 24 ? 100 : 0);
@@ -391,15 +400,20 @@ export function renderFreeways(app, { onBack }) {
       const road = nearestRoad(pos); // the road they actually dropped it on
       // On its own road: right on it, nearer it than any other road, or
       // anywhere along its own freeway (just past the dashed part counts).
-      const onOwn = own.d < MAGNET && (own.d < 45 || own.d <= road.d + 8 || road.ref === t.ref);
+      // A finger-pad from its road always counts (fingers land 20–30px off);
+      // with the leg dashed, anywhere near the dash counts (that's clearly what
+      // they meant); further out it must be nearer its own road than any other.
+      const dashed = slotShown || tier === 'guided';
+      const onOwn = own.d < MAGNET && (own.d < 75 || (dashed && t.leg === current()) || own.d <= road.d + 8 || road.ref === t.ref);
       if (!inTray && t.route && (onOwn || (road.ref === t.ref && road.d < MAGNET))) return place(t);
       goHome(t);
       if (inTray) return; // put back: no harm done
       if (t.route && t.leg === current()) {
         // The RIGHT sign, just not on its road: never tell them it's wrong.
+        if (road.d < MAGNET) flashRoad(road.ref);
         say1(
           road.d < MAGNET
-            ? `Right sign! But that’s ${say(road.ref)}’s road — drop ${say(t.ref)} on its own road.`
+            ? `Right sign! But that’s ${say(road.ref)}’s road (flashing) — drop ${say(t.ref)} on its own road.`
             : `Right sign! Now drop it on its road, ${tier === 'open' ? 'starting from the 🚗' : 'the dashed one'}.`,
           'good',
         );
@@ -459,7 +473,7 @@ export function renderFreeways(app, { onBack }) {
       const name = `${say(t.ref)} — ${REFS[t.ref]?.name ?? ''}`;
       if (run.placed.size === legs) say1(`✓ ${name}.${at} That’s the whole drive — here we go!`, 'good');
       else if (shown) say1(`Here’s ${name}.${at} Your turn: ${legName(current(), true)}.`);
-      else if (wasCurrent) say1(`✓ ${name}!${at} Next: ${legName(current(), true)} — which freeway?`, 'good');
+      else if (wasCurrent) say1(`✓ ${name}!${at} Next leg: which freeway ${current() === 0 ? `out of ${from}` : `from ${say(p.blocks[current() - 1].ref)}`}?`, 'good');
       else say1(`✓ ${name} — that’s later in the drive. Still need: ${legName(current(), true)}.`, 'good');
       renderFooter();
       sched.after(reduceMotion() ? 0 : 450, driveOn);
@@ -471,6 +485,7 @@ export function renderFreeways(app, { onBack }) {
       const leg = current();
       if (leg >= legs) return;
       run.shown = true;
+      run.shownLegs = (run.shownLegs || 0) + 1;
       countEvent('freeway-show-leg');
       place(tileForLeg(leg), true);
     }
@@ -509,6 +524,9 @@ export function renderFreeways(app, { onBack }) {
       if (run.done) return;
       run.done = true;
       sched.cancel(idle);
+      // A peek or two still counts; only a fully shown drive doesn't.
+      run.peeked = run.shown;
+      run.shown = run.shownLegs >= legs;
       book.markDone(idOf(p), run.shown ? 'skipped' : 'solved');
       countEvent(run.shown ? 'freeway-shown' : 'freeway-solved');
       countEl.textContent = `${PUZZLES.filter((q) => book.isSolved(idOf(q))).length} / ${PUZZLES.length} drives`;
@@ -522,9 +540,9 @@ export function renderFreeways(app, { onBack }) {
     function recap() {
       for (const t of tiles) if (!t.route) t.g.classList.add('gone');
       const g = svgEl('g', { class: 'fw-recap' });
-      const rowH = Math.min(p.blocks.some((b) => b.at) ? 78 : 64, (TRAY[3] - TRAY[1] - 60) / legs);
+      const rowH = Math.min(p.blocks.some((b) => b.at) ? 78 : 64, (TRAY[3] - TRAY[1] - 84) / legs);
       p.blocks.forEach((b, k) => {
-        const y = TRAY[1] + 66 + rowH * k + rowH / 2 - 10;
+        const y = TRAY[1] + 60 + rowH * k + rowH / 2 - 10;
         g.append(shield(b.ref, [TRAY[0] + 70, y]));
         g.append(Object.assign(svgEl('text', { x: TRAY[0] + 120, y: y + 9, class: 'fw-recap-name' }), { textContent: REFS[b.ref]?.name ?? '' }));
         if (b.at) g.append(Object.assign(svgEl('text', { x: TRAY[0] + 120, y: y + 36, class: 'fw-recap-at' }), { textContent: `switch at ${b.at}` }));
