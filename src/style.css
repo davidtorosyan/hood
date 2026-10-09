@@ -1981,3 +1981,56 @@ body {
 @keyframes fw-flash-in {
   from { opacity: 0; }
 }
+
+/* Freeways v3: signs in driving order that unfold into shapes. */
+.fw-arrow {
+  font: 800 40px system-ui, sans-serif;
+  fill: #9aa4b5;
+}
+.fw-tile.lifted {
+  opacity: 0.35;
+}
+.fw-tile.used {
+  opacity: 0.25;
+  pointer-events: none;
+}
+.fw-tile.used .fw-tile-road {
+  fill: #9aa4b5;
+}
+.fw-shape {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.fw-shape-casing,
+.fw-shape-road {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.fw-shape-casing {
+  stroke: #ffffff;
+  stroke-width: 15px;
+}
+.fw-shape-road {
+  stroke-width: 9px;
+}
+.fw-shape.I .fw-shape-road { stroke: #1f4fbf; }
+.fw-shape.US .fw-shape-road { stroke: #1b2230; }
+.fw-shape.CA .fw-shape-road { stroke: #15803d; }
+.fw-shape.held {
+  filter: drop-shadow(0 6px 6px rgba(27, 34, 48, 0.35));
+  opacity: 0.9;
+}
+.fw-shape.near .fw-shape-casing {
+  stroke: #fde68a;
+  stroke-width: 22px;
+}
+.fw-shape.placed {
+  filter: none;
+  opacity: 1;
+}
+.fw-recap-name {
+  font-size: 21px;
+}

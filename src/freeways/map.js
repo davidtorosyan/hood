@@ -3,7 +3,7 @@
 // network as unlabeled grey roads (something to attach to), the two ends as
 // name pills placed clear of the route, and a few landmark names for bearings.
 // Freeways you've already learned get their signs back on the map — except
-// the ones in this drive's tray (that would give the answer away).
+// the ones on this drive (that would give the answer away).
 import { geoMercator } from 'd3-geo';
 import { svgEl } from '../ui/dom.js';
 import { ROOT, leavesOf, shapeOf, labelOf } from '../jigsaw/tree.js';
@@ -18,7 +18,9 @@ export const pathD = (pts) => 'M' + pts.map(fmt).join('L');
 // Returns { P (lon/lat → board), routeD(blocks), layers } with the layers
 // appended to `svg` in paint order: base, roads, slots, (pieces go after),
 // labels on top. The caller appends pieces between `slots` and `labels`.
-export function drawMap(svg, p, W, MH, learned = [], inTray = []) {
+// opts.roads: draw the network (early drives) or not (later ones: place
+// freeways from where the places are).
+export function drawMap(svg, p, W, MH, learned = [], inTray = [], { roads: showRoads = true } = {}) {
   // Frame the drive itself (route + both places' middles), not the decoys.
   const mid = (id) => {
     const r = shapeOf(id);
@@ -47,14 +49,14 @@ export function drawMap(svg, p, W, MH, learned = [], inTray = []) {
     base.append(svgEl('path', { d: ringD(shapeOf(id)), class: cls }));
   }
   const roads = svgEl('g', { 'clip-path': 'url(#fw-clip)', class: 'fw-roads' });
-  for (const n of NETWORK) roads.append(svgEl('path', { d: pathD(lineOf(n).map(P)), class: 'fw-net' }));
+  if (showRoads) for (const n of NETWORK) roads.append(svgEl('path', { d: pathD(lineOf(n).map(P)), class: 'fw-net' }));
   // Signs for learned freeways that aren't in this drive's tray (a sign on
   // the map would give away which tray signs are decoys), one per freeway.
   const onRoute = new Set(inTray);
   const known = svgEl('g', { class: 'fw-known' });
   const seen = new Set();
   for (const n of NETWORK) {
-    if (onRoute.has(n.ref) || !learned.includes(n.ref) || seen.has(n.ref)) continue;
+    if (!showRoads || onRoute.has(n.ref) || !learned.includes(n.ref) || seen.has(n.ref)) continue;
     const inView = lineOf(n).map(P).filter(([x, y]) => x > 60 && x < W - 60 && y > 50 && y < MH - 50);
     if (!inView.length) continue;
     const mid = inView[Math.floor(inView.length / 2)];

@@ -409,9 +409,9 @@ await page.getByRole('button', { name: 'Home' }).click();
 await page.waitForTimeout(300);
 await shot('home-campaign-started');
 
-// Freeways (prototype): leg by leg with sign tiles. A wrong sign on the road
-// gets named, misses escalate to a pulsing right sign, each placed leg lights
-// up and the car drives on.
+// Freeways (prototype, v3): the route as signs; picking one up unfolds its
+// shape, which clicks in at its real spot. Misses point the way, then name
+// places, then outline it; the car drives the finished route.
 {
   await page.locator('.home-play-3').click();
   await page.waitForTimeout(500);
@@ -426,46 +426,46 @@ await shot('home-campaign-started');
       return [s.x, s.y];
     }, [x, y]);
   const tile = (ref) => page.locator(`.fw-tile[data-ref="${ref}"]`);
-  const dragSign = async (ref, to) => {
+  const goal = async (ref) => toScreen(...(await tile(ref).getAttribute('data-goal')).split(',').map(Number));
+  const carry = async (ref, to, { release = true } = {}) => {
     const b = await tile(ref).boundingBox();
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
     await page.mouse.down();
     await page.mouse.move(...to, { steps: 12 });
+    if (!release) return;
     await page.mouse.up();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(450);
   };
-  const goal = async (ref) => toScreen(...(await tile(ref).getAttribute('data-goal')).split(',').map(Number));
-  const refs = (route) =>
-    page.$$eval(`.fw-tile[data-route="${route}"]`, (gs) => gs.sort((a, b) => a.dataset.leg - b.dataset.leg).map((g) => g.dataset.ref));
-  const route = await refs('yes');
-  const decoys = await refs('no');
-  if (route.length < 2 || decoys.length < 2) fail(`freeways: odd puzzle (${route} / ${decoys})`);
-  // A decoy sign dropped on the first leg's road: named, not accepted.
-  await dragSign(decoys[0], await goal(route[0]));
-  if (!/flashing|off this map/.test(await page.locator('.fw-msg').textContent())) fail('freeways: a wrong sign should show where it really runs');
-  await shot('freeways-wrong-sign');
-  // The RIGHT sign dropped off any road is never called wrong.
-  const box = await page.locator('.fw-svg').boundingBox();
-  await dragSign(route[0], [box.x + 20, box.y + 20]);
-  if (!/Right sign/.test(await page.locator('.fw-msg').textContent())) fail('freeways: the right sign off-road should say "Right sign"');
-  // Two more wrong signs on the leg → the right sign gets named and pulses.
-  for (let i = 0; i < 2; i++) await dragSign(decoys[(i + 1) % decoys.length], await goal(route[0]));
-  if (!(await page.locator('.fw-tile.pulse').count())) fail('freeways: no pulsing sign after 3 misses');
-  await shot('freeways-hint-pulse');
-  const startOf = async (ref) => toScreen(...(await tile(ref).getAttribute('data-start')).split(',').map(Number));
+  const route = await page.$$eval('.fw-tile', (gs) => gs.sort((a, b) => a.dataset.leg - b.dataset.leg).map((g) => g.dataset.ref));
+  if (route.length < 2) fail(`freeways: odd route ${route}`);
+  // Mid-drag: the sign has unfolded into its freeway's shape.
+  const g0 = await goal(route[0]);
+  await carry(route[0], [g0[0] + 90, g0[1] + 70], { release: false });
+  await page.waitForTimeout(200);
+  if (!(await page.locator('.fw-shape.held').count())) fail('freeways: no shape while carrying a sign');
+  await shot('freeways-carrying-shape');
+  await page.mouse.up();
+  await page.waitForTimeout(450);
+  if (!/further/.test(await page.locator('.fw-msg').textContent())) fail('freeways: a miss should say which way to move it');
+  // Another miss → its exact spot, dashed.
+  await carry(route[0], [g0[0] - 100, g0[1] + 90]);
+  if (!(await page.locator('.fw-slot').count())) fail('freeways: no dashed outline after 2 misses');
+  await shot('freeways-hint-outline');
+  // Back on the tray: no harm done.
+  const tb = await page.locator('.fw-tray').boundingBox();
+  await carry(route[0], [tb.x + 40, tb.y + tb.height - 20]);
   for (const ref of route) {
-    // The last leg's sign goes right at its interchange, where the previous
-    // freeway is just as near — the right sign must still count there.
-    const last = ref === route.at(-1);
-    await dragSign(ref, last ? await startOf(ref) : await goal(ref));
-    if (!(await tile(ref).evaluate((g) => g.classList.contains('placed')))) fail(`freeways: the right sign (${ref}) was rejected${last ? ' at its interchange' : ''}`);
+    // A sloppy drop (≈20px off) still clicks in.
+    const [gx, gy] = await goal(ref);
+    await carry(ref, [gx + 14, gy - 14]);
+    if (!(await page.locator(`.fw-shape.placed[data-ref="${ref}"]`).count())) fail(`freeways: ${ref} didn't click in when dropped near its spot`);
     if (ref === route[0]) {
-      await page.waitForTimeout(2600);
+      await page.waitForTimeout(2400);
       await shot('freeways-first-leg-driven');
     }
   }
   await page.waitForTimeout(6000);
-  if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: route placed but not solved');
+  if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: route laid but not solved');
   await shot('freeways-solved');
   await page.getByRole('button', { name: /Next drive/ }).click();
   await page.waitForTimeout(500);

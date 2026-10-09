@@ -7,7 +7,7 @@
 // freeway and at shared named interchanges. A puzzle is
 // two places, each with a freeway running through it, and the best route
 // between them, cut into "blocks": one per freeway along the way (the 10, then
-// the 110, …). Plus a decoy or two — a nearby freeway that isn't on the route.
+// the 110, …). The game hands you exactly those freeways — no decoys.
 //
 // Usage: node scripts/build-freeways.mjs
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -191,19 +191,6 @@ function route(sources, targets) {
   return path.reverse();
 }
 
-// Cost from any of `sources` to every vertex (the full table, no early stop).
-function costFrom(sources) {
-  const d = new Float64Array(V.length).fill(Infinity);
-  const heap = new Heap();
-  for (const s of sources) { d[s] = 0; heap.push([0, s]); }
-  while (heap.size) {
-    const [du, u] = heap.pop();
-    if (du > d[u]) continue;
-    for (const [w, c] of adj[u]) if (du + c < d[w]) { d[w] = du + c; heap.push([d[w], w]); }
-  }
-  return d;
-}
-
 // Interchanges with a name locals use; the rest are "the 5/110 interchange".
 const NAMED = {
   ELA: 'the East LA Interchange',
@@ -254,28 +241,6 @@ function simplify(pts, tol = 0.12) {
   return md > tol ? simplify(pts.slice(0, idx + 1), tol).slice(0, -1).concat(simplify(pts.slice(idx), tol)) : [a, b];
 }
 
-// A decoy: a stretch of another freeway near the route, about block-sized.
-function decoyFor(blocks, used) {
-  const routePts = blocks.flatMap((b) => b.pts);
-  const options = [];
-  for (let li = 0; li < lines.length; li++) {
-    const ref = lines[li].ref;
-    if (used.has(ref)) continue;
-    const ids = lineVerts[li];
-    let bestK = -1, bestD = Infinity;
-    ids.forEach((v, k) => {
-      const d = Math.min(...routePts.map((p) => dist(p, xy(v))));
-      if (d < bestD) { bestD = d; bestK = k; }
-    });
-    if (bestD > 8) continue;
-    const half = Math.round(7 / STEP);
-    const vs = ids.slice(Math.max(0, bestK - half), bestK + half);
-    if (vs.length * STEP < 6) continue;
-    options.push({ ref, pts: vs.map(xy), d: bestD });
-  }
-  return options.sort((a, b) => a.d - b.d);
-}
-
 // --- generate puzzles (seeded, so builds are reproducible) ---
 let seed = 20261008;
 const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
@@ -307,18 +272,6 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
   if (blocks.length >= 3 && straight < 16) continue; // no 3-freeway hops for a short trip
   if (total > 1.45 * straight) continue;
   if (doublesBack(path, cOf(b))) continue;
-  // Decoys must be truly wrong: no freeway that's part of a reasonable
-  // alternative drive (a local taking the 60 instead of the 10 isn't wrong).
-  const dA = costFrom(ramps.get(a));
-  const dB = costFrom(ramps.get(b));
-  const best = Math.min(...ramps.get(b).map((v) => dA[v]));
-  const viable = (ref) => {
-    let m = Infinity;
-    for (let v = 0; v < V.length; v++) if (V[v].ref === ref) m = Math.min(m, dA[v] + dB[v]);
-    return m <= best * 1.3;
-  };
-  const decoys = decoyFor(blocks, refs).filter((d) => !viable(d.ref)).slice(0, 3);
-  if (decoys.length < 2) continue;
   count[kind]++;
   seenPair.add([a, b].sort().join('|'));
   uses.set(a, (uses.get(a) || 0) + 1);
@@ -347,7 +300,6 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
       // Where you switch onto this freeway: a name locals use, else "the 5/110 interchange".
       ...(k ? { at: junctionAt(x.pts[0]) || `the ${blocks[k - 1].ref}/${x.ref} interchange` } : {}),
     })),
-    decoys: decoys.map((x) => ({ ref: x.ref, line: enc(x.pts) })),
   });
 }
 // Order: a few 2-leg drives to learn on, then alternate 2-leg and longer
@@ -363,7 +315,7 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
   puzzles.splice(0, puzzles.length, ...ordered);
 }
 
-const usedRefs = new Set(puzzles.flatMap((p) => [...p.blocks, ...p.decoys].map((x) => x.ref)));
+const usedRefs = new Set(puzzles.flatMap((p) => p.blocks.map((x) => x.ref)));
 const out = {
   source: 'Hand-traced schematic (scripts/freeway-routes.mjs): right neighborhoods and interchanges, not survey lines.',
   refs: Object.fromEntries(Object.entries(REFS).filter(([r]) => usedRefs.has(r))),

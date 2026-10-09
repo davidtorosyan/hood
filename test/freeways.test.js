@@ -11,23 +11,22 @@ const { refs, puzzles } = JSON.parse(readFileSync('src/data/freeways.json', 'utf
 const km = ([a, b], [c, d]) => Math.hypot((a - c) * 92.3, (b - d) * 110.6);
 
 test('there are freeway puzzles, starting with 2-leg drives to learn on', () => {
-  assert.ok(puzzles.length >= 60);
+  assert.ok(puzzles.length >= 70);
   for (let i = 0; i < 8; i++) assert.equal(puzzles[i].blocks.length, 2);
   assert.ok(puzzles.filter((p) => p.blocks.length >= 3).length >= 20);
 });
 
-test('every drive joins two real places with 2–4 freeways and decoys', () => {
+test('every drive joins two real places with 2–4 freeways', () => {
   const pairs = new Set();
   for (const p of puzzles) {
     const name = `${p.from} → ${p.to}`;
     assert.ok(nodes[p.from] && nodes[p.to], `${name}: unknown place`);
     assert.ok(!nodes[p.from].children && !nodes[p.to].children, `${name}: ends must be places`);
     assert.ok(p.blocks.length >= 2 && p.blocks.length <= 4, `${name}: ${p.blocks.length} blocks`);
-    assert.ok(p.decoys.length >= 2, `${name}: needs 2+ decoys (so the last leg isn't a giveaway)`);
+    assert.ok(!p.decoys, `${name}: no decoys (Dave: confusing, little gain)`);
     const onRoute = new Set(p.blocks.map((b) => b.ref));
     assert.equal(onRoute.size, p.blocks.length, `${name}: a freeway repeats`);
-    for (const b of [...p.blocks, ...p.decoys]) assert.ok(refs[b.ref], `${name}: unknown freeway ${b.ref}`);
-    for (const d of p.decoys) assert.ok(!onRoute.has(d.ref), `${name}: decoy ${d.ref} is on the route`);
+    for (const b of p.blocks) assert.ok(refs[b.ref], `${name}: unknown freeway ${b.ref}`);
     assert.ok(!pairs.has(name), `${name}: duplicate`);
     pairs.add(name);
   }
@@ -44,7 +43,7 @@ test('each drive is continuous: one freeway ends where the next begins', () => {
 });
 
 // --- the pure rules ---
-import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, magnet, legHint, compass, GUIDED_DRIVES, BRIDGE_DRIVES } from '../src/freeways/rules.js';
+import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, pull, snaps, placeHint, compass, ROADS_DRIVES } from '../src/freeways/rules.js';
 
 test('next drive: first unsolved after the current one, wrapping', () => {
   const solved = new Set(['b', 'c']);
@@ -62,23 +61,26 @@ test('legs go in driving order; the car drives only a placed run from the start'
   assert.equal(drivable(new Set([0, 1, 2]), 3), 3);
 });
 
-test('nearest point on a road, and magnetism toward it', () => {
+test('nearest point on a road', () => {
   const road = [[0, 0], [100, 0], [100, 100]];
   const a = nearestOnLine([50, 30], road);
   assert.equal(a.d, 30);
   assert.deepEqual(a.point, [50, 0]);
   assert.equal(nearestOnLine([130, 50], road).d, 30);
-  // Outside the radius nothing moves; inside, it slides toward the road.
-  assert.deepEqual(magnet([50, 200], [50, 0], 200, 90), [50, 200]);
-  const [, y] = magnet([50, 30], [50, 0], 30, 90);
-  assert.ok(y < 30 && y > 0);
 });
 
-test('help escalates one step per miss; early drives are guided', () => {
-  assert.deepEqual([0, 1, 2, 3, 7].map(legHint), [null, 'via', 'slot', 'name', 'name']);
-  assert.equal(tierOf(0), 'guided');
-  assert.equal(tierOf(GUIDED_DRIVES), 'bridge');
-  assert.equal(tierOf(BRIDGE_DRIVES), 'open');
+test('magnetism pulls a held shape in near its spot, never jumps at the edge', () => {
+  assert.deepEqual(pull(300, 0, 170), [300, 0]);
+  assert.ok(Math.abs(pull(169.9, 0, 170)[0] - 169.9) < 1);
+  const [close] = pull(40, 0, 170);
+  assert.ok(close < 40 && close > 0);
+  assert.ok(snaps(60, 20, 85) && !snaps(90, 0, 85));
+});
+
+test('help escalates one step per miss; early drives draw the roads', () => {
+  assert.deepEqual([0, 1, 2, 5].map(placeHint), [null, 'via', 'ghost', 'ghost']);
+  assert.equal(tierOf(0), 'roads');
+  assert.equal(tierOf(ROADS_DRIVES), 'blind');
   assert.equal(compass([0, 0], [10, 0]), 'east');
   assert.equal(compass([0, 0], [10, -10]), 'northeast');
   assert.equal(compass([0, 0], [0, 10]), 'south');
