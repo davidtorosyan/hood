@@ -442,7 +442,7 @@ await shot('home-campaign-started');
   if (route.length < 2 || decoys.length < 2) fail(`freeways: odd puzzle (${route} / ${decoys})`);
   // A decoy sign dropped on the first leg's road: named, not accepted.
   await dragSign(decoys[0], await goal(route[0]));
-  if (!/not this road/.test(await page.locator('.fw-msg').textContent())) fail('freeways: wrong sign on the road not named');
+  if (!/wrong freeway for this leg/.test(await page.locator('.fw-msg').textContent())) fail('freeways: wrong sign on the road not named');
   await shot('freeways-wrong-sign');
   // Two more misses → the right sign pulses.
   const box = await page.locator('.fw-svg').boundingBox();

@@ -2,11 +2,14 @@
 // places, the route, the decoys), draws the places faintly, the whole freeway
 // network as unlabeled grey roads (something to attach to), the two ends as
 // name pills placed clear of the route, and a few landmark names for bearings.
+// Freeways you've already learned get their signs back on the map — except
+// the ones on this drive's route (that would give the answer away).
 import { geoMercator } from 'd3-geo';
 import { svgEl } from '../ui/dom.js';
 import { ROOT, leavesOf, shapeOf, labelOf } from '../jigsaw/tree.js';
 import { PLACES } from '../data/places.js';
 import { NETWORK, lineOf } from './puzzles.js';
+import { shield } from './pieces.js';
 
 const ALL = leavesOf(ROOT);
 const fmt = (q) => q.map((v) => v.toFixed(1)).join(',');
@@ -15,7 +18,7 @@ export const pathD = (pts) => 'M' + pts.map(fmt).join('L');
 // Returns { P (lon/lat → board), routeD(blocks), layers } with the layers
 // appended to `svg` in paint order: base, roads, slots, (pieces go after),
 // labels on top. The caller appends pieces between `slots` and `labels`.
-export function drawMap(svg, p, W, MH) {
+export function drawMap(svg, p, W, MH, learned = []) {
   const pts = [...p.blocks.flatMap(lineOf), ...p.decoys.flatMap(lineOf), ...shapeOf(p.from), ...shapeOf(p.to)];
   const lons = pts.map((q) => q[0]);
   const lats = pts.map((q) => q[1]);
@@ -40,9 +43,22 @@ export function drawMap(svg, p, W, MH) {
   }
   const roads = svgEl('g', { 'clip-path': 'url(#fw-clip)', class: 'fw-roads' });
   for (const n of NETWORK) roads.append(svgEl('path', { d: pathD(lineOf(n).map(P)), class: 'fw-net' }));
+  // Signs for learned freeways that aren't on this route, where each crosses
+  // the middle of the map (one per freeway).
+  const onRoute = new Set(p.blocks.map((b) => b.ref));
+  const known = svgEl('g', { class: 'fw-known' });
+  const seen = new Set();
+  for (const n of NETWORK) {
+    if (onRoute.has(n.ref) || !learned.includes(n.ref) || seen.has(n.ref)) continue;
+    const inView = lineOf(n).map(P).filter(([x, y]) => x > 60 && x < W - 60 && y > 50 && y < MH - 50);
+    if (!inView.length) continue;
+    const mid = inView[Math.floor(inView.length / 2)];
+    known.append(shield(n.ref, mid, 0.7));
+    seen.add(n.ref);
+  }
   const slots = svgEl('g', { class: 'fw-slots' });
   const labels = svgEl('g', { class: 'fw-labels' });
-  svg.append(defs, base, roads, slots);
+  svg.append(defs, base, roads, known, slots);
 
   // --- labels: the two ends (clear of the route), then landmarks ---
   const centroid = (id) => {
@@ -91,7 +107,9 @@ export function drawMap(svg, p, W, MH) {
     const w = name.length * 14;
     if (cx - w / 2 < 6 || cx + w / 2 > W - 6 || cy < 20 || cy > MH - 20 || overlaps(cx - w / 2, cy - 14, w, 28)) continue;
     taken.push([cx - w / 2, cy - 14, cx + w / 2, cy + 14]);
-    labels.append(Object.assign(svgEl('text', { x: cx, y: cy + 8, class: 'fw-landmark', 'text-anchor': 'middle' }), { textContent: name }));
+    const t = Object.assign(svgEl('text', { x: cx, y: cy + 8, class: 'fw-landmark', 'text-anchor': 'middle' }), { textContent: name });
+    t.dataset.place = id; // (a hint naming the same place hides it)
+    labels.append(t);
     n++;
   }
 

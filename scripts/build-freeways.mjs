@@ -135,19 +135,52 @@ for (const id of PLACE_IDS) {
   if (vs.length) ramps.set(id, vs);
 }
 
+// A small binary min-heap of [cost, vertex] for the shortest-path searches.
+class Heap {
+  a = [];
+  get size() { return this.a.length; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    for (let i = a.length - 1; i > 0; ) {
+      const p = (i - 1) >> 1;
+      if (a[p][0] <= a[i][0]) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      for (let i = 0; ; ) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < a.length && a[l][0] < a[m][0]) m = l;
+        if (r < a.length && a[r][0] < a[m][0]) m = r;
+        if (m === i) break;
+        [a[m], a[i]] = [a[i], a[m]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
 // --- shortest paths: from any on-ramp in A to any in B, so the route uses
 // whichever freeways through the two places make the simplest drive ---
 function route(sources, targets) {
   const d = new Float64Array(V.length).fill(Infinity);
   const prev = new Int32Array(V.length).fill(-1);
-  const heap = [];
+  const heap = new Heap();
   for (const s of sources) { d[s] = 0; heap.push([0, s]); }
   const goal = new Set(targets);
   let end = -1;
-  while (heap.length) {
-    let bi = 0;
-    for (let i = 1; i < heap.length; i++) if (heap[i][0] < heap[bi][0]) bi = i;
-    const [du, u] = heap.splice(bi, 1)[0];
+  while (heap.size) {
+    const [du, u] = heap.pop();
     if (du > d[u]) continue;
     if (goal.has(u)) { end = u; break; }
     for (const [w, c] of adj[u]) if (du + c < d[w]) { d[w] = du + c; prev[w] = u; heap.push([d[w], w]); }
@@ -157,6 +190,26 @@ function route(sources, targets) {
   for (let v = end; v !== -1; v = prev[v]) path.push(v);
   return path.reverse();
 }
+
+// Cost from any of `sources` to every vertex (the full table, no early stop).
+function costFrom(sources) {
+  const d = new Float64Array(V.length).fill(Infinity);
+  const heap = new Heap();
+  for (const s of sources) { d[s] = 0; heap.push([0, s]); }
+  while (heap.size) {
+    const [du, u] = heap.pop();
+    if (du > d[u]) continue;
+    for (const [w, c] of adj[u]) if (du + c < d[w]) { d[w] = du + c; heap.push([d[w], w]); }
+  }
+  return d;
+}
+
+// Interchanges with a name locals use; the rest are "the 5/110 interchange".
+const NAMED = { ELA: 'the East LA Interchange', FOUR_LEVEL: 'the Four Level', HOLLYWOOD_SPLIT: 'the Hollywood Split', KELLOGG: 'the Kellogg Interchange' };
+const junctionAt = (pt) => {
+  const hit = Object.entries(JUNCTIONS).find(([, ll]) => dist(toXY(ll), pt) < 0.05);
+  return hit && NAMED[hit[0]];
+};
 
 // Does the drive double back (get further from the destination by more
 // than `slack` km than it has already been)? Locals don't drive those.
@@ -226,7 +279,9 @@ const puzzles = [];
 const seenPair = new Set();
 const uses = new Map();
 const cOf = (id) => centroid(placeRing.get(id));
-for (let tries = 0; tries < 60000 && puzzles.length < 90; tries++) {
+const WANT = { short: 52, long: 38 }; // 2-leg drives; 3–4-leg drives
+const count = { short: 0, long: 0 };
+for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < WANT.long); tries++) {
   const a = ends[Math.floor(rand() * ends.length)];
   const b = ends[Math.floor(rand() * ends.length)];
   if (a === b || seenPair.has([a, b].sort().join('|'))) continue;
@@ -236,6 +291,8 @@ for (let tries = 0; tries < 60000 && puzzles.length < 90; tries++) {
   const path = route(ramps.get(a), ramps.get(b));
   if (!path) continue;
   const blocks = blocksOf(path);
+  const kind = blocks.length >= 3 ? 'long' : 'short';
+  if (count[kind] >= WANT[kind]) continue;
   const total = blocks.reduce((s, x) => s + x.km, 0);
   const refs = new Set(blocks.map((x) => x.ref));
   if (blocks.length < 2 || blocks.length > 4) continue;
@@ -243,8 +300,19 @@ for (let tries = 0; tries < 60000 && puzzles.length < 90; tries++) {
   if (blocks.some((x) => x.km < 4)) continue; // no stub legs
   if (total > 1.45 * straight) continue;
   if (doublesBack(path, cOf(b))) continue;
-  const decoys = decoyFor(blocks, refs).slice(0, 3);
+  // Decoys must be truly wrong: no freeway that's part of a reasonable
+  // alternative drive (a local taking the 60 instead of the 10 isn't wrong).
+  const dA = costFrom(ramps.get(a));
+  const dB = costFrom(ramps.get(b));
+  const best = Math.min(...ramps.get(b).map((v) => dA[v]));
+  const viable = (ref) => {
+    let m = Infinity;
+    for (let v = 0; v < V.length; v++) if (V[v].ref === ref) m = Math.min(m, dA[v] + dB[v]);
+    return m <= best * 1.3;
+  };
+  const decoys = decoyFor(blocks, refs).filter((d) => !viable(d.ref)).slice(0, 3);
   if (decoys.length < 2) continue;
+  count[kind]++;
   seenPair.add([a, b].sort().join('|'));
   uses.set(a, (uses.get(a) || 0) + 1);
   uses.set(b, (uses.get(b) || 0) + 1);
@@ -265,12 +333,27 @@ for (let tries = 0; tries < 60000 && puzzles.length < 90; tries++) {
     from: a,
     to: b,
     km: Math.round(total),
-    blocks: blocks.map((x) => ({ ref: x.ref, line: enc(x.pts), via: via(x.pts) })),
+    blocks: blocks.map((x, k) => ({
+      ref: x.ref,
+      line: enc(x.pts),
+      via: via(x.pts),
+      ...(k && junctionAt(x.pts[0]) ? { at: junctionAt(x.pts[0]) } : {}),
+    })),
     decoys: decoys.map((x) => ({ ref: x.ref, line: enc(x.pts) })),
   });
 }
-// Easier (fewer blocks) first.
-puzzles.sort((p, q) => p.blocks.length - q.blocks.length);
+// Order: a few 2-leg drives to learn on, then alternate 2-leg and longer
+// ones so it doesn't plateau.
+{
+  const short = puzzles.filter((p) => p.blocks.length === 2);
+  const long = puzzles.filter((p) => p.blocks.length > 2).sort((p, q) => p.blocks.length - q.blocks.length);
+  const ordered = short.splice(0, 10);
+  while (short.length || long.length) {
+    if (short.length) ordered.push(short.shift());
+    if (long.length) ordered.push(long.shift());
+  }
+  puzzles.splice(0, puzzles.length, ...ordered);
+}
 
 const usedRefs = new Set(puzzles.flatMap((p) => [...p.blocks, ...p.decoys].map((x) => x.ref)));
 const out = {

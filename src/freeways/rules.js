@@ -13,8 +13,18 @@ export function nextIndex(isSolved, from, n, idAt) {
 // How much the board helps. The first drives dash each leg's road (a naming
 // game: which freeway is this road?); later ones only park the car where the
 // leg starts, so you find the road too.
+// In between, a 'bridge' tier dashes just the first stretch of each leg —
+// which way to head — so the step to finding roads yourself isn't a cliff.
 export const GUIDED_DRIVES = 8;
-export const tierOf = (index) => (index < GUIDED_DRIVES ? 'guided' : 'open');
+export const BRIDGE_DRIVES = 16;
+export const tierOf = (index) => (index < GUIDED_DRIVES ? 'guided' : index < BRIDGE_DRIVES ? 'bridge' : 'open');
+
+// "northeast", "south"… from a leg's start to its end (screen coords: y down).
+export function compass([x0, y0], [x1, y1]) {
+  const deg = (Math.atan2(-(y1 - y0), x1 - x0) * 180) / Math.PI; // 0 = east, 90 = north
+  const names = ['east', 'northeast', 'north', 'northwest', 'west', 'southwest', 'south', 'southeast'];
+  return names[((Math.round(deg / 45) % 8) + 8) % 8];
+}
 
 // The next leg to place: the first unplaced one in driving order.
 export const nextLeg = (placed, n) => {

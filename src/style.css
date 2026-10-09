@@ -1695,8 +1695,8 @@ body {
 }
 .fw-place {
   fill: #f4f5f8;
-  stroke: #d9dee7;
-  stroke-width: 1.2;
+  stroke: #e6e9ef;
+  stroke-width: 1;
 }
 .fw-place.from {
   fill: #a7e3c9;
@@ -1823,8 +1823,8 @@ body {
 }
 .fw-net {
   fill: none;
-  stroke: #c5ccd8;
-  stroke-width: 5px;
+  stroke: #aeb8c8;
+  stroke-width: 6px;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -1897,7 +1897,7 @@ body {
   animation: fw-slot 1.4s ease-in-out infinite;
 }
 @keyframes fw-slot {
-  50% { opacity: 0.4; }
+  50% { opacity: 0.7; }
 }
 .fw-svg.nudge .fw-slot,
 .fw-svg.nudge .fw-car circle {
@@ -1954,4 +1954,17 @@ body {
   .fw-svg.nudge .fw-car circle {
     animation: none;
   }
+}
+.fw-slot.stub {
+  stroke-dasharray: 10 8;
+}
+.fw-preview.decoy {
+  stroke: #fca5a5;
+}
+.fw-recap-at {
+  font: 600 20px system-ui, sans-serif;
+  fill: var(--text-dim);
+}
+.fw-known .fw-shield {
+  opacity: 0.85;
 }

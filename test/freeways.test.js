@@ -10,9 +10,10 @@ const { nodes } = JSON.parse(readFileSync('src/data/hierarchy.json', 'utf8'));
 const { refs, puzzles } = JSON.parse(readFileSync('src/data/freeways.json', 'utf8'));
 const km = ([a, b], [c, d]) => Math.hypot((a - c) * 92.3, (b - d) * 110.6);
 
-test('there are freeway puzzles, easier first', () => {
-  assert.ok(puzzles.length >= 40);
-  for (let i = 1; i < puzzles.length; i++) assert.ok(puzzles[i].blocks.length >= puzzles[i - 1].blocks.length);
+test('there are freeway puzzles, starting with 2-leg drives to learn on', () => {
+  assert.ok(puzzles.length >= 60);
+  for (let i = 0; i < 8; i++) assert.equal(puzzles[i].blocks.length, 2);
+  assert.ok(puzzles.filter((p) => p.blocks.length >= 3).length >= 20);
 });
 
 test('every drive joins two real places with 2–4 freeways and decoys', () => {
@@ -43,7 +44,7 @@ test('each drive is continuous: one freeway ends where the next begins', () => {
 });
 
 // --- the pure rules ---
-import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, magnet, legHint, GUIDED_DRIVES } from '../src/freeways/rules.js';
+import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, magnet, legHint, compass, GUIDED_DRIVES, BRIDGE_DRIVES } from '../src/freeways/rules.js';
 
 test('next drive: first unsolved after the current one, wrapping', () => {
   const solved = new Set(['b', 'c']);
@@ -76,7 +77,11 @@ test('nearest point on a road, and magnetism toward it', () => {
 test('help escalates one step per miss; early drives are guided', () => {
   assert.deepEqual([0, 1, 2, 3, 7].map(legHint), [null, 'via', 'slot', 'name', 'name']);
   assert.equal(tierOf(0), 'guided');
-  assert.equal(tierOf(GUIDED_DRIVES), 'open');
+  assert.equal(tierOf(GUIDED_DRIVES), 'bridge');
+  assert.equal(tierOf(BRIDGE_DRIVES), 'open');
+  assert.equal(compass([0, 0], [10, 0]), 'east');
+  assert.equal(compass([0, 0], [10, -10]), 'northeast');
+  assert.equal(compass([0, 0], [0, 10]), 'south');
 });
 
 test('no stub legs: every leg is a real stretch of freeway', () => {
