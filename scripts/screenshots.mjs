@@ -409,8 +409,8 @@ await page.getByRole('button', { name: 'Home' }).click();
 await page.waitForTimeout(300);
 await shot('home-campaign-started');
 
-// Freeways (prototype): a decoy bounces, misses escalate to a ghost, placing
-// the route drives the car.
+// Freeways (prototype): leg by leg. A decoy bounces, misses escalate to a
+// pulsing right piece, placing each leg drives the car on.
 {
   await page.locator('.home-play-3').click();
   await page.waitForTimeout(500);
@@ -440,24 +440,28 @@ await shot('home-campaign-started');
     await page.mouse.up();
     await page.waitForTimeout(450);
   };
-  const refs = (route) => page.$$eval(`.fw-block[data-route="${route}"]`, (gs) => gs.map((g) => g.dataset.ref));
+  const refs = (route) =>
+    page.$$eval(`.fw-block[data-route="${route}"]`, (gs) => gs.sort((a, b) => a.dataset.leg - b.dataset.leg).map((g) => g.dataset.ref));
   const route = await refs('yes');
   const decoys = await refs('no');
   if (route.length < 2 || !decoys.length) fail(`freeways: odd puzzle (${route} / ${decoys})`);
   // A decoy dropped right on the map: bounces back with a "not this one".
   await dragPiece(decoys[0], (await geo(route[0])).home);
-  if (!/Not this one/.test(await page.locator('.fw-msg').textContent())) fail('freeways: decoy not rejected');
+  if (!/not this road|Not quite|isn’t on this drive/.test(await page.locator('.fw-msg').textContent())) fail('freeways: decoy not rejected');
   await shot('freeways-decoy');
-  // Three misses on one piece → its dashed outline.
+  // More misses on the first leg → the right piece pulses and gets named.
   const svgBox = await page.locator('.fw-svg').boundingBox();
-  for (let i = 0; i < 3; i++) await dragPiece(route[0], [svgBox.x + 30, svgBox.y + 30]);
-  if (!(await page.locator('.fw-ghost').count())) fail('freeways: no ghost after 3 misses');
-  await shot('freeways-ghost-hint');
+  for (let i = 0; i < 2; i++) await dragPiece(route[0], [svgBox.x + 30, svgBox.y + 30]);
+  if (!(await page.locator('.fw-block.pulse').count())) fail('freeways: no pulsing piece after 3 misses');
+  await shot('freeways-hint-named');
   for (const ref of route) {
     await dragPiece(ref, (await geo(ref)).home);
-    if (ref === route[0]) await shot('freeways-first-placed');
+    if (ref === route[0]) {
+      await page.waitForTimeout(2600);
+      await shot('freeways-first-leg-driven');
+    }
   }
-  await page.waitForTimeout(4800);
+  await page.waitForTimeout(7000);
   if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: route placed but not solved');
   await shot('freeways-solved');
   await page.getByRole('button', { name: /Next drive/ }).click();

@@ -1908,3 +1908,54 @@ body {
     animation: none;
   }
 }
+.fw-net {
+  fill: none;
+  stroke: #c5ccd8;
+  stroke-width: 5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.fw-slots {
+  pointer-events: none;
+}
+.fw-slot {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 7px;
+  stroke-dasharray: 12 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  animation: fw-ghost 1.4s ease-in-out infinite;
+}
+.fw-slot-dot {
+  fill: var(--accent);
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+.fw-slots.nudge .fw-slot,
+.fw-slots.nudge .fw-slot-dot {
+  animation: fw-nudge 0.6s ease-in-out 4;
+}
+@keyframes fw-nudge {
+  50% { stroke-width: 14px; opacity: 0.5; }
+}
+.fw-block.near .fw-casing {
+  stroke: #fde68a;
+  stroke-width: 18px;
+}
+.fw-block.pulse {
+  animation: fw-pulse 1s ease-in-out infinite;
+}
+@keyframes fw-pulse {
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fw-slot,
+  .fw-block.pulse,
+  .fw-slots.nudge .fw-slot,
+  .fw-slots.nudge .fw-slot-dot {
+    animation: none;
+  }
+}

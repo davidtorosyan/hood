@@ -260,6 +260,9 @@ const usedRefs = new Set(puzzles.flatMap((p) => [...p.blocks, ...p.decoys].map((
 const out = {
   source: 'Hand-traced schematic (scripts/freeway-routes.mjs): right neighborhoods and interchanges, not survey lines.',
   refs: Object.fromEntries(Object.entries(REFS).filter(([r]) => usedRefs.has(r))),
+  // Every freeway, for the map's faint road network (unlabeled — the shields
+  // are what you place).
+  network: lines.map((l) => ({ ref: l.ref, line: encodeRing(l.pts.map(toLL)) })),
   puzzles,
 };
 writeFileSync('src/data/freeways.json', JSON.stringify(out));

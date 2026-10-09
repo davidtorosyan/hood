@@ -41,3 +41,37 @@ test('each drive is continuous: one freeway ends where the next begins', () => {
     }
   }
 });
+
+// --- the pure rules ---
+import { nextIndex, tierOf, nextLeg, drivable, pull, near, legHint, GUIDED_DRIVES } from '../src/freeways/rules.js';
+
+test('next drive: first unsolved after the current one, wrapping', () => {
+  const solved = new Set(['b', 'c']);
+  const ids = ['a', 'b', 'c', 'd'];
+  const next = (from) => nextIndex((id) => solved.has(id), from, ids.length, (i) => ids[i]);
+  assert.equal(next(-1), 0);
+  assert.equal(next(0), 3);
+  assert.equal(next(3), 0);
+});
+
+test('legs go in driving order; the car drives only a placed run from the start', () => {
+  assert.equal(nextLeg(new Set(), 3), 0);
+  assert.equal(nextLeg(new Set([0, 2]), 3), 1);
+  assert.equal(drivable(new Set([1, 2]), 3), 0);
+  assert.equal(drivable(new Set([0, 1, 2]), 3), 3);
+});
+
+test('magnetism pulls in near the spot, never jumps at the edge', () => {
+  assert.deepEqual(pull(300, 0, 150), [300, 0]);
+  const [edge] = pull(149.9, 0, 150);
+  assert.ok(Math.abs(edge - 149.9) < 1);
+  const [close] = pull(30, 0, 150);
+  assert.ok(close < 30 && close > 0);
+  assert.ok(near(100, 0, 150) && !near(200, 0, 150));
+});
+
+test('help escalates one step per miss; early drives are guided', () => {
+  assert.deepEqual([0, 1, 2, 3, 7].map(legHint), [null, 'via', 'slot', 'name', 'name']);
+  assert.equal(tierOf(0), 'guided');
+  assert.equal(tierOf(GUIDED_DRIVES), 'open');
+});
