@@ -21,7 +21,7 @@ export default [
   },
   {
     // The harness body runs inside page.evaluate(…) in the browser too.
-    files: ['scripts/screenshots.mjs'],
+    files: ['scripts/screenshots.mjs', 'scripts/playtest.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {
