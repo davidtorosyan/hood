@@ -16,6 +16,11 @@ export function nextIndex(isSolved, from, n, idAt) {
 export const ROADS_DRIVES = 2; // a short tutorial; testers found road-following too easy
 export const tierOf = (index) => (index < ROADS_DRIVES ? 'roads' : 'blind');
 
+// How close (board units) a carried freeway must be to click in: forgiving
+// while you learn the game, tighter as you go (testers found a fixed
+// tolerance too strict at first and too loose later). ~34 → 28 → 23px.
+export const acceptFor = (index) => (index < 6 ? 80 : index < 20 ? 66 : 55);
+
 // "northeast", "south"… from a leg's start to its end (screen coords: y down).
 export function compass([x0, y0], [x1, y1]) {
   const deg = (Math.atan2(-(y1 - y0), x1 - x0) * 180) / Math.PI; // 0 = east, 90 = north

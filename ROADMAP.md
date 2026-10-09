@@ -81,6 +81,14 @@ Items are checked off as they land on `main`, which deploys straight to GitHub P
   - Learned signs that carry over between drives.
   - Realistic routes with fair decoys.
   - Named interchanges.
+- [x] **v3 after Dave: "no decoys", "I like seeing the shapes".** Four more playtest rounds:
+  - The route is given as directions.
+  - Picking up a sign unfolds the whole freeway, and you line it up with where it runs.
+  - The glow is honest.
+  - The tolerance ramps up from forgiving to tighter.
+  - A grey-road tutorial, then hidden roads.
+  - Learned freeways stay on the map.
+  - Hints go direction → places → outline.
 - [ ] **Real freeway geometry.** The schematic is hand-traced to about 1 km. Swap in
       OpenStreetMap motorways once the build can reach Overpass. The build only needs the
       same named interchanges.

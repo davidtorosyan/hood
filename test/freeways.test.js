@@ -43,7 +43,7 @@ test('each drive is continuous: one freeway ends where the next begins', () => {
 });
 
 // --- the pure rules ---
-import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, pull, placeHint, compass, ROADS_DRIVES } from '../src/freeways/rules.js';
+import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, pull, placeHint, compass, acceptFor, ROADS_DRIVES } from '../src/freeways/rules.js';
 
 test('next drive: first unsolved after the current one, wrapping', () => {
   const solved = new Set(['b', 'c']);
@@ -80,6 +80,7 @@ test('help escalates one step per miss; early drives draw the roads', () => {
   assert.deepEqual([0, 1, 2, 3, 6].map(placeHint), [null, 'dir', 'via', 'ghost', 'ghost']);
   assert.equal(tierOf(0), 'roads');
   assert.equal(tierOf(ROADS_DRIVES), 'blind');
+  assert.ok(acceptFor(0) > acceptFor(10) && acceptFor(10) > acceptFor(40));
   assert.equal(compass([0, 0], [10, 0]), 'east');
   assert.equal(compass([0, 0], [10, -10]), 'northeast');
   assert.equal(compass([0, 0], [0, 10]), 'south');

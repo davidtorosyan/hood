@@ -74,18 +74,21 @@ export function makePieces(legs, tileLayer, shapeLayer, [tx0, ty0, tx1, ty1], wh
     const inView = lines.flat().filter(([x, y]) => x > vx0 && x < vx1 && y > vy0 && y < vy1);
     const pool = inView.length ? inView : leg.pts;
     const center = pool.reduce((a, q) => [a[0] + q[0] / pool.length, a[1] + q[1] / pool.length], [0, 0]);
-    // Its sign sits on the freeway where it's nearest the middle of the map.
-    const vm = [(vx0 + vx1) / 2, (vy0 + vy1) / 2];
-    const signAt = pool.reduce((b, q) => (Math.hypot(q[0] - vm[0], q[1] - vm[1]) < Math.hypot(b[0] - vm[0], b[1] - vm[1]) ? q : b));
-    const mid = along(leg.pts, 0.5);
+    const mid0 = along(leg.pts, 0.5);
     // Where you hold it: the point on the freeway nearest this drive's stretch.
     const all = lines.flat();
-    const grip = all.length ? all.reduce((b, q) => (Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.hypot(b[0] - mid[0], b[1] - mid[1]) ? q : b)) : mid;
+    const grip = all.length ? all.reduce((b, q) => (Math.hypot(q[0] - mid0[0], q[1] - mid0[1]) < Math.hypot(b[0] - mid0[0], b[1] - mid0[1]) ? q : b)) : mid0;
+    // Its sign sits on the freeway where it's nearest the middle of the map…
+    const vm = [(vx0 + vx1) / 2, (vy0 + vy1) / 2];
+    const signAt = pool.reduce((b, q) => (Math.hypot(q[0] - vm[0], q[1] - vm[1]) < Math.hypot(b[0] - vm[0], b[1] - vm[1]) ? q : b));
+    const mid = mid0;
     const d = 'M' + leg.pts.map(fmt).join('L');
     const shape = svgEl('g', { class: `fw-shape ${REFS[leg.ref]?.kind || 'CA'}` });
     shape.dataset.ref = leg.ref;
     for (const l of lines) shape.append(svgEl('path', { d: 'M' + l.map(fmt).join('L'), class: 'fw-shape-whole' }));
-    const sign = shield(leg.ref, signAt, 0.8);
+    // …but not on the grip (a thumb would hide the number): ~200 units along.
+    const offGrip = pool.reduce((b, q) => (Math.abs(Math.hypot(q[0] - grip[0], q[1] - grip[1]) - 200) < Math.abs(Math.hypot(b[0] - grip[0], b[1] - grip[1]) - 200) ? q : b), signAt);
+    const sign = shield(leg.ref, offGrip, 0.8);
     sign.classList.add('fw-shape-sign');
     shape.append(svgEl('path', { d, class: 'fw-shape-casing' }), svgEl('path', { d, class: 'fw-shape-road' }), sign, svgEl('circle', { cx: grip[0], cy: grip[1], r: 13, class: 'fw-grip' }));
     shapeLayer.append(shape);

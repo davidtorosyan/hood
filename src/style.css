@@ -2017,7 +2017,7 @@ body {
   stroke-width: 9px;
 }
 .fw-shape.I .fw-shape-road { stroke: #1f4fbf; }
-.fw-shape.US .fw-shape-road { stroke: #1b2230; }
+.fw-shape.US .fw-shape-road { stroke: #475569; }
 .fw-shape.CA .fw-shape-road { stroke: #15803d; }
 .fw-shape.held {
   filter: drop-shadow(0 6px 6px rgba(27, 34, 48, 0.35));
@@ -2047,7 +2047,7 @@ body {
   opacity: 0.55;
 }
 .fw-shape.I .fw-shape-whole { stroke: #1f4fbf; }
-.fw-shape.US .fw-shape-whole { stroke: #1b2230; }
+.fw-shape.US .fw-shape-whole { stroke: #475569; }
 .fw-shape.CA .fw-shape-whole { stroke: #15803d; }
 .fw-shape.placed .fw-shape-whole {
   opacity: 0.22;

@@ -17,19 +17,18 @@ import { Scheduler } from '../jigsaw/scheduler.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
 import {
-  REFS, PUZZLES, NETWORK, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, placeHint, pull, compass, nearestOnLine,
+  REFS, PUZZLES, NETWORK, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, placeHint, pull, compass, nearestOnLine, acceptFor,
 } from './puzzles.js';
 import { drawMap, pathD } from './map.js';
-import { makePieces, moveShape, shield } from './pieces.js';
+import { makePieces, moveShape, shield, along } from './pieces.js';
 
 const book = store.freeways;
 const W = 1000;
 const MAGNET = 200; // board units: within this of its spot a held shape is pulled in
-// A drop counts when the freeway is within this of its true position (board
-// units, ~34px on a phone — the same on every drive). The yellow glow uses
-// the same test, so it always means "let go here and it clicks in"; inside
-// WARM × that, a softer amber glow says "almost — nudge it".
-const ACCEPT = 80;
+// A drop counts when the freeway is within acceptFor(drive) of its true
+// position (tighter as you go). The solid glow uses the same test, so it
+// always means "let go here and it clicks in"; inside WARM × that, a dashed
+// amber glow says "almost — nudge it" (and a miss there says "Close").
 const WARM = 1.9;
 const IDLE_MS = 12000;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -65,7 +64,8 @@ export function renderFreeways(app, { onBack }) {
     const msg = el('div', { class: 'fw-msg', role: 'status', 'aria-live': 'polite' }, '');
     const footer = el('div', { class: 'fw-foot' });
     const svgWrap = el('div', { class: 'fw-board' });
-    const countEl = el('span', { class: 'fw-count' }, `${solvedN()} / ${PUZZLES.length} drives`);
+    const tally = () => `${solvedN()} / ${PUZZLES.length} drives · ${(book.get('learned') || []).length} freeways learned`;
+    const countEl = el('span', { class: 'fw-count' }, tally());
     const subEl = el('div', { class: 'fw-ask-sub' }, tier === 'roads'
       ? 'Pick up a freeway to see its whole shape, then line it up with its grey road.'
       : 'Line each freeway up with the places it runs through.');
@@ -118,7 +118,7 @@ export function renderFreeways(app, { onBack }) {
     const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
     const wholeOf = (ref) => NETWORK.filter((n) => n.ref === ref).map((n) => lineOf(n).map(P));
     const pieces = makePieces(p.blocks.map((b, leg) => ({ ...b, pts: legPts(leg) })), tileLayer, dragLayer, TRAY, wholeOf, [0, 0, W, MH]);
-    const accept = ACCEPT;
+    const accept = acceptFor(run.index);
     for (const x of pieces) {
       x.tile.dataset.goal = x.grip.map((v) => v.toFixed(1)).join(','); // (harness only: where the grip goes)
       if (run.placed.has(x.leg)) layDown(x, false);
@@ -139,9 +139,22 @@ export function renderFreeways(app, { onBack }) {
       x.tile.classList.add('used');
       x.shape.style.display = '';
       x.shape.classList.add('placed');
-      x.shape.classList.remove('near', 'held');
+      x.shape.classList.remove('near', 'held', 'warm');
       placedLayer.append(x.shape);
       moveShape(x, 0, 0, animate ? 180 : 0);
+      // Its sign moves onto this drive's stretch, clear of labels, the car's
+      // stops and other signs.
+      const busy = [...labels.querySelectorAll('.fw-landmark, .fw-end rect')].map((n) => n.getBBox())
+        .concat([...placedLayer.querySelectorAll('.fw-shape-sign')].filter((n) => !x.shape.contains(n)).map((n) => n.getBBox()));
+      const stops = p.blocks.map((_, l) => legPts(l)[0]).concat([legPts(legs - 1).at(-1)]);
+      const clash = ([sx, sy]) =>
+        busy.filter((b) => sx + 30 > b.x && sx - 30 < b.x + b.width && sy + 22 > b.y && sy - 22 < b.y + b.height).length * 10 +
+        stops.filter(([cx, cy]) => Math.hypot(cx - sx, cy - sy) < 45).length * 10;
+      const spot = [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85].map((t) => along(x.pts, t)).reduce((b, q) => (clash(q) < clash(b) ? q : b));
+      x.shape.querySelector('.fw-shape-sign')?.remove();
+      const sign = shield(x.ref, spot, 0.8);
+      sign.classList.add('fw-shape-sign');
+      x.shape.append(sign);
     }
 
     const say1 = (text, tone = '') => {
@@ -304,7 +317,7 @@ export function renderFreeways(app, { onBack }) {
       armIdle();
       run.misses[x.leg] = (run.misses[x.leg] || 0) + 1;
       const dir = compass([x.center[0] + dx, x.center[1] + dy], x.center);
-      const close = Math.hypot(dx, dy) < 2.5 * accept;
+      const close = Math.hypot(dx, dy) < WARM * accept; // same as the amber glow
       const lead = close ? `Close — ${say(x.ref)} runs a little further ${dir}.` : `Not quite — ${say(x.ref)} runs further ${dir}.`;
       const help = placeHint(run.misses[x.leg]);
       if (help === 'dir') say1(lead, 'warn');
@@ -384,7 +397,7 @@ export function renderFreeways(app, { onBack }) {
       sched.cancel(idle);
       book.markDone(idOf(p), run.shownLegs >= legs ? 'skipped' : 'solved');
       countEvent(run.shownLegs >= legs ? 'freeway-shown' : 'freeway-solved');
-      countEl.textContent = `${solvedN()} / ${PUZZLES.length} drives`;
+      countEl.textContent = tally();
       subEl.textContent = 'Nice driving! Your route is below.';
       refreshHead();
       recap();
