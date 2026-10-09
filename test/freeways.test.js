@@ -15,14 +15,14 @@ test('there are freeway puzzles, easier first', () => {
   for (let i = 1; i < puzzles.length; i++) assert.ok(puzzles[i].blocks.length >= puzzles[i - 1].blocks.length);
 });
 
-test('every drive joins two real places with 2–4 freeways and a decoy', () => {
+test('every drive joins two real places with 2–4 freeways and decoys', () => {
   const pairs = new Set();
   for (const p of puzzles) {
     const name = `${p.from} → ${p.to}`;
     assert.ok(nodes[p.from] && nodes[p.to], `${name}: unknown place`);
     assert.ok(!nodes[p.from].children && !nodes[p.to].children, `${name}: ends must be places`);
     assert.ok(p.blocks.length >= 2 && p.blocks.length <= 4, `${name}: ${p.blocks.length} blocks`);
-    assert.ok(p.decoys.length >= 1, `${name}: no decoy`);
+    assert.ok(p.decoys.length >= 2, `${name}: needs 2+ decoys (so the last leg isn't a giveaway)`);
     const onRoute = new Set(p.blocks.map((b) => b.ref));
     assert.equal(onRoute.size, p.blocks.length, `${name}: a freeway repeats`);
     for (const b of [...p.blocks, ...p.decoys]) assert.ok(refs[b.ref], `${name}: unknown freeway ${b.ref}`);
@@ -43,7 +43,7 @@ test('each drive is continuous: one freeway ends where the next begins', () => {
 });
 
 // --- the pure rules ---
-import { nextIndex, tierOf, nextLeg, drivable, pull, near, legHint, GUIDED_DRIVES } from '../src/freeways/rules.js';
+import { nextIndex, tierOf, nextLeg, drivable, nearestOnLine, magnet, legHint, GUIDED_DRIVES } from '../src/freeways/rules.js';
 
 test('next drive: first unsolved after the current one, wrapping', () => {
   const solved = new Set(['b', 'c']);
@@ -61,17 +61,30 @@ test('legs go in driving order; the car drives only a placed run from the start'
   assert.equal(drivable(new Set([0, 1, 2]), 3), 3);
 });
 
-test('magnetism pulls in near the spot, never jumps at the edge', () => {
-  assert.deepEqual(pull(300, 0, 150), [300, 0]);
-  const [edge] = pull(149.9, 0, 150);
-  assert.ok(Math.abs(edge - 149.9) < 1);
-  const [close] = pull(30, 0, 150);
-  assert.ok(close < 30 && close > 0);
-  assert.ok(near(100, 0, 150) && !near(200, 0, 150));
+test('nearest point on a road, and magnetism toward it', () => {
+  const road = [[0, 0], [100, 0], [100, 100]];
+  const a = nearestOnLine([50, 30], road);
+  assert.equal(a.d, 30);
+  assert.deepEqual(a.point, [50, 0]);
+  assert.equal(nearestOnLine([130, 50], road).d, 30);
+  // Outside the radius nothing moves; inside, it slides toward the road.
+  assert.deepEqual(magnet([50, 200], [50, 0], 200, 90), [50, 200]);
+  const [, y] = magnet([50, 30], [50, 0], 30, 90);
+  assert.ok(y < 30 && y > 0);
 });
 
 test('help escalates one step per miss; early drives are guided', () => {
   assert.deepEqual([0, 1, 2, 3, 7].map(legHint), [null, 'via', 'slot', 'name', 'name']);
   assert.equal(tierOf(0), 'guided');
   assert.equal(tierOf(GUIDED_DRIVES), 'open');
+});
+
+test('no stub legs: every leg is a real stretch of freeway', () => {
+  for (const p of puzzles) {
+    for (const b of p.blocks) {
+      const pts = decodeRing(b.line);
+      const len = pts.slice(1).reduce((s, q, i) => s + km(pts[i], q), 0);
+      assert.ok(len > 3.5, `${p.from} → ${p.to}: the ${b.ref} leg is only ${len.toFixed(1)} km`);
+    }
+  }
 });

@@ -1,32 +1,51 @@
-// Freeways (prototype): "Drive from Encino to Pico-Union." The map shows the
-// two places and the freeway network as unlabeled grey roads. The tray holds
-// freeway pieces — the 101, the 405, the 10 — plus a decoy. You build the
-// drive leg by leg, in driving order: "Leg 1 of 3 · Leaving Encino — which
-// freeway?" Pieces are pulled in (magnetism) near their road and click in;
-// the car drives each leg as you place it.
+// Freeways (prototype): "Drive from Echo Park to Downey." The map shows the
+// two places and the freeway network as unlabeled grey roads; the car waits
+// at the start. The tray holds freeway SIGNS on identical road tiles — the
+// right ones plus decoys — so you choose by name, the thing to learn. You
+// build the drive leg by leg ("Leg 1 of 2 · Leaving Echo Park — which
+// freeway?"): drag a sign onto its road; near the road it's pulled in
+// (magnetism), on it, the road lights up and the car drives that leg.
 //
-// Early drives outline the current leg's road (a matching game); later ones
-// only mark where the leg starts. Misses escalate help one step at a time.
-// Every deferred effect goes through a Scheduler, so leaving cancels it all.
+// Early drives dash the current leg's road (just name it); later ones only
+// park the car where it starts (find the road too). Misses escalate help one
+// step at a time; Show me does one leg for you. Every deferred effect goes
+// through a Scheduler, so leaving cancels it all.
 import { el, svgEl, clear } from '../ui/dom.js';
-import { labelOf } from '../jigsaw/tree.js';
+import { labelOf, shapeOf } from '../jigsaw/tree.js';
 import { Scheduler } from '../jigsaw/scheduler.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
-import { REFS, PUZZLES, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, pull, near, legHint } from './puzzles.js';
+import {
+  REFS, PUZZLES, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, legHint, nearestOnLine, magnet,
+} from './puzzles.js';
 import { drawMap, pathD } from './map.js';
-import { makePieces, moveTo, goHome, shield } from './pieces.js';
+import { makeTiles, moveTile, goHome, shield } from './pieces.js';
 
 const book = store.freeways;
 const W = 1000;
-const MAGNET = 150; // board units: inside this, a held piece is pulled in, and a drop clicks
+const MAGNET = 90; // board units from the road: inside it a sign is pulled in, and a drop counts
 const IDLE_MS = 10000;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const NUM = ['No', 'One', 'Two', 'Three', 'Four'];
 
 let live = null;
 export function unmountFreeways() {
   live?.dispose();
   live = null;
+}
+
+// The point a fraction `t` of the way along a polyline (by length).
+function along(pts, t) {
+  const seg = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+  let left = seg.reduce((a, b) => a + b, 0) * t;
+  for (let i = 0; i < seg.length; i++) {
+    if (left <= seg[i]) {
+      const k = seg[i] ? left / seg[i] : 0;
+      return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k];
+    }
+    left -= seg[i];
+  }
+  return pts.at(-1);
 }
 
 // onBack: home.
@@ -54,20 +73,21 @@ export function renderFreeways(app, { onBack }) {
     const msg = el('div', { class: 'fw-msg', role: 'status', 'aria-live': 'polite' }, '');
     const footer = el('div', { class: 'fw-foot' });
     const svgWrap = el('div', { class: 'fw-board' });
+    let countEl = null;
     clear(app);
     app.append(
       el('div', { class: 'screen fw-screen' }, [
         el('div', { class: 'topbar' }, [
           el('button', { class: 'icon-btn', onClick: onBack, 'aria-label': 'Home' }, '⌂'),
           el('span', { class: 'topbar-title' }, 'Freeways'),
-          el('span', { class: 'fw-count' }, `${solvedN} / ${PUZZLES.length} drives`),
+          (countEl = el('span', { class: 'fw-count' }, `${solvedN} / ${PUZZLES.length} drives`)),
         ]),
         el('div', { class: 'fw-ask' }, [
           el('div', { class: 'fw-ask-line' }, ['Drive from ', el('b', { class: 'fw-from' }, from), ' to ', el('b', { class: 'fw-to' }, to)]),
           el('div', { class: 'fw-ask-sub' },
             tier === 'guided'
-              ? 'Build it leg by leg: drag the right freeway onto the dashed road.'
-              : 'Build it leg by leg: drag each freeway onto its road, starting at the dot.'),
+              ? 'Which freeway is the dashed road? Drag its sign onto it.'
+              : 'No dashed road now: drag each sign onto its road, starting from the 🚗.'),
         ]),
         svgWrap,
         msg,
@@ -75,72 +95,95 @@ export function renderFreeways(app, { onBack }) {
       ]),
     );
 
-    // Size the board to the space it has (phone portrait, desktop, rotated).
-    const box = svgWrap.getBoundingClientRect();
-    const H = Math.round(W * Math.max(0.9, Math.min(2.2, box.height / Math.max(1, box.width))));
-    const MH = Math.round(H * 0.6);
-    const TRAY = [16, MH + 18, W - 16, H - 8];
-
-    const svg = svgEl('svg', { class: 'fw-svg', viewBox: `0 0 ${W} ${H}`, role: 'application', 'aria-label': `Map: drive from ${from} to ${to}` });
-    const { P, slots, labels } = drawMap(svg, p, W, MH);
-
-    const trayHead = Object.assign(svgEl('text', { x: TRAY[0] + 26, y: TRAY[1] + 42, class: 'fw-tray-label' }), { textContent: '' });
-    svg.append(
-      svgEl('rect', { x: TRAY[0], y: TRAY[1], width: TRAY[2] - TRAY[0], height: TRAY[3] - TRAY[1], rx: 26, class: 'fw-tray' }),
-      trayHead,
-    );
-    const blockLayer = svgEl('g');
-    const carLayer = svgEl('g');
-    svg.append(blockLayer, carLayer, labels);
-
-    // Pieces: route legs + decoys, in a stable shuffled tray order.
-    let seed = run.index * 7919 + 13;
-    const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+    // Size the board to the space it has; the tray only needs room for tiles.
     const items = [
       ...p.blocks.map((b, leg) => ({ ...b, route: true, leg })),
       ...p.decoys.map((b) => ({ ...b, route: false, leg: -1 })),
-    ].map((x) => [x, rnd()]).sort((a, b) => a[1] - b[1]).map(([x]) => x);
-    const pieces = makePieces(items, P, blockLayer, TRAY);
-    const pieceForLeg = (leg) => pieces.find((x) => x.leg === leg);
-    for (const x of pieces) {
-      if (x.route && run.placed.has(x.leg)) {
-        moveTo(x, 0, 0, 1);
-        x.g.classList.add('placed');
-      } else goHome(x, 0);
-    }
+    ];
+    const rows = Math.ceil(items.length / 3);
+    const box = svgWrap.getBoundingClientRect();
+    const H = Math.round(W * Math.max(0.9, Math.min(2.2, box.height / Math.max(1, box.width))));
+    const trayH = 70 + rows * 104;
+    const MH = H - trayH - 18;
+    const TRAY = [16, MH + 14, W - 16, H - 4];
+
+    const svg = svgEl('svg', { class: 'fw-svg', viewBox: `0 0 ${W} ${H}`, role: 'application', 'aria-label': `Map: drive from ${from} to ${to}` });
+    const { P, slots, labels } = drawMap(svg, p, W, MH);
+    const built = svgEl('g', { class: 'fw-builtroads' });
+    const carLayer = svgEl('g');
+    const hintLayer = svgEl('g', { class: 'fw-hints' });
+    const trayHead = svgEl('text', { x: TRAY[0] + 26, y: TRAY[1] + 40, class: 'fw-tray-label' });
+    const tileLayer = svgEl('g');
+    svg.append(
+      built,
+      carLayer,
+      labels,
+      hintLayer,
+      svgEl('rect', { x: TRAY[0], y: TRAY[1], width: TRAY[2] - TRAY[0], height: TRAY[3] - TRAY[1], rx: 26, class: 'fw-tray' }),
+      trayHead,
+      tileLayer,
+    );
+
+    // Tiles in a stable shuffled order.
+    let seed = run.index * 7919 + 13;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+    const order = items.map((x) => [x, rnd()]).sort((a, b) => a[1] - b[1]).map(([x]) => x);
+    const tiles = makeTiles(order, tileLayer, TRAY);
+    const lineFor = (t) => lineOf(t).map(P); // a route leg's road, or a decoy's own road
+    const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
+    const tileForLeg = (leg) => tiles.find((t) => t.leg === leg);
+    for (const t of tiles) if (t.route) t.g.dataset.goal = along(lineFor(t), 0.5).map((v) => v.toFixed(1)).join(','); // (harness only)
     svgWrap.append(svg);
 
-    // --- the car: parked at the start, drives each leg as it's placed ---
+    // --- the car ---
     const car = svgEl('g', { class: 'fw-car' });
-    car.append(svgEl('circle', { r: 19 }), Object.assign(svgEl('text', { y: 8, 'text-anchor': 'middle' }), { textContent: '🚗' }));
+    car.append(svgEl('circle', { r: 26 }), Object.assign(svgEl('text', { y: 10, 'text-anchor': 'middle' }), { textContent: '🚗' }));
     carLayer.append(car);
-    const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
     const parkAt = ([x, y]) => car.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
-    parkAt(run.driven ? legPts(run.driven - 1).at(-1) : legPts(0)[0]);
 
-    // --- the current leg: prompt, slot, start dot ---
-    // "Leaving Encino" / "leaving Encino" — only the first word changes case.
+    // A placed leg: its road lights up (unrolling start → end) and its sign
+    // parks halfway along.
+    const buildRoad = (leg, animate) => {
+      const pts = legPts(leg);
+      const path = svgEl('path', { d: pathD(pts), class: `fw-built ${REFS[p.blocks[leg].ref]?.kind || 'CA'}` });
+      built.append(path);
+      if (animate && !reduceMotion()) {
+        const len = path.getTotalLength();
+        path.style.strokeDasharray = `${len}`;
+        path.style.strokeDashoffset = `${len}`;
+        path.getBoundingClientRect();
+        path.style.transition = 'stroke-dashoffset 600ms ease-out';
+        path.style.strokeDashoffset = '0';
+      }
+      const t = tileForLeg(leg);
+      t.g.classList.add('placed');
+      moveTile(t, ...along(pts, 0.5), animate ? 260 : 0, 0.62);
+    };
+    for (const leg of run.placed) buildRoad(leg, false);
+    run.driven = Math.min(run.driven, drivable(run.placed, legs));
+    parkAt(run.driven ? legPts(run.driven - 1).at(-1) : legPts(0)[0]);
+    for (const t of tiles) if (!t.g.classList.contains('placed')) goHome(t, 0);
+
+    // --- the current leg: tray heading, dashed road (guided), hint labels ---
     const legName = (leg, lower = false) => {
       const [verb, rest] = leg === 0 ? ['Leaving', from] : leg === legs - 1 ? ['Into', to] : ['From', say(p.blocks[leg - 1].ref)];
       return `${lower ? verb.toLowerCase() : verb} ${rest}`;
     };
+    const current = () => nextLeg(run.placed, legs);
     let slotShown = false;
     const showSlot = (leg, force) => {
       slots.replaceChildren();
-      if (leg >= legs) return;
-      const pts = legPts(leg);
+      slotShown = false;
+      if (leg >= legs || run.done) return;
       if (tier === 'guided' || force) {
-        slots.append(svgEl('path', { d: pathD(pts), class: 'fw-slot' }));
+        slots.append(svgEl('path', { d: pathD(legPts(leg)), class: 'fw-slot' }));
         slotShown = true;
       }
-      slots.append(svgEl('circle', { cx: pts[0][0], cy: pts[0][1], r: 16, class: 'fw-slot-dot' }));
     };
-    const current = () => nextLeg(run.placed, legs);
     const refreshLeg = () => {
       const leg = current();
-      if (run.done) trayHead.textContent = 'YOUR ROUTE';
-      else trayHead.textContent = `LEG ${leg + 1} OF ${legs} · ${legName(leg).toUpperCase()}`;
-      slotShown = false;
+      trayHead.textContent = run.done ? 'YOUR ROUTE' : leg >= legs ? 'ALL LEGS PLACED' : `LEG ${leg + 1} OF ${legs} · ${legName(leg).toUpperCase()}`;
+      hintLayer.replaceChildren();
       showSlot(leg, false);
     };
     refreshLeg();
@@ -154,130 +197,178 @@ export function renderFreeways(app, { onBack }) {
       clear(footer);
       if (run.done) {
         footer.append(el('button', { class: 'btn fw-next', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Next drive ▶'));
-      } else {
+      } else if (run.placed.size < legs) {
         footer.append(
           el('button', { class: 'btn btn-quiet', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Skip'),
-          el('button', { class: 'btn btn-quiet', onClick: showRoute }, 'Show me'),
+          el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'),
         );
       }
     };
+    const decoyLine = `${NUM[p.decoys.length] ?? p.decoys.length} of these signs ${p.decoys.length === 1 ? 'isn’t' : 'aren’t'} on this drive.`;
     if (run.done) say1(madeIt(), 'good');
-    else say1(run.placed.size ? `Keep going — ${legName(current(), true)}.` : `Which freeway takes you out of ${from}? One of these isn’t on the way.`);
+    else if (run.placed.size) say1(`Keep going — ${legName(current(), true)}.`);
+    else say1(`Which freeway takes you out of ${from}? ${decoyLine}`);
     renderFooter();
 
-    // A gentle nudge if nothing happens for a while: pulse where to go.
+    // Name the places a hint mentions, right on the map.
+    const labelPlaces = (ids) => {
+      hintLayer.replaceChildren();
+      const used = [];
+      for (const id of ids) {
+        const r = shapeOf(id).map(P);
+        const c = r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
+        while (used.some(([x, y]) => Math.abs(x - c[0]) < 200 && Math.abs(y - c[1]) < 42)) c[1] += 44; // don't stack
+        used.push([...c]);
+        const name = labelOf(id);
+        const w = name.length * 15 + 26;
+        const g = svgEl('g', { class: 'fw-hintlabel' });
+        g.append(
+          svgEl('rect', { x: c[0] - w / 2, y: c[1] - 19, width: w, height: 38, rx: 19 }),
+          Object.assign(svgEl('text', { x: c[0], y: c[1] + 8, 'text-anchor': 'middle' }), { textContent: name }),
+        );
+        hintLayer.append(g);
+      }
+    };
+
+    // A gentle nudge if nothing happens for a while.
     let idle = 0;
     const armIdle = () => {
       sched.cancel(idle);
       if (run.done) return;
       idle = sched.after(IDLE_MS, () => {
-        slots.classList.add('nudge');
-        sched.after(2400, () => slots.classList.remove('nudge'));
+        svg.classList.add('nudge');
+        sched.after(2400, () => svg.classList.remove('nudge'));
         armIdle();
       });
     };
     armIdle();
 
-    // --- dragging (pointer captured on the stable svg root) ---
+    // --- dragging a sign (pointer captured on the stable svg root) ---
     const toSvg = (e) => {
       const pt = svg.createSVGPoint();
       pt.x = e.clientX;
       pt.y = e.clientY;
-      return pt.matrixTransform(svg.getScreenCTM().inverse());
+      const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+      return [q.x, q.y];
     };
     let drag = null;
+    let preview = null;
+    const clearPreview = () => {
+      preview?.remove();
+      preview = null;
+    };
     svg.addEventListener('pointerdown', (e) => {
       if (run.done || drag) return;
-      const g = e.target.closest?.('.fw-block');
-      const x = g && pieces.find((q) => q.g === g);
-      if (!x || x.g.classList.contains('placed')) return;
+      const g = e.target.closest?.('.fw-tile');
+      const t = g && tiles.find((q) => q.g === g);
+      if (!t || g.classList.contains('placed')) return;
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
       armIdle();
+      const lift = e.pointerType === 'touch' ? 70 : 0;
       const q = toSvg(e);
-      const lift = e.pointerType === 'touch' ? 110 : 0;
-      const raw = [q.x - x.center[0], q.y - x.center[1] - lift];
-      drag = { x, id: e.pointerId, off: [raw[0] - q.x, raw[1] - q.y], raw };
-      blockLayer.append(x.g); // on top
-      x.g.classList.add('held');
-      for (const o of pieces) o.g.classList.remove('pulse');
-      moveTo(x, raw[0], raw[1], 1, 160);
-      say1(`${say(x.ref)} · ${REFS[x.ref]?.name ?? ''}`);
+      drag = { t, id: e.pointerId, lift, pos: [q[0], q[1] - lift] };
+      tileLayer.append(t.g); // on top
+      g.classList.add('held');
+      for (const o of tiles) o.g.classList.remove('pulse');
+      moveTile(t, ...drag.pos, 120);
+      say1(`${say(t.ref)} · ${REFS[t.ref]?.name ?? ''}`);
     });
     svg.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
+      const { t } = drag;
       const q = toSvg(e);
-      const { x } = drag;
-      drag.raw = [q.x + drag.off[0], q.y + drag.off[1]];
-      const [dx, dy] = x.route ? pull(drag.raw[0], drag.raw[1], MAGNET) : drag.raw;
-      x.g.classList.toggle('near', x.route && near(dx, dy, MAGNET));
-      moveTo(x, dx, dy, 1);
+      drag.pos = [q[0], q[1] - drag.lift];
+      let shown = drag.pos;
+      const isNear = t.route && !run.placed.has(t.leg) && drag.pos[1] < MH;
+      const n = isNear ? nearestOnLine(drag.pos, lineFor(t)) : null;
+      if (n && n.d < MAGNET) {
+        shown = magnet(drag.pos, n.point, n.d, MAGNET);
+        if (!preview) {
+          preview = svgEl('path', { d: pathD(lineFor(t)), class: 'fw-preview' });
+          built.append(preview);
+        }
+        t.g.classList.add('near');
+      } else {
+        clearPreview();
+        t.g.classList.remove('near');
+      }
+      moveTile(t, ...shown);
     });
     const end = (e, cancelled) => {
       if (!drag || e.pointerId !== drag.id) return;
-      const { x, raw } = drag;
+      const { t, pos } = drag;
       drag = null;
-      x.g.classList.remove('held', 'near');
-      if (cancelled) return goHome(x, 260);
-      drop(x, raw);
+      clearPreview();
+      t.g.classList.remove('held', 'near');
+      if (cancelled) return goHome(t, 260);
+      drop(t, pos);
     };
     svg.addEventListener('pointerup', (e) => end(e, false));
     svg.addEventListener('pointercancel', (e) => end(e, true));
 
-    // Distance (board units) from a dropped piece's centre to the current
-    // leg's road — "did they aim at the slot?"
-    const offSlot = (x, [dx, dy]) => {
-      const leg = current();
-      if (leg >= legs) return Infinity;
-      const [cx, cy] = [x.center[0] + dx, x.center[1] + dy];
-      return Math.min(...legPts(leg).map(([a, b]) => Math.hypot(a - cx, b - cy)));
-    };
-
-    function drop(x, raw) {
+    function drop(t, pos) {
       armIdle();
-      const leg = current();
-      if (x.route && near(raw[0], raw[1], MAGNET)) return place(x);
-      goHome(x);
-      if (!x.route && near(raw[0], raw[1], MAGNET)) {
-        say1(`Right road — that’s ${say(x.ref)} — but it isn’t on this drive.`, 'warn');
+      const inTray = pos[1] > MH;
+      const own = nearestOnLine(pos, lineFor(t));
+      if (!inTray && t.route && own.d < MAGNET) return place(t);
+      goHome(t);
+      if (inTray) return; // put back: no harm done
+      if (!t.route && own.d < MAGNET) {
+        say1(`Right road — that’s ${say(t.ref)} — but it isn’t on this drive.`, 'warn');
         countEvent('freeway-decoy');
         return;
       }
-      // A miss on the current leg: help a step more each time.
+      // A miss on the current leg: a step more help each time.
+      const leg = current();
+      if (leg >= legs) return;
       run.misses[leg] = (run.misses[leg] || 0) + 1;
-      const aimed = offSlot(x, raw) < 140;
-      const right = pieceForLeg(leg);
-      const lead = aimed && x !== right ? `That’s ${say(x.ref)} — not this road.` : `Not quite.`;
+      const right = tileForLeg(leg);
+      const onLeg = nearestOnLine(pos, legPts(leg)).d < MAGNET;
+      const lead = onLeg ? `That’s ${say(t.ref)} — not this road.` : t.route ? `Not there — ${say(t.ref)} runs somewhere else.` : 'Not quite.';
       const help = legHint(run.misses[leg]);
-      if (help === 'via' && right.via?.length) say1(`${lead} This leg runs through ${right.via.map(labelOf).join(', ')}.`, 'warn');
-      else if (help === 'slot') {
+      if (help === 'via' && right.via?.length) {
+        labelPlaces(right.via);
+        say1(`${lead} This leg runs through ${right.via.map(labelOf).join(' and ')}.`, 'warn');
+        countEvent('freeway-hint-via');
+      } else if (help === 'slot' || (help === 'via' && !right.via?.length)) {
         if (!slotShown) showSlot(leg, true);
         right.g.classList.add('pulse');
-        say1(`${lead} It’s the pulsing piece — drag it onto the dashed road.`, 'warn');
+        say1(`${lead} Try the pulsing sign — on the dashed road.`, 'warn');
         countEvent('freeway-hint-slot');
       } else if (help === 'name') {
         if (!slotShown) showSlot(leg, true);
         right.g.classList.add('pulse');
-        say1(`It’s ${say(right.ref)} (${REFS[right.ref]?.name}). Drag it onto the dashed road.`, 'warn');
+        say1(`It’s ${say(right.ref)} (${REFS[right.ref]?.name}). Drag its sign onto the dashed road.`, 'warn');
       } else say1(lead, 'warn');
     }
 
-    function place(x, quiet = false) {
-      const wasCurrent = x.leg === current();
-      moveTo(x, 0, 0, 1, quiet ? 500 : 200);
-      x.g.classList.add('placed');
-      x.g.classList.remove('pulse');
-      run.placed.add(x.leg);
+    function place(t, shown = false) {
+      const wasCurrent = t.leg === current();
+      t.g.classList.remove('pulse');
+      run.placed.add(t.leg);
+      buildRoad(t.leg, true);
       refreshLeg();
-      if (!quiet) {
-        if (run.placed.size === legs) say1(`✓ ${say(x.ref)} — all legs placed. Here we go!`, 'good');
-        else if (wasCurrent) say1(`✓ ${say(x.ref)}! Now: ${legName(current(), true)} — which freeway?`, 'good');
-        else say1(`✓ ${say(x.ref)} — that’s later in the drive. Still need: ${legName(current(), true)}.`, 'good');
-      }
-      driveOn();
+      const name = `${say(t.ref)} — ${REFS[t.ref]?.name ?? ''}`;
+      if (run.placed.size === legs) say1(`✓ ${name}. That’s the whole drive — here we go!`, 'good');
+      else if (shown) say1(`Here’s ${name}. Your turn: ${legName(current(), true)}.`);
+      else if (wasCurrent) say1(`✓ ${name}! Next: ${legName(current(), true)} — which freeway?`, 'good');
+      else say1(`✓ ${name} — that’s later in the drive. Still need: ${legName(current(), true)}.`, 'good');
+      renderFooter();
+      sched.after(reduceMotion() ? 0 : 450, driveOn);
     }
 
-    // Drive the car along any newly drivable legs; arrive → finish.
+    // Show me: do the current leg for them (the drive then counts as shown).
+    function showOne() {
+      if (run.done) return;
+      const leg = current();
+      if (leg >= legs) return;
+      run.shown = true;
+      countEvent('freeway-show-leg');
+      place(tileForLeg(leg), true);
+    }
+
+    // Drive the car along newly drivable legs; arrive → finish.
     let driving = false;
     function driveOn() {
       if (driving) return;
@@ -286,14 +377,15 @@ export function renderFreeways(app, { onBack }) {
       const pts = [];
       for (let l = run.driven; l < upto; l++) pts.push(...legPts(l));
       run.driven = upto;
-      const path = svgEl('path', { d: pathD(pts), class: 'fw-route' });
-      carLayer.insertBefore(path, car);
+      const path = svgEl('path', { d: pathD(pts), class: 'fw-drivepath' });
+      svg.append(path);
       const total = path.getTotalLength();
       const at = (k) => {
         const q = path.getPointAtLength(total * k);
         parkAt([q.x, q.y]);
       };
       const arrive = () => {
+        path.remove();
         driving = false;
         if (run.driven === legs) finish();
         else driveOn();
@@ -303,14 +395,7 @@ export function renderFreeways(app, { onBack }) {
         return arrive();
       }
       driving = true;
-      sched.animate(Math.min(2600, 700 + total * 1.1), (k) => at(k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2), arrive);
-    }
-
-    // Place everything for them, then drive (counts as skipped, not solved).
-    function showRoute() {
-      if (run.done) return;
-      run.shown = true;
-      for (const x of pieces) if (x.route && !run.placed.has(x.leg)) place(x, true);
+      sched.animate(Math.min(2400, 600 + total * 1.1), (k) => at(k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2), arrive);
     }
 
     function finish() {
@@ -319,28 +404,26 @@ export function renderFreeways(app, { onBack }) {
       sched.cancel(idle);
       book.markDone(idOf(p), run.shown ? 'skipped' : 'solved');
       countEvent(run.shown ? 'freeway-shown' : 'freeway-solved');
-      for (const x of pieces) if (!x.route) x.g.classList.add('gone');
+      countEl.textContent = `${PUZZLES.filter((q) => book.isSolved(idOf(q))).length} / ${PUZZLES.length} drives`;
       refreshLeg();
       recap();
       say1(madeIt(), 'good');
       renderFooter();
     }
 
-    // After the drive, the tray lists the route: each freeway's shield + name.
+    // After the drive the tray lists the route: each sign + its name.
     function recap() {
+      for (const t of tiles) if (!t.route) t.g.classList.add('gone');
       const g = svgEl('g', { class: 'fw-recap' });
-      const rowH = Math.min(70, (TRAY[3] - TRAY[1] - 70) / legs);
+      const rowH = Math.min(64, (TRAY[3] - TRAY[1] - 60) / legs);
       p.blocks.forEach((b, k) => {
-        const y = TRAY[1] + 70 + rowH * k + rowH / 2;
+        const y = TRAY[1] + 66 + rowH * k + rowH / 2 - 10;
         g.append(shield(b.ref, [TRAY[0] + 70, y]));
         g.append(Object.assign(svgEl('text', { x: TRAY[0] + 120, y: y + 9, class: 'fw-recap-name' }), { textContent: REFS[b.ref]?.name ?? '' }));
       });
       svg.append(g);
     }
-    if (run.done) {
-      for (const x of pieces) if (!x.route) x.g.classList.add('gone');
-      recap();
-    }
+    if (run.done) recap();
   }
 
   const onResize = () => sched.after(150, () => run && mount());

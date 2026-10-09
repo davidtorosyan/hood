@@ -1721,10 +1721,6 @@ body {
   stroke-width: 2;
   opacity: 0.35;
 }
-.fw-recap-name {
-  font: 700 26px system-ui, sans-serif;
-  fill: var(--text);
-}
 .fw-end rect {
   fill: #ffffff;
   stroke-width: 3;
@@ -1762,68 +1758,9 @@ body {
   letter-spacing: 0.08em;
   fill: #8a94a6;
 }
-.fw-block,
-.fw-shield {
-  transform-box: view-box;
-  transform-origin: 0 0;
-  cursor: grab;
-}
-.fw-block.held {
-  cursor: grabbing;
-}
-.fw-block.placed {
-  cursor: default;
-}
-.fw-block.gone {
-  opacity: 0;
-  transition: opacity 0.4s;
-  pointer-events: none;
-}
-.fw-hit {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 34px;
-  vector-effect: non-scaling-stroke;
-  stroke-linecap: round;
-  pointer-events: stroke;
-}
-.fw-casing,
-.fw-road {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-  pointer-events: none;
-}
-.fw-casing {
-  stroke: #ffffff;
-  stroke-width: 11px;
-}
-.fw-road {
-  stroke: #556074;
-  stroke-width: 6px;
-}
-.fw-block.held .fw-casing {
-  stroke-width: 14px;
-}
-.fw-block.held {
-  filter: drop-shadow(0 6px 6px rgba(27, 34, 48, 0.25));
-}
-.fw-block.placed .fw-road {
-  stroke: #2d3748;
-}
-.fw-block.nope {
-  animation: fw-nope 0.4s;
-}
-@keyframes fw-nope {
-  30% { opacity: 0.4; }
-}
 .fw-shield rect {
   stroke: #ffffff;
   stroke-width: 3;
-}
-.fw-shield text {
-  font: 800 24px system-ui, sans-serif;
 }
 .fw-shield.I rect {
   fill: #1f4fbf;
@@ -1845,25 +1782,6 @@ body {
 }
 .fw-shield.CA rect {
   fill: #15803d;
-}
-.fw-ghost {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 5px;
-  stroke-dasharray: 10 8;
-  vector-effect: non-scaling-stroke;
-  animation: fw-ghost 1.2s ease-in-out infinite;
-}
-@keyframes fw-ghost {
-  50% { opacity: 0.35; }
-}
-.fw-route {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 4px;
-  vector-effect: non-scaling-stroke;
-  opacity: 0.9;
-  pointer-events: none;
 }
 .fw-car circle {
   fill: #ffffff;
@@ -1903,11 +1821,6 @@ body {
   background: var(--surface-2);
   color: var(--text);
 }
-@media (prefers-reduced-motion: reduce) {
-  .fw-ghost {
-    animation: none;
-  }
-}
 .fw-net {
   fill: none;
   stroke: #c5ccd8;
@@ -1919,6 +1832,60 @@ body {
 .fw-slots {
   pointer-events: none;
 }
+
+/* Sign tiles: identical road tiles carrying one freeway's sign each. */
+.fw-tile {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  cursor: grab;
+}
+.fw-tile-road {
+  fill: #4a5568;
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+.fw-tile-lane {
+  stroke: #fcd34d;
+  stroke-width: 4;
+  stroke-dasharray: 14 12;
+}
+.fw-tile.held {
+  cursor: grabbing;
+  filter: drop-shadow(0 8px 8px rgba(27, 34, 48, 0.3));
+}
+.fw-tile.near .fw-tile-road {
+  stroke: #fde68a;
+  stroke-width: 10;
+}
+.fw-tile.placed {
+  cursor: default;
+  pointer-events: none;
+}
+.fw-tile.placed .fw-tile-road,
+.fw-tile.placed .fw-tile-lane {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.fw-tile.pulse {
+  animation: fw-tile-pulse 1s ease-in-out infinite;
+}
+@keyframes fw-tile-pulse {
+  50% { opacity: 0.5; }
+}
+.fw-tile.gone {
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.fw-shield rect {
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+.fw-shield text {
+  font-weight: 800;
+  font-family: system-ui, sans-serif;
+}
+/* The current leg's road, dashed (guided drives, or as a hint). */
 .fw-slot {
   fill: none;
   stroke: var(--accent);
@@ -1927,35 +1894,64 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  animation: fw-ghost 1.4s ease-in-out infinite;
+  animation: fw-slot 1.4s ease-in-out infinite;
 }
-.fw-slot-dot {
-  fill: var(--accent);
-  stroke: #ffffff;
-  stroke-width: 4;
+@keyframes fw-slot {
+  50% { opacity: 0.4; }
 }
-.fw-slots.nudge .fw-slot,
-.fw-slots.nudge .fw-slot-dot {
+.fw-svg.nudge .fw-slot,
+.fw-svg.nudge .fw-car circle {
   animation: fw-nudge 0.6s ease-in-out 4;
 }
 @keyframes fw-nudge {
-  50% { stroke-width: 14px; opacity: 0.5; }
+  50% { stroke-width: 12px; }
 }
-.fw-block.near .fw-casing {
-  stroke: #fde68a;
-  stroke-width: 18px;
+/* A placed leg: its road lit up in its sign's colour. */
+.fw-built {
+  fill: none;
+  stroke-width: 9px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
-.fw-block.pulse {
-  animation: fw-pulse 1s ease-in-out infinite;
+.fw-built.I { stroke: #1f4fbf; }
+.fw-built.US { stroke: #1b2230; }
+.fw-built.CA { stroke: #15803d; }
+/* Magnetism: the road a held sign is being pulled onto. */
+.fw-preview {
+  fill: none;
+  stroke: #fcd34d;
+  stroke-width: 12px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.85;
 }
-@keyframes fw-pulse {
-  50% { opacity: 0.45; }
+.fw-drivepath {
+  fill: none;
+  stroke: none;
+}
+.fw-hints {
+  pointer-events: none;
+}
+.fw-hintlabel rect {
+  fill: #fff7e6;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.fw-hintlabel text {
+  font: 800 22px system-ui, sans-serif;
+  fill: var(--accent-text);
+}
+.fw-recap-name {
+  font: 700 26px system-ui, sans-serif;
+  fill: var(--text);
 }
 @media (prefers-reduced-motion: reduce) {
   .fw-slot,
-  .fw-block.pulse,
-  .fw-slots.nudge .fw-slot,
-  .fw-slots.nudge .fw-slot-dot {
+  .fw-tile.pulse,
+  .fw-svg.nudge .fw-slot,
+  .fw-svg.nudge .fw-car circle {
     animation: none;
   }
 }
