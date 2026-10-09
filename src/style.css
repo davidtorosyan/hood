@@ -1975,3 +1975,9 @@ body {
 .fw-known .fw-shield {
   opacity: 0.85;
 }
+.fw-flash-sign {
+  animation: fw-flash-in 0.25s ease-out;
+}
+@keyframes fw-flash-in {
+  from { opacity: 0; }
+}

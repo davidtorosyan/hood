@@ -444,13 +444,21 @@ await shot('home-campaign-started');
   await dragSign(decoys[0], await goal(route[0]));
   if (!/flashing|off this map/.test(await page.locator('.fw-msg').textContent())) fail('freeways: a wrong sign should show where it really runs');
   await shot('freeways-wrong-sign');
-  // Two more misses → the right sign gets named and pulses.
+  // The RIGHT sign dropped off any road is never called wrong.
   const box = await page.locator('.fw-svg').boundingBox();
-  for (let i = 0; i < 2; i++) await dragSign(route[0], [box.x + 20, box.y + 20]);
+  await dragSign(route[0], [box.x + 20, box.y + 20]);
+  if (!/Right sign/.test(await page.locator('.fw-msg').textContent())) fail('freeways: the right sign off-road should say "Right sign"');
+  // Two more wrong signs on the leg → the right sign gets named and pulses.
+  for (let i = 0; i < 2; i++) await dragSign(decoys[(i + 1) % decoys.length], await goal(route[0]));
   if (!(await page.locator('.fw-tile.pulse').count())) fail('freeways: no pulsing sign after 3 misses');
   await shot('freeways-hint-pulse');
+  const startOf = async (ref) => toScreen(...(await tile(ref).getAttribute('data-start')).split(',').map(Number));
   for (const ref of route) {
-    await dragSign(ref, await goal(ref));
+    // The last leg's sign goes right at its interchange, where the previous
+    // freeway is just as near — the right sign must still count there.
+    const last = ref === route.at(-1);
+    await dragSign(ref, last ? await startOf(ref) : await goal(ref));
+    if (!(await tile(ref).evaluate((g) => g.classList.contains('placed')))) fail(`freeways: the right sign (${ref}) was rejected${last ? ' at its interchange' : ''}`);
     if (ref === route[0]) {
       await page.waitForTimeout(2600);
       await shot('freeways-first-leg-driven');

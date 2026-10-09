@@ -153,18 +153,34 @@ export function renderFreeways(app, { onBack }) {
     // it's on the map, else "further north" (it's off this map).
     const flashRoad = (ref, cls = 'decoy') => {
       const all = net.filter((n) => n.ref === ref).flatMap((n) => n.pts);
+      const flashes = [];
       for (const n of net) {
         if (n.ref !== ref) continue;
         const f = svgEl('path', { d: pathD(n.pts), class: `fw-preview ${cls}` });
         built.append(f);
-        sched.after(1600, () => f.remove());
+        flashes.push(f);
       }
-      const inView = all.some(([x, y]) => x > 0 && x < W && y > 0 && y < MH);
-      if (inView || !all.length) return '';
+      // Enough of it on the map to see? (a sliver at the edge doesn't count)
+      const shown = all.filter(([x, y]) => x > 30 && x < W - 30 && y > 30 && y < MH - 30);
+      let span = 0;
+      for (let i = 1; i < shown.length; i++) span += Math.min(80, Math.hypot(shown[i][0] - shown[i - 1][0], shown[i][1] - shown[i - 1][1]));
+      if (span > 90) {
+        const sign = shield(ref, shown[Math.floor(shown.length / 2)], 0.75);
+        sign.classList.add('fw-flash-sign');
+        hintLayer.append(sign);
+        flashes.push(sign);
+      }
+      sched.after(2600, () => flashes.forEach((f) => f.remove()));
+      if (span > 90 || !all.length) return '';
       const nearest = all.reduce((b, q) => (Math.hypot(q[0] - W / 2, q[1] - MH / 2) < Math.hypot(b[0] - W / 2, b[1] - MH / 2) ? q : b));
       return `further ${compass([W / 2, MH / 2], nearest)}, off this map`;
     };
-    for (const t of tiles) if (t.route) t.g.dataset.goal = along(lineFor(t), 0.5).map((v) => v.toFixed(1)).join(','); // (harness only)
+    for (const t of tiles) {
+      if (!t.route) continue; // (harness only:) a point mid-leg, and one at the leg's start
+      t.g.dataset.goal = along(lineFor(t), 0.5).map((v) => v.toFixed(1)).join(',');
+      t.g.dataset.start = along(lineFor(t), 0.04).map((v) => v.toFixed(1)).join(',');
+      t.g.dataset.end = along(lineFor(t), 0.96).map((v) => v.toFixed(1)).join(',');
+    }
     svgWrap.append(svg);
 
     // --- the car ---
@@ -229,6 +245,7 @@ export function renderFreeways(app, { onBack }) {
       const leg = current();
       trayHead.textContent = run.done ? 'YOUR ROUTE' : leg >= legs ? 'ALL LEGS PLACED' : `LEG ${leg + 1} OF ${legs} · ${legName(leg).toUpperCase()}`;
       hintLayer.replaceChildren();
+      for (const t of labels.querySelectorAll('.fw-landmark')) t.style.display = '';
       showSlot(leg, false);
     };
     refreshLeg();
@@ -260,17 +277,20 @@ export function renderFreeways(app, { onBack }) {
     // Name the places a hint mentions, right on the map.
     const labelPlaces = (ids) => {
       hintLayer.replaceChildren();
-      for (const t of labels.querySelectorAll('.fw-landmark')) t.style.display = ids.includes(t.dataset.place) ? 'none' : '';
+      for (const t of labels.querySelectorAll('.fw-landmark')) t.style.display = 'none'; // hints replace them for now
       const used = [];
       const carAt = car.getAttribute('transform')?.match(/[-\d.]+/g)?.map(Number) || [0, 0];
       const routePts = p.blocks.flatMap((_, l) => legPts(l));
+      const leg = legPts(current());
       for (const id of ids) {
         const r = shapeOf(id).map(P);
-        const c0 = r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
+        const cc = r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
+        // Anchored where the current leg passes the place, not at its middle.
+        const c0 = nearestOnLine(cc, leg).point;
         const name = labelOf(id);
         const w = name.length * 15 + 26;
         // Beside the place, wherever it covers least: the car, the route, other pills.
-        const spots = [[0, 0], [0, -48], [0, 48], [w / 2 + 20, 0], [-w / 2 - 20, 0], [0, -96], [0, 96]].map(([dx, dy]) => [c0[0] + dx, c0[1] + dy]);
+        const spots = [[0, -40], [0, 40], [w / 2 + 24, 0], [-w / 2 - 24, 0], [0, -84], [0, 84]].map(([dx, dy]) => [c0[0] + dx, c0[1] + dy]);
         const cost = ([x, y]) =>
           (Math.abs(x - carAt[0]) < w / 2 + 30 && Math.abs(y - carAt[1]) < 50 ? 100 : 0) +
           routePts.filter(([qx, qy]) => Math.abs(qx - x) < w / 2 && Math.abs(qy - y) < 22).length * 3 +
@@ -369,10 +389,22 @@ export function renderFreeways(app, { onBack }) {
       const inTray = pos[1] > MH;
       const own = nearestOnLine(pos, lineFor(t));
       const road = nearestRoad(pos); // the road they actually dropped it on
-      const onOwn = own.d < MAGNET && own.d <= road.d + 8;
-      if (!inTray && t.route && onOwn) return place(t);
+      // On its own road: right on it, nearer it than any other road, or
+      // anywhere along its own freeway (just past the dashed part counts).
+      const onOwn = own.d < MAGNET && (own.d < 45 || own.d <= road.d + 8 || road.ref === t.ref);
+      if (!inTray && t.route && (onOwn || (road.ref === t.ref && road.d < MAGNET))) return place(t);
       goHome(t);
       if (inTray) return; // put back: no harm done
+      if (t.route && t.leg === current()) {
+        // The RIGHT sign, just not on its road: never tell them it's wrong.
+        say1(
+          road.d < MAGNET
+            ? `Right sign! But that’s ${say(road.ref)}’s road — drop ${say(t.ref)} on its own road.`
+            : `Right sign! Now drop it on its road, ${tier === 'open' ? 'starting from the 🚗' : 'the dashed one'}.`,
+          'good',
+        );
+        return;
+      }
       if (!t.route && onOwn) {
         say1(`That is ${say(t.ref)}’s road — but this drive doesn’t use ${say(t.ref)}.`, 'warn');
         const flash = svgEl('path', { d: pathD(lineFor(t)), class: 'fw-preview decoy' });
@@ -381,7 +413,7 @@ export function renderFreeways(app, { onBack }) {
         countEvent('freeway-decoy');
         return;
       }
-      // A miss on the current leg: a step more help each time.
+      // A miss on the current leg (a wrong sign): a step more help each time.
       const leg = current();
       if (leg >= legs) return;
       run.misses[leg] = (run.misses[leg] || 0) + 1;
@@ -404,8 +436,9 @@ export function renderFreeways(app, { onBack }) {
         say1(`${lead} Hint: this leg heads ${heads}${through}.`, 'warn');
         countEvent('freeway-hint-via');
       } else if (help === 'slot') {
+        const was = slotShown;
         if (!slotShown) showSlot(leg, true);
-        say1(`${lead} This leg’s road is dashed now — which sign is it?`, 'warn');
+        say1(`${lead} ${was ? 'Look at the dashed road' : 'This leg’s road is dashed now'} — which sign is it?`, 'warn');
         countEvent('freeway-hint-slot');
       } else if (help === 'name') {
         if (!slotShown) showSlot(leg, true);

@@ -71,8 +71,19 @@ export function drawMap(svg, p, W, MH, learned = [], inTray = []) {
     const c = r.reduce((a, q) => [a[0] + q[0], a[1] + q[1]], [0, 0]);
     return [c[0] / r.length, c[1] / r.length];
   };
-  const routePts = p.blocks.flatMap((b) => lineOf(b).map(P));
-  const taken = [];
+  // The route sampled densely (its stored lines are simplified), so name
+  // pills keep off every stretch of it — and off the car at the start.
+  const routePts = [];
+  for (const b of p.blocks) {
+    const l = lineOf(b).map(P);
+    for (let i = 1; i < l.length; i++) {
+      const n = Math.max(1, Math.ceil(Math.hypot(l[i][0] - l[i - 1][0], l[i][1] - l[i - 1][1]) / 12));
+      for (let k = 0; k < n; k++) routePts.push([l[i - 1][0] + ((l[i][0] - l[i - 1][0]) * k) / n, l[i - 1][1] + ((l[i][1] - l[i - 1][1]) * k) / n]);
+    }
+    routePts.push(l.at(-1));
+  }
+  const carAt = P(lineOf(p.blocks[0])[0]);
+  const taken = [[carAt[0] - 30, carAt[1] - 30, carAt[0] + 30, carAt[1] + 30]];
   const overlaps = (lx, ly, w, h) => taken.filter(([a, b, c, d]) => !(lx + w < a || lx > c || ly + h < b || ly > d)).length;
   const endLabel = (id, cls) => {
     const [x, y] = centroid(id);
