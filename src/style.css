@@ -2085,3 +2085,69 @@ body {
 .fw-end.fw-hinted rect {
   stroke-width: 6;
 }
+
+/* Freeways v4: the abstract board — two blocks, a grid, arrows. */
+.fw-plane {
+  fill: #f8f9fc;
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.fw-dot {
+  fill: #d5dbe5;
+}
+.fw-block-place rect {
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+.fw-block-place.from rect { fill: #34b384; }
+.fw-block-place.to rect { fill: var(--accent); }
+.fw-block-place text {
+  font: 800 28px system-ui, sans-serif;
+  fill: var(--text);
+}
+.fw-block-place .fw-block-icon {
+  font-size: 34px;
+  fill: #ffffff;
+}
+.fw-arrow-piece {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  cursor: grab;
+}
+.fw-arrow-hit {
+  stroke: transparent;
+  stroke-width: 70;
+  stroke-linecap: round;
+}
+.fw-arrow-shaft {
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+.fw-arrow-piece.I .fw-arrow-shaft { stroke: #1f4fbf; }
+.fw-arrow-piece.I .fw-arrow-head,
+.fw-arrow-piece.I .fw-arrow-tail { fill: #1f4fbf; }
+.fw-arrow-piece.US .fw-arrow-shaft { stroke: #475569; }
+.fw-arrow-piece.US .fw-arrow-head,
+.fw-arrow-piece.US .fw-arrow-tail { fill: #475569; }
+.fw-arrow-piece.CA .fw-arrow-shaft { stroke: #15803d; }
+.fw-arrow-piece.CA .fw-arrow-head,
+.fw-arrow-piece.CA .fw-arrow-tail { fill: #15803d; }
+.fw-arrow-tail {
+  stroke: #ffffff;
+  stroke-width: 4;
+}
+.fw-arrow-piece.held {
+  cursor: grabbing;
+  filter: drop-shadow(0 8px 8px rgba(27, 34, 48, 0.3));
+}
+.fw-arrow-piece.near .fw-arrow-shaft {
+  filter: drop-shadow(0 0 8px #fbbf24);
+}
+.fw-arrow-piece.near .fw-arrow-tail {
+  stroke: #fbbf24;
+  stroke-width: 8;
+}
+.fw-arrow-piece.laid {
+  cursor: default;
+  pointer-events: none;
+}

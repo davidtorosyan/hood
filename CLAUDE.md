@@ -133,31 +133,24 @@ there's no zooming or context navigation, and solving offers "🗺️ Back to th
 The campaign keeps its own ledger (`store.campaign`), separate from Explore's
 progress.
 
-### Freeways — a prototype (Oct 2026; v3 shaped by Dave + 9 rounds of agent playtests)
-A third mode from home ("🛣️ Freeways"): "Drive from Echo Park to Downey". The tray gives
-the route as **directions on sign tiles**, in driving order (`101 → 5`). Dave cut the
-decoys: confusing, little gain. **Picking up a sign unfolds the WHOLE freeway** at map
-scale, with its sign on it and a white grip dot where you hold it. You line it up with
-where it really runs, and once it clicks in, this drive's stretch lights up bold (the
-rest stays faint) and the 🚗 drives on.
-- **Why the whole freeway:** v1's leg-shaped pieces were solved by shape-matching, and
-  v2's "pick the sign" needed decoys. With leg shapes, testers just lined one end up with
-  the car. With the whole freeway, its bends (the 405 at the Sepulveda Pass, the 110 at
-  downtown) need real knowledge, and you learn each freeway's full run.
-- **The glow is honest.** A solid glow means "let go and it clicks in"; it uses the same
-  test as the drop. A dashed amber glow means close, and only then does a miss say
-  "Close". The tolerance starts forgiving and tightens (`acceptFor`: ~34 → 28 → 23px).
-- **Difficulty:** drives 0–1 draw all freeways as grey roads (a tutorial). Later drives
-  hide them, and you place freeways from the place names. Freeways you've learned show
-  as faint roads with signs (not the ones on this drive). The header tallies
-  "N freeways learned".
-- **Help ladder per freeway:**
-  1. Which way to move it.
-  2. The places it runs through. Map labels that exist light up; others get a tag on
-     their side of the road.
-  3. The whole freeway, dashed.
-
-  Show me lays one leg; a drive finished with a peek still counts.
+### Freeways — a prototype (Oct 2026; v4: abstract arrows, Dave's redesign)
+A third mode from home ("🛣️ Freeways"). Dave on v3 (whole-freeway shapes on a real map):
+frustrating. Nobody cares about freeways' exact shapes; what matters is **directionality**
+("take this, then this, then this"), and an accurate map is overkill. So v4 is
+**abstract**:
+- **No map.** Two blocks (start, destination) sit at their rough real relative positions
+  on a faint grid.
+- **Every freeway on the drive is an ARROW.** It snaps to 8 directions, its length is in
+  whole grid steps from the real leg, and its sign rides on it (`arrowsFor` in
+  `rules.js`). The tray shows the arrows shuffled and all at one scale, so you can see
+  direction and relative length before picking one up.
+- **The puzzle is the chain.** Drag arrows tail-to-tip from the 🚗 to the flag. An arrow
+  is pulled in near its spot and clicks in when its tail sits where that freeway really
+  starts. The car hops along as the chain grows. A finished drive reads
+  "105 west → 405 northwest".
+- This is a first cut, meant to iterate on with Dave. Superseded designs (v1 shaped
+  pieces; v2 signs on roads with decoys; v3 whole-freeway shapes) live in git history
+  before this commit.
 - **Data:** `scripts/freeway-routes.mjs` is a **hand-traced schematic**: named
   interchanges plus waypoints, accurate to about 1 km. OSM wasn't reachable from the
   build sandbox, and Natural Earth's roads were too coarse and mislabelled.
@@ -171,14 +164,13 @@ rest stays faint) and the 🚗 drives on.
   `npm run build:freeways -- --through` prints the places each freeway runs through.
   **Check that list after editing a route.**
 - **Code:** `src/freeways/`:
-  - `rules.js`: pure and unit-tested. Tiers, the tolerance ramp, leg order, nearest-point
-    and pull maths, compass, the hint ladder.
+  - `rules.js`: pure and unit-tested. `arrowsFor` (legs → chained grid arrows),
+    `dirName`, leg order, and helpers kept from v3.
   - `puzzles.js`: the data.
-  - `map.js`: framing, the network, labels and learned signs.
-  - `pieces.js`: sign tiles and the whole-freeway shapes.
-  - `game.js`: the screen and flow. Pointer events are captured on the svg root, moves
-    use the CSS transform, and timers go through a Scheduler.
-  `store.freeways` is its ledger (`learned`, `tier`, `at`). `test/freeways.test.js` checks
+  - `sign.js`: freeway shields.
+  - `game.js`: the board, tray, drag and car. Pointer events are captured on the svg
+    root, moves use the CSS transform, and timers go through a Scheduler.
+  `store.freeways` is its ledger (`at`). `test/freeways.test.js` checks
   the data (real ends, continuous drives, no decoys, no stub legs) and the rules.
   `scripts/playtest.mjs` lets tester agents play from screenshots: it replays an action list
   and saves a screenshot after each action. Adding `"hold": true` to a drag also captures

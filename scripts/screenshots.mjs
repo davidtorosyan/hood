@@ -409,9 +409,8 @@ await page.getByRole('button', { name: 'Home' }).click();
 await page.waitForTimeout(300);
 await shot('home-campaign-started');
 
-// Freeways (prototype, v3): the route as signs; picking one up unfolds its
-// shape, which clicks in at its real spot. Misses point the way, then name
-// places, then outline it; the car drives the finished route.
+// Freeways (prototype, v4 — abstract): two blocks on a grid; each freeway is
+// an arrow (direction + length). Chain them tail-to-tip from the car.
 {
   await page.locator('.home-play-3').click();
   await page.waitForTimeout(500);
@@ -425,48 +424,39 @@ await shot('home-campaign-started');
       const s = pt.matrixTransform(svg.getScreenCTM());
       return [s.x, s.y];
     }, [x, y]);
-  const tile = (ref) => page.locator(`.fw-tile[data-ref="${ref}"]`);
-  const goal = async (ref) => toScreen(...(await tile(ref).getAttribute('data-goal')).split(',').map(Number));
-  const carry = async (ref, to, { release = true } = {}) => {
-    const b = await tile(ref).boundingBox();
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  const arrow = (ref) => page.locator(`.fw-arrow-piece[data-ref="${ref}"]`);
+  const tailOf = async (ref) => {
+    const b = await arrow(ref).locator('.fw-arrow-tail').boundingBox();
+    return [b.x + b.width / 2, b.y + b.height / 2];
+  };
+  const goal = async (ref) => toScreen(...(await arrow(ref).getAttribute('data-goal')).split(',').map(Number));
+  const carry = async (ref, to, { hold = false } = {}) => {
+    await page.mouse.move(...(await tailOf(ref)));
     await page.mouse.down();
     await page.mouse.move(...to, { steps: 12 });
-    if (!release) return;
+    if (hold) return;
     await page.mouse.up();
     await page.waitForTimeout(450);
   };
-  const route = await page.$$eval('.fw-tile', (gs) => gs.sort((a, b) => a.dataset.leg - b.dataset.leg).map((g) => g.dataset.ref));
-  if (route.length < 2) fail(`freeways: odd route ${route}`);
-  // Mid-drag: the sign has unfolded into its freeway's shape.
-  const g0 = await goal(route[0]);
-  await carry(route[0], [g0[0] + 90, g0[1] + 70], { release: false });
-  await page.waitForTimeout(200);
-  if (!(await page.locator('.fw-shape.held').count())) fail('freeways: no shape while carrying a sign');
-  await shot('freeways-carrying-shape');
-  await page.mouse.up();
-  await page.waitForTimeout(450);
-  if (!/further/.test(await page.locator('.fw-msg').textContent())) fail('freeways: a miss should say which way to move it');
-  // More misses → the places it runs through, then its exact spot, dashed.
-  await carry(route[0], [g0[0] - 100, g0[1] + 90]);
-  await carry(route[0], [g0[0] - 110, g0[1] - 80]);
-  if (!(await page.locator('.fw-slot').count())) fail('freeways: no dashed outline after 3 misses');
-  await shot('freeways-hint-outline');
-  // Back on the tray: no harm done.
-  const tb = await page.locator('.fw-tray').boundingBox();
-  await carry(route[0], [tb.x + 40, tb.y + tb.height - 20]);
-  for (const ref of route) {
-    // A sloppy drop (≈20px off) still clicks in.
+  const refs = await page.$$eval('.fw-arrow-piece', (gs) => gs.map((g) => g.dataset.ref));
+  if (refs.length < 2) fail(`freeways: odd route ${refs}`);
+  // Drop one far from where it belongs: it goes back, with a nudge.
+  const box = await page.locator('.fw-svg').boundingBox();
+  await carry(refs[0], [box.x + 40, box.y + 40]);
+  if (await page.locator('.fw-arrow-piece.laid').count()) fail('freeways: a far-off drop should not count');
+  // Carry the right one to its spot (sloppily): it glows, then clicks in.
+  for (const ref of refs) {
     const [gx, gy] = await goal(ref);
-    await carry(ref, [gx + 14, gy - 14]);
-    if (!(await page.locator(`.fw-shape.placed[data-ref="${ref}"]`).count())) fail(`freeways: ${ref} didn't click in when dropped near its spot`);
-    if (ref === route[0]) {
-      await page.waitForTimeout(2400);
-      await shot('freeways-first-leg-driven');
-    }
+    if (ref === refs[0]) {
+      await carry(ref, [gx + 10, gy - 8], { hold: true });
+      await shot('freeways-carrying-arrow');
+      await page.mouse.up();
+      await page.waitForTimeout(450);
+    } else await carry(ref, [gx + 10, gy - 8]);
+    if (!(await arrow(ref).evaluate((g) => g.classList.contains('laid')))) fail(`freeways: ${ref} didn't click in at its spot`);
   }
-  await page.waitForTimeout(6000);
-  if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: route laid but not solved');
+  await page.waitForTimeout(3500);
+  if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: chain laid but not solved');
   await shot('freeways-solved');
   await page.getByRole('button', { name: /Next drive/ }).click();
   await page.waitForTimeout(500);

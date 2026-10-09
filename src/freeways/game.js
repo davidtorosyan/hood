@@ -1,37 +1,26 @@
-// Freeways (prototype): "Drive from Echo Park to Downey." The tray gives you
-// the route as directions — 101 → 5 — on identical sign tiles (no decoys).
-// Pick one up and it unfolds into the real shape of that stretch of freeway,
-// at map scale, its sign riding on it: lay it where it really runs. Near its
-// spot it's pulled in (magnetism) and clicks into place; the road lights up
-// and the car drives on as soon as the legs from the start are in.
+// Freeways (v4, abstract): no map. Two blocks — where you start and where
+// you're going — at their rough real positions on a faint grid. Each freeway
+// on the drive is an ARROW: its direction (8-way) and length (grid steps)
+// come from the real leg, its sign rides on it, and the tray shows them all
+// at the same scale, so you can see "the 101 goes a long way east, the 5 a
+// bit southeast" before touching anything. Chain them from the 🚗 to the
+// flag: an arrow clicks in when its tail sits where that freeway really
+// starts; the car hops along as the chain grows.
 //
-// Early drives draw the whole freeway network as grey roads to line shapes
-// up against; later ones don't, so you place each freeway from where the
-// places are. A miss says which way to move it ("further west"), then names
-// the places it runs through, then outlines exactly where it goes. Show me
-// lays one leg for you. Every deferred effect goes through a Scheduler, so
-// leaving cancels it all.
+// Every deferred effect goes through a Scheduler, so leaving cancels it all.
 import { el, svgEl, clear } from '../ui/dom.js';
-import { labelOf, shapeOf } from '../jigsaw/tree.js';
+import { labelOf } from '../jigsaw/tree.js';
 import { Scheduler } from '../jigsaw/scheduler.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
-import {
-  REFS, PUZZLES, NETWORK, idOf, lineOf, say, nextIndex, tierOf, nextLeg, drivable, placeHint, pull, compass, nearestOnLine, acceptFor,
-} from './puzzles.js';
-import { drawMap, pathD } from './map.js';
-import { makePieces, moveShape, shield, along } from './pieces.js';
+import { REFS, PUZZLES, idOf, lineOf, say, nextIndex, drivable, arrowsFor, dirName } from './puzzles.js';
+import { shield } from './sign.js';
 
 const book = store.freeways;
 const W = 1000;
-const MAGNET = 200; // board units: within this of its spot a held shape is pulled in
-// A drop counts when the freeway is within acceptFor(drive) of its true
-// position (tighter as you go). The solid glow uses the same test, so it
-// always means "let go here and it clicks in"; inside WARM × that, a dashed
-// amber glow says "almost — nudge it" (and a miss there says "Close").
-const WARM = 1.9;
-const IDLE_MS = 12000;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const KX = 111.32 * Math.cos((34 * Math.PI) / 180);
+const toKm = ([lon, lat]) => [lon * KX, -lat * 110.57]; // y down, like the screen
 
 let live = null;
 export function unmountFreeways() {
@@ -39,14 +28,13 @@ export function unmountFreeways() {
   live = null;
 }
 
-// onBack: home.
 export function renderFreeways(app, { onBack }) {
   unmountFreeways();
   const sched = new Scheduler();
-  let run = null; // { index, placed: Set<leg>, misses: {leg: n}, driven, done, shownLegs }
+  let run = null; // { index, placed: Set<leg>, driven, done, shown }
 
   const start = (index) => {
-    run = { index, placed: new Set(), misses: {}, driven: 0, done: false, shownLegs: 0 };
+    run = { index, placed: new Set(), driven: 0, done: false, shown: 0 };
     book.set('at', index);
     countEvent('freeway-start');
     mount();
@@ -56,201 +44,166 @@ export function renderFreeways(app, { onBack }) {
     sched.cancelAll();
     const p = PUZZLES[run.index];
     const legs = p.blocks.length;
-    const tier = tierOf(run.index);
     const from = labelOf(p.from);
     const to = labelOf(p.to);
-    const solvedN = () => PUZZLES.filter((q) => book.isSolved(idOf(q))).length;
+    const arrows = arrowsFor(p.blocks.map((b) => {
+      const l = lineOf(b);
+      return [toKm(l[0]), toKm(l.at(-1))];
+    }), legs === 2 ? 5 : 6);
 
     const msg = el('div', { class: 'fw-msg', role: 'status', 'aria-live': 'polite' }, '');
     const footer = el('div', { class: 'fw-foot' });
-    const svgWrap = el('div', { class: 'fw-board' });
-    const tally = () => `${solvedN()} / ${PUZZLES.length} drives · ${(book.get('learned') || []).length} freeways learned`;
-    const countEl = el('span', { class: 'fw-count' }, tally());
-    const subEl = el('div', { class: 'fw-ask-sub' }, tier === 'roads'
-      ? 'Pick up a freeway to see its whole shape, then line it up with its grey road.'
-      : 'Line each freeway up with the places it runs through.');
+    const wrap = el('div', { class: 'fw-board' });
     clear(app);
     app.append(
       el('div', { class: 'screen fw-screen' }, [
         el('div', { class: 'topbar' }, [
           el('button', { class: 'icon-btn', onClick: onBack, 'aria-label': 'Home' }, '⌂'),
           el('span', { class: 'topbar-title' }, 'Freeways'),
-          countEl,
+          el('span', { class: 'fw-count' }, `${PUZZLES.filter((q) => book.isSolved(idOf(q))).length} / ${PUZZLES.length} drives`),
         ]),
         el('div', { class: 'fw-ask' }, [
-          el('div', { class: 'fw-ask-line' }, ['Drive from ', el('b', { class: 'fw-from' }, from), ' to ', el('b', { class: 'fw-to' }, to)]),
-          subEl,
+          el('div', { class: 'fw-ask-line' }, ['Get from ', el('b', { class: 'fw-from' }, from), ' to ', el('b', { class: 'fw-to' }, to)]),
+          el('div', { class: 'fw-ask-sub' }, 'Chain the freeway arrows from the 🚗 to the flag.'),
         ]),
-        svgWrap,
+        wrap,
         msg,
         footer,
       ]),
     );
 
-    // Board: the map, and a slim tray holding one row of signs.
-    const box = svgWrap.getBoundingClientRect();
-    const H = Math.round(W * Math.max(0.9, Math.min(2.2, box.height / Math.max(1, box.width))));
-    const trayH = 190;
-    const MH = H - trayH - 16;
-    const TRAY = [16, MH + 12, W - 16, H - 4];
+    // --- layout: board on top, a tray of arrows below ---
+    const box = wrap.getBoundingClientRect();
+    const H = Math.round(W * Math.max(1, Math.min(2.2, box.height / Math.max(1, box.width))));
+    const TRAY_H = Math.round(H * 0.3);
+    const BH = H - TRAY_H - 16;
+    const TRAY = [16, BH + 12, W - 16, H - 4];
 
-    const svg = svgEl('svg', { class: 'fw-svg', viewBox: `0 0 ${W} ${H}`, role: 'application', 'aria-label': `Map: drive from ${from} to ${to}` });
-    const learned = book.get('learned') || [];
-    const { P, slots, labels, known } = drawMap(svg, p, W, MH, learned, p.blocks.map((b) => b.ref), { roads: tier === 'roads' });
-    const placedLayer = svgEl('g', { 'clip-path': 'url(#fw-clip)' });
+    // Grid: all the chain's points, plus a margin for the blocks.
+    const nodes = [[0, 0], ...arrows.map((a) => a.to)];
+    const xs = nodes.map((n) => n[0]);
+    const ys = nodes.map((n) => n[1]);
+    const [gx0, gx1, gy0, gy1] = [Math.min(...xs) - 1, Math.max(...xs) + 1, Math.min(...ys) - 1, Math.max(...ys) + 1];
+    const cell = Math.min(230, (W - 80) / (gx1 - gx0), (BH - 80) / (gy1 - gy0));
+    const ox = W / 2 - ((gx0 + gx1) / 2) * cell;
+    const oy = BH / 2 - ((gy0 + gy1) / 2) * cell;
+    const at = ([gx, gy]) => [ox + gx * cell, oy + gy * cell];
+
+    const svg = svgEl('svg', { class: 'fw-svg', viewBox: `0 0 ${W} ${H}`, role: 'application', 'aria-label': `Get from ${from} to ${to}` });
+    const board = svgEl('g');
+    board.append(svgEl('rect', { x: 8, y: 8, width: W - 16, height: BH - 8, rx: 26, class: 'fw-plane' }));
+    for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) {
+      const [x, y] = at([gx, gy]);
+      board.append(svgEl('circle', { cx: x, cy: y, r: 4, class: 'fw-dot' }));
+    }
+    // The two places, as blocks.
+    const block = (node, name, cls) => {
+      const [x, y] = at(node);
+      const s = Math.min(cell * 0.9, 120);
+      const g = svgEl('g', { class: `fw-block-place ${cls}` });
+      g.append(
+        svgEl('rect', { x: x - s / 2, y: y - s / 2, width: s, height: s, rx: 18 }),
+        Object.assign(svgEl('text', { x, y: y + s / 2 + 34, 'text-anchor': 'middle' }), { textContent: name }),
+        Object.assign(svgEl('text', { x, y: y + 12, 'text-anchor': 'middle', class: 'fw-block-icon' }), { textContent: cls === 'from' ? '●' : '⚑' }),
+      );
+      return g;
+    };
+    board.append(block([0, 0], from, 'from'), block(arrows.at(-1).to, to, 'to'));
+    const laidLayer = svgEl('g');
     const carLayer = svgEl('g');
-    const hintLayer = svgEl('g', { class: 'fw-hints' });
-    const trayHead = svgEl('text', { x: TRAY[0] + 26, y: TRAY[1] + 40, class: 'fw-tray-label' });
-    const tileLayer = svgEl('g');
-    const dragLayer = svgEl('g', { 'clip-path': 'url(#fw-clip)' }); // the freeway being carried, over the map
+    const trayLayer = svgEl('g');
     svg.append(
-      placedLayer,
-      known,
+      board,
+      laidLayer,
       carLayer,
-      labels,
-      hintLayer,
       svgEl('rect', { x: TRAY[0], y: TRAY[1], width: TRAY[2] - TRAY[0], height: TRAY[3] - TRAY[1], rx: 26, class: 'fw-tray' }),
-      trayHead,
-      tileLayer,
-      dragLayer,
+      Object.assign(svgEl('text', { x: TRAY[0] + 26, y: TRAY[1] + 40, class: 'fw-tray-label' }), { textContent: 'FREEWAYS ON THIS DRIVE' }),
+      trayLayer,
     );
+    wrap.append(svg);
 
-    const legPts = (leg) => lineOf(p.blocks[leg]).map(P);
-    const wholeOf = (ref) => NETWORK.filter((n) => n.ref === ref).map((n) => lineOf(n).map(P));
-    const pieces = makePieces(p.blocks.map((b, leg) => ({ ...b, pts: legPts(leg) })), tileLayer, dragLayer, TRAY, wholeOf, [0, 0, W, MH]);
-    const accept = acceptFor(run.index);
-    for (const x of pieces) {
-      x.tile.dataset.goal = x.grip.map((v) => v.toFixed(1)).join(','); // (harness only: where the grip goes)
-      if (run.placed.has(x.leg)) layDown(x, false);
-      else x.shape.style.display = 'none';
-    }
-    svgWrap.append(svg);
+    // --- arrows: drawn with the tail at (0,0), in board scale ---
+    const arrowEl = (a, ref) => {
+      const kind = REFS[ref]?.kind || 'CA';
+      const L = a.len * cell * Math.hypot(...a.dir);
+      const ux = a.dir[0] / Math.hypot(...a.dir);
+      const uy = a.dir[1] / Math.hypot(...a.dir);
+      const head = 34;
+      const ex = ux * (L - head * 0.6);
+      const ey = uy * (L - head * 0.6);
+      const tip = [ux * L, uy * L];
+      const nx = -uy;
+      const ny = ux;
+      const g = svgEl('g', { class: `fw-arrow-piece ${kind}` });
+      g.dataset.ref = ref;
+      g.append(
+        svgEl('line', { x1: 0, y1: 0, x2: tip[0], y2: tip[1], class: 'fw-arrow-hit' }),
+        svgEl('line', { x1: 0, y1: 0, x2: ex, y2: ey, class: 'fw-arrow-shaft' }),
+        svgEl('polygon', { points: [tip, [ex + nx * head * 0.75, ey + ny * head * 0.75], [ex - nx * head * 0.75, ey - ny * head * 0.75]].map((q) => q.join(',')).join(' '), class: 'fw-arrow-head' }),
+        svgEl('circle', { cx: 0, cy: 0, r: 9, class: 'fw-arrow-tail' }),
+        shield(ref, [tip[0] / 2, tip[1] / 2], 0.85),
+      );
+      return { g, bbox: [Math.min(0, tip[0]), Math.min(0, tip[1]), Math.max(0, tip[0]), Math.max(0, tip[1])] };
+    };
 
-    // --- the car ---
+    // Tray: shuffled (working out the order is the puzzle), all at one scale
+    // so lengths compare honestly.
+    let seed = run.index * 7919 + 13;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+    const order = arrows.map((a, leg) => ({ a, leg, ref: p.blocks[leg].ref })).map((x) => [x, rnd()]).sort((u, v) => u[1] - v[1]).map(([x]) => x);
+    const slotW = (TRAY[2] - TRAY[0]) / order.length;
+    const slotH = TRAY[3] - TRAY[1] - 60;
+    const pieces = order.map((x) => ({ ...x, ...arrowEl(x.a, x.ref) }));
+    const s = Math.min(1, ...pieces.map(({ bbox }) => Math.min((slotW * 0.8) / Math.max(1, bbox[2] - bbox[0]), (slotH * 0.8) / Math.max(1, bbox[3] - bbox[1]))));
+    pieces.forEach((pc, k) => {
+      const [bx0, by0, bx1, by1] = pc.bbox;
+      const cx = TRAY[0] + slotW * (k + 0.5);
+      const cy = TRAY[1] + 50 + slotH / 2;
+      pc.home = [cx - s * (bx0 + bx1) / 2, cy - s * (by0 + by1) / 2, s];
+      pc.goal = at(pc.a.from); // where its tail belongs
+      pc.g.dataset.goal = pc.goal.map((v) => v.toFixed(1)).join(','); // (harness only)
+      trayLayer.append(pc.g);
+    });
+    const move = (pc, x, y, sc, ms = 0) => {
+      const tr = ms && !reduceMotion() ? `transform ${ms}ms cubic-bezier(.2,.8,.2,1)` : 'none';
+      pc.g.style.transition = tr;
+      if (tr !== 'none') pc.g.getBoundingClientRect(); // reflow, so the transition runs
+      pc.g.style.transform = `translate(${x}px, ${y}px) scale(${sc})`;
+      Object.assign(pc, { x, y, sc });
+    };
+    const layDown = (pc, ms) => {
+      laidLayer.append(pc.g);
+      pc.g.classList.add('laid');
+      move(pc, ...pc.goal, 1, ms);
+    };
+    for (const pc of pieces) (run.placed.has(pc.leg) ? layDown(pc, 0) : move(pc, ...pc.home));
+
+    // --- the car hops along the chain ---
     const car = svgEl('g', { class: 'fw-car' });
-    car.append(svgEl('circle', { r: 20 }), Object.assign(svgEl('text', { y: 8, 'text-anchor': 'middle' }), { textContent: '🚗' }));
+    car.append(svgEl('circle', { r: 24 }), Object.assign(svgEl('text', { y: 9, 'text-anchor': 'middle' }), { textContent: '🚗' }));
     carLayer.append(car);
-    const parkAt = ([x, y]) => car.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+    const park = ([x, y]) => car.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
     run.driven = Math.min(run.driven, drivable(run.placed, legs));
-    parkAt(run.driven ? legPts(run.driven - 1).at(-1) : legPts(0)[0]);
-
-    // A shape laid in place: it joins the map as a lit-up road.
-    function layDown(x, animate) {
-      x.tile.classList.add('used');
-      x.shape.style.display = '';
-      x.shape.classList.add('placed');
-      x.shape.classList.remove('near', 'held', 'warm');
-      placedLayer.append(x.shape);
-      moveShape(x, 0, 0, animate ? 180 : 0);
-      // Its sign moves onto this drive's stretch, clear of labels, the car's
-      // stops and other signs.
-      const busy = [...labels.querySelectorAll('.fw-landmark, .fw-end rect')].map((n) => n.getBBox())
-        .concat([...placedLayer.querySelectorAll('.fw-shape-sign')].filter((n) => !x.shape.contains(n)).map((n) => n.getBBox()));
-      const stops = p.blocks.map((_, l) => legPts(l)[0]).concat([legPts(legs - 1).at(-1)]);
-      const clash = ([sx, sy]) =>
-        busy.filter((b) => sx + 30 > b.x && sx - 30 < b.x + b.width && sy + 22 > b.y && sy - 22 < b.y + b.height).length * 10 +
-        stops.filter(([cx, cy]) => Math.hypot(cx - sx, cy - sy) < 45).length * 10;
-      const spot = [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85].map((t) => along(x.pts, t)).reduce((b, q) => (clash(q) < clash(b) ? q : b));
-      x.shape.querySelector('.fw-shape-sign')?.remove();
-      const sign = shield(x.ref, spot, 0.8);
-      sign.classList.add('fw-shape-sign');
-      x.shape.append(sign);
-    }
+    park(at(run.driven ? arrows[run.driven - 1].to : [0, 0]));
 
     const say1 = (text, tone = '') => {
       msg.textContent = text;
       msg.className = `fw-msg ${tone}`;
     };
-    const routeLine = () => `${p.blocks.map((b) => b.ref).join(' → ')} · about ${Math.round(p.km * 0.621)} mi`;
-    const madeIt = () =>
-      run.shownLegs >= legs
-        ? `Here’s the whole route: ${routeLine()}. Try the next one!`
-        : `🎉 You made it${run.shownLegs ? ' (with a peek)' : ''}! ${routeLine()}`;
-    const refreshHead = () => {
-      trayHead.textContent = run.done ? 'YOUR ROUTE' : `YOUR ROUTE · ${run.placed.size} OF ${legs} LAID`;
-    };
-    refreshHead();
+    const routeWords = () => p.blocks.map((b, i) => `${b.ref} ${dirName(arrows[i].dir)}`).join(' → ');
     const renderFooter = () => {
       clear(footer);
-      if (run.done) {
-        footer.append(el('button', { class: 'btn fw-next', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Next drive ▶'));
-      } else if (run.placed.size < legs) {
-        footer.append(
-          el('button', { class: 'btn btn-quiet', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Skip'),
-          el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'),
-        );
-      }
+      if (run.done) footer.append(el('button', { class: 'btn fw-next', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Next drive ▶'));
+      else footer.append(
+        el('button', { class: 'btn btn-quiet', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Skip'),
+        el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'),
+      );
     };
-    // First drive with the roads hidden: say what changed.
-    const lastTier = book.get('tier');
-    const news = !run.done && !run.placed.size && lastTier && lastTier !== tier && tier === 'blind' ? 'New: no roads drawn now. ' : '';
-    if (!run.done) book.set('tier', tier);
-    if (run.done) {
-      subEl.textContent = 'Nice driving! Your route is below.';
-      say1(madeIt(), run.shownLegs >= legs ? '' : 'good');
-    } else if (run.placed.size) say1(`Keep going — ${legs - run.placed.size} to lay.`);
-    else say1(`${news}Pick up a freeway and lay the whole thing where it runs. The drive starts at the 🚗 in ${from}.`);
+    if (run.done) say1(`🎉 You made it! ${routeWords()}`, 'good');
+    else say1('Which freeway leaves from the 🚗 — and which way does it go?');
     renderFooter();
 
-    // Name places on the map (for hints), along the freeway they're about.
-    const labelPlaces = (ids, alongPts) => {
-      hintLayer.replaceChildren();
-      // Keep the map's own labels; place the hint tags clear of them.
-      const used = [];
-      const boxes = [...labels.querySelectorAll('.fw-landmark, .fw-end rect')].map((n) => n.getBBox());
-      const onLabel = (x, y, w) => boxes.some((b) => x + w / 2 > b.x && x - w / 2 < b.x + b.width && y + 19 > b.y && y - 19 < b.y + b.height);
-      for (const id of ids) {
-        // Already labelled on the map? Light that label up instead of adding a second.
-        const existing = labels.querySelector(`[data-place="${CSS.escape(id)}"]`);
-        if (existing) {
-          existing.classList.add('fw-hinted');
-          continue;
-        }
-        const r = shapeOf(id).map(P);
-        const cc = r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
-        const c0 = nearestOnLine(cc, alongPts).point;
-        const name = labelOf(id);
-        const w = name.length * 15 + 26;
-        // On the place's own side of the road.
-        const side = Math.hypot(cc[0] - c0[0], cc[1] - c0[1]) || 1;
-        const u = [(cc[0] - c0[0]) / side, (cc[1] - c0[1]) / side];
-        const spots = [44, 70, 100].map((k) => [c0[0] + u[0] * (k + w / 4), c0[1] + u[1] * k]).concat([[cc[0], cc[1]]]);
-        const cost = ([x, y]) =>
-          alongPts.filter(([qx, qy]) => Math.abs(qx - x) < w / 2 && Math.abs(qy - y) < 22).length * 3 +
-          used.filter(([ux, uy]) => Math.abs(ux - x) < 200 && Math.abs(uy - y) < 42).length * 100 +
-          (onLabel(x, y, w) ? 60 : 0) +
-          (x - w / 2 < 4 || x + w / 2 > W - 4 || y < 24 || y > MH - 24 ? 100 : 0);
-        const c = spots.reduce((b, sp) => (cost(sp) < cost(b) ? sp : b));
-        used.push(c);
-        const g = svgEl('g', { class: 'fw-hintlabel' });
-        g.append(
-          svgEl('rect', { x: c[0] - w / 2, y: c[1] - 19, width: w, height: 38, rx: 19 }),
-          Object.assign(svgEl('text', { x: c[0], y: c[1] + 8, 'text-anchor': 'middle' }), { textContent: name }),
-        );
-        hintLayer.append(g);
-      }
-    };
-    const clearHints = () => {
-      hintLayer.replaceChildren();
-      slots.replaceChildren();
-      for (const n of labels.querySelectorAll('.fw-hinted')) n.classList.remove('fw-hinted');
-    };
-
-    // A gentle nudge if nothing happens for a while: the next tile bounces.
-    let idle = 0;
-    const armIdle = () => {
-      sched.cancel(idle);
-      if (run.done) return;
-      idle = sched.after(IDLE_MS, () => {
-        const next = pieces[nextLeg(run.placed, legs)];
-        next?.tile.classList.add('pulse');
-        sched.after(2400, () => next?.tile.classList.remove('pulse'));
-        armIdle();
-      });
-    };
-    armIdle();
-
-    // --- carrying a shape (pointer captured on the stable svg root) ---
+    // --- dragging (pointer captured on the stable svg root) ---
     const toSvg = (e) => {
       const pt = svg.createSVGPoint();
       pt.x = e.clientX;
@@ -258,168 +211,113 @@ export function renderFreeways(app, { onBack }) {
       const q = pt.matrixTransform(svg.getScreenCTM().inverse());
       return [q.x, q.y];
     };
+    const near = (pc) => Math.hypot(pc.x - pc.goal[0], pc.y - pc.goal[1]) < cell * 0.45;
     let drag = null;
     svg.addEventListener('pointerdown', (e) => {
       if (run.done || drag) return;
-      const tile = e.target.closest?.('.fw-tile');
-      const x = tile && pieces.find((q) => q.tile === tile);
-      if (!x || run.placed.has(x.leg)) return;
+      const g = e.target.closest?.('.fw-arrow-piece');
+      const pc = g && pieces.find((x) => x.g === g);
+      if (!pc || g.classList.contains('laid')) return;
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
-      armIdle();
-      clearHints();
-      const lift = e.pointerType === 'touch' ? 80 : 0;
       const q = toSvg(e);
-      // You hold the freeway by its grip (the dot on it, near this drive's
-      // stretch), just above the finger.
-      const off = [-x.grip[0], -x.grip[1] - lift];
-      drag = { x, id: e.pointerId, off, raw: [q[0] + off[0], q[1] + off[1]] };
-      tile.classList.add('lifted');
-      x.shape.style.display = '';
-      x.shape.classList.add('held');
-      for (const o of pieces) o.tile.classList.remove('pulse');
-      moveShape(x, ...drag.raw);
-      say1(`${say(x.ref)} · ${REFS[x.ref]?.name ?? ''} — line it up with where it runs.`);
+      const lift = e.pointerType === 'touch' ? 60 : 0;
+      // Keep the grabbed point of the arrow under the finger as it grows to full size.
+      const local = [(q[0] - pc.x) / pc.sc, (q[1] - pc.y) / pc.sc];
+      drag = { pc, id: e.pointerId, local, lift };
+      trayLayer.append(g);
+      g.classList.add('held');
+      move(pc, q[0] - local[0], q[1] - local[1] - lift, 1, 120);
+      say1(`${say(pc.ref)} — ${REFS[pc.ref]?.name ?? ''}, heading ${dirName(pc.a.dir)}.`);
     });
     svg.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
       const q = toSvg(e);
-      drag.raw = [q[0] + drag.off[0], q[1] + drag.off[1]];
-      const [dx, dy] = pull(drag.raw[0], drag.raw[1], MAGNET);
-      const off = Math.hypot(dx, dy);
-      drag.x.shape.classList.toggle('near', off < accept);
-      drag.x.shape.classList.toggle('warm', off >= accept && off < WARM * accept);
-      drag.shown = [dx, dy];
-      moveShape(drag.x, dx, dy);
+      let [x, y] = [q[0] - drag.local[0], q[1] - drag.local[1] - drag.lift];
+      const { pc } = drag;
+      // Magnetism: close to its spot, it's pulled in.
+      const d = Math.hypot(x - pc.goal[0], y - pc.goal[1]);
+      if (d < cell * 0.9) {
+        const k = 0.25 + 0.75 * (d / (cell * 0.9));
+        x = pc.goal[0] + (x - pc.goal[0]) * k;
+        y = pc.goal[1] + (y - pc.goal[1]) * k;
+      }
+      move(pc, x, y, 1);
+      pc.g.classList.toggle('near', near(pc));
     });
     const end = (e, cancelled) => {
       if (!drag || e.pointerId !== drag.id) return;
-      const { x, raw } = drag;
-      const shown = drag.shown || raw;
+      const { pc } = drag;
       const q = toSvg(e);
       drag = null;
-      x.shape.classList.remove('held', 'near', 'warm');
-      if (!cancelled && Math.hypot(shown[0], shown[1]) < accept) return place(x);
-      putBack(x);
-      if (cancelled || q[1] > MH) return; // dropped back on the tray: no harm done
-      miss(x, shown);
+      pc.g.classList.remove('held', 'near');
+      if (!cancelled && near(pc)) return place(pc);
+      const tail = [pc.x, pc.y]; // where they put its tail
+      move(pc, ...pc.home, 300);
+      if (cancelled || q[1] > BH) return;
+      // Nudge, kindly.
+      const carAt = at(run.driven ? arrows[run.driven - 1].to : [0, 0]);
+      const onCar = Math.hypot(tail[0] - carAt[0], tail[1] - carAt[1]) < cell * 0.5;
+      if (onCar) say1(`Not first — ${say(pc.ref)} comes later in the drive. Which arrow leaves from the 🚗?`, 'warn');
+      else say1(`Arrows chain tail-to-tip: start ${say(pc.ref)} where the freeway before it ends.`, 'warn');
     };
     svg.addEventListener('pointerup', (e) => end(e, false));
     svg.addEventListener('pointercancel', (e) => end(e, true));
 
-    function putBack(x) {
-      x.shape.style.display = 'none';
-      x.tile.classList.remove('lifted');
-    }
-
-    // A miss: which way to move it, then where it runs, then exactly where.
-    function miss(x, [dx, dy]) {
-      armIdle();
-      run.misses[x.leg] = (run.misses[x.leg] || 0) + 1;
-      const dir = compass([x.center[0] + dx, x.center[1] + dy], x.center);
-      const close = Math.hypot(dx, dy) < WARM * accept; // same as the amber glow
-      const lead = close ? `Close — ${say(x.ref)} runs a little further ${dir}.` : `Not quite — ${say(x.ref)} runs further ${dir}.`;
-      const help = placeHint(run.misses[x.leg]);
-      if (help === 'dir') say1(lead, 'warn');
-      else if (help === 'via' && x.via?.length) {
-        labelPlaces(x.via, x.pts);
-        say1(`${lead} It goes through ${x.via.map(labelOf).join(' and ')}.`, 'warn');
-        countEvent('freeway-hint-via');
-      } else if (help === 'ghost' || help === 'via') {
-        slots.replaceChildren(...wholeOf(x.ref).map((l) => svgEl('path', { d: pathD(l), class: 'fw-slot' })));
-        say1(`${lead} Here’s exactly where — the dashed line.`, 'warn');
-        countEvent('freeway-hint-ghost');
-      } else say1(lead, 'warn');
-    }
-
-    function place(x, shown = false) {
-      run.placed.add(x.leg);
-      clearHints();
-      layDown(x, true);
-      refreshHead();
-      if (!shown) {
-        const known = book.get('learned') || [];
-        if (!known.includes(x.ref)) book.set('learned', [...known, x.ref]); // its sign shows on later maps
-      }
-      const at = p.blocks[x.leg].at ? ` (You switch onto it at ${p.blocks[x.leg].at}.)` : '';
-      const name = `${say(x.ref)} — ${REFS[x.ref]?.name ?? ''}`;
+    function place(pc, shown = false) {
+      run.placed.add(pc.leg);
+      layDown(pc, 160);
       const left = legs - run.placed.size;
-      if (!left) say1(`✓ ${name}.${at} That’s the whole drive — here we go!`, 'good');
-      else if (shown) say1(`Here’s ${name}.${at} ${left} to go.`);
-      else say1(`✓ ${name}!${at} ${left} to go.`, 'good');
-      renderFooter();
-      sched.after(reduceMotion() ? 0 : 300, driveOn);
+      say1(`${shown ? 'Here’s' : '✓'} ${say(pc.ref)} ${dirName(pc.a.dir)}.${left ? ` ${left} to go.` : ' That’s the drive!'}`, shown ? '' : 'good');
+      sched.after(reduceMotion() ? 0 : 250, driveOn);
     }
-
-    // Show me: lay the next leg (in driving order) for them.
     function showOne() {
-      if (run.done) return;
-      const leg = nextLeg(run.placed, legs);
-      if (leg >= legs) return;
-      run.shownLegs++;
-      countEvent('freeway-show-leg');
-      place(pieces[leg], true);
+      const next = pieces.find((pc) => pc.leg === drivable(run.placed, legs));
+      if (!next || run.done) return;
+      run.shown++;
+      place(next, true);
     }
 
-    // Drive the car along newly drivable legs; arrive → finish.
     let driving = false;
     function driveOn() {
       if (driving) return;
       const upto = drivable(run.placed, legs);
       if (upto <= run.driven) return;
-      const pts = [];
-      for (let l = run.driven; l < upto; l++) pts.push(...legPts(l));
+      const a = at(run.driven ? arrows[run.driven - 1].to : [0, 0]);
+      const b = at(arrows[upto - 1].to);
+      const pts = [a, ...arrows.slice(run.driven, upto).map((x) => at(x.to))];
       run.driven = upto;
-      const path = svgEl('path', { d: pathD(pts), class: 'fw-drivepath' });
-      svg.append(path);
-      const total = path.getTotalLength();
-      const at = (k) => {
-        const q = path.getPointAtLength(total * k);
-        parkAt([q.x, q.y]);
-      };
       const arrive = () => {
-        path.remove();
         driving = false;
         if (run.driven === legs) finish();
         else driveOn();
       };
       if (reduceMotion()) {
-        at(1);
+        park(b);
         return arrive();
       }
       driving = true;
-      sched.animate(Math.min(2400, 600 + total * 1.1), (k) => at(k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2), arrive);
+      const segs = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+      const total = segs.reduce((x, y) => x + y, 0);
+      sched.animate(Math.min(1800, 400 + total * 1.2), (k) => {
+        let left = total * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
+        for (let i = 0; i < segs.length; i++) {
+          if (left <= segs[i] || i === segs.length - 1) {
+            const t = segs[i] ? Math.min(1, left / segs[i]) : 1;
+            return park([pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t]);
+          }
+          left -= segs[i];
+        }
+      }, arrive);
     }
 
     function finish() {
-      if (run.done) return;
       run.done = true;
-      sched.cancel(idle);
-      book.markDone(idOf(p), run.shownLegs >= legs ? 'skipped' : 'solved');
-      countEvent(run.shownLegs >= legs ? 'freeway-shown' : 'freeway-solved');
-      countEl.textContent = tally();
-      subEl.textContent = 'Nice driving! Your route is below.';
-      refreshHead();
-      recap();
-      say1(madeIt(), run.shownLegs >= legs ? '' : 'good');
+      book.markDone(idOf(p), run.shown >= legs ? 'skipped' : 'solved');
+      countEvent(run.shown >= legs ? 'freeway-shown' : 'freeway-solved');
+      say1(`🎉 You made it! ${routeWords()}`, 'good');
       renderFooter();
     }
-
-    // After the drive the tray lists the route: each sign, its name, and
-    // where you switch.
-    function recap() {
-      tileLayer.style.display = 'none';
-      const g = svgEl('g', { class: 'fw-recap' });
-      const rowH = Math.min(52, (TRAY[3] - TRAY[1] - 60) / legs);
-      p.blocks.forEach((b, k) => {
-        const y = TRAY[1] + 62 + rowH * k + rowH / 2 - 8;
-        g.append(shield(b.ref, [TRAY[0] + 60, y], 0.8));
-        const label = `${REFS[b.ref]?.name ?? ''}${b.at ? ` · switch at ${b.at}` : ''}`;
-        g.append(Object.assign(svgEl('text', { x: TRAY[0] + 100, y: y + 8, class: 'fw-recap-name' }), { textContent: label }));
-      });
-      svg.append(g);
-    }
-    if (run.done) recap();
   }
 
   const onResize = () => sched.after(150, () => run && mount());

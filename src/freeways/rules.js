@@ -66,3 +66,33 @@ export function nearestOnLine([px, py], pts) {
   if (pts.length === 1) best = { d: Math.hypot(px - pts[0][0], py - pts[0][1]), point: pts[0] };
   return best;
 }
+
+// --- The abstract board (v4): each leg becomes an ARROW on a grid ---
+// legs: [[x0, y0], [x1, y1]] per leg, in km with y pointing DOWN (screen
+// style). Each leg snaps to one of 8 directions and a whole number of grid
+// steps, sized so the whole drive spans about `span` steps. The arrows chain
+// exactly: each starts where the last ended. Returns [{ dir: [dx, dy],
+// len, from: [gx, gy], to: [gx, gy] }].
+export function arrowsFor(legs, span = 6) {
+  const extent = Math.max(
+    ...legs.map(([[x0, y0], [x1, y1]]) => Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))),
+    1e-6,
+  );
+  const total = legs.reduce((s, [[x0, y0], [x1, y1]]) => s + Math.hypot(x1 - x0, y1 - y0), 0);
+  const unit = Math.max(extent, total / legs.length) / Math.max(1, span / legs.length) || 1;
+  let at = [0, 0];
+  return legs.map(([[x0, y0], [x1, y1]]) => {
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    const k = Math.round(ang / (Math.PI / 4));
+    const dir = [Math.round(Math.cos((k * Math.PI) / 4)), Math.round(Math.sin((k * Math.PI) / 4))];
+    const step = Math.hypot(dir[0], dir[1]) * unit; // a diagonal step is √2 longer
+    const len = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / step));
+    const from = at;
+    at = [at[0] + dir[0] * len, at[1] + dir[1] * len];
+    return { dir, len, from, to: at };
+  });
+}
+
+// "north", "southeast"… for an arrow direction [dx, dy] (y down).
+export const dirName = ([dx, dy]) =>
+  ({ '0,-1': 'north', '1,-1': 'northeast', '1,0': 'east', '1,1': 'southeast', '0,1': 'south', '-1,1': 'southwest', '-1,0': 'west', '-1,-1': 'northwest' })[`${dx},${dy}`];

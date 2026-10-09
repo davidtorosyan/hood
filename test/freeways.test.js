@@ -95,3 +95,32 @@ test('no stub legs: every leg is a real stretch of freeway', () => {
     }
   }
 });
+
+import { arrowsFor, dirName } from '../src/freeways/rules.js';
+
+test('legs become chained grid arrows in 8 directions', () => {
+  // 10 km south, then 20 km west.
+  const a = arrowsFor([[[0, 0], [0, 10]], [[0, 10], [-20, 10]]], 6);
+  assert.deepEqual(a[0].dir, [0, 1]);
+  assert.deepEqual(a[1].dir, [-1, 0]);
+  assert.ok(a[1].len > a[0].len); // relative distances survive
+  assert.deepEqual(a[1].from, a[0].to); // chained
+  assert.equal(dirName(a[0].dir), 'south');
+  // A diagonal leg snaps to a diagonal arrow.
+  assert.deepEqual(arrowsFor([[[0, 0], [10, -9]]])[0].dir, [1, -1]);
+});
+
+test('every drive makes a sensible arrow puzzle', () => {
+  const kx = 111.32 * Math.cos((34 * Math.PI) / 180);
+  for (const p of puzzles) {
+    const legs = p.blocks.map((b) => {
+      const l = decodeRing(b.line);
+      const [a, z] = [l[0], l.at(-1)];
+      return [[a[0] * kx, -a[1] * 110.57], [z[0] * kx, -z[1] * 110.57]];
+    });
+    const arrows = arrowsFor(legs, 6);
+    for (const x of arrows) assert.ok(x.len >= 1 && x.len <= 8, `${p.from} → ${p.to}: arrow of ${x.len}`);
+    const end = arrows.at(-1).to;
+    assert.ok(end[0] || end[1], `${p.from} → ${p.to}: ends where it starts`);
+  }
+});
