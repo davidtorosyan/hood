@@ -8,9 +8,12 @@
 // starts; the car hops along as the chain grows.
 //
 // Every deferred effect goes through a Scheduler, so leaving cancels it all.
+import { geoMercator } from 'd3-geo';
 import { el, svgEl, clear } from '../ui/dom.js';
-import { labelOf } from '../jigsaw/tree.js';
+import { ROOT, labelOf, leavesOf, shapeOf } from '../jigsaw/tree.js';
 import { Scheduler } from '../jigsaw/scheduler.js';
+import { Paddle } from '../jigsaw/fx.js';
+import { PLACES } from '../data/places.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
 import { REFS, PUZZLES, idOf, lineOf, say, nextIndex, drivable, arrowsFor, dirName } from './puzzles.js';
@@ -19,6 +22,12 @@ import { shield } from './sign.js';
 const book = store.freeways;
 const W = 1000;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+// On touch, a held arrow floats this far above the finger (like the jigsaw's
+// paddle), so the thumb never hides where it's going. Mouse: no lift.
+const HAS_MOUSE = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
+const LIFT = 240;
+const PICK = 130; // board units: a touch this near an arrow in the tray picks it up
+const ALL = leavesOf(ROOT);
 const KX = 111.32 * Math.cos((34 * Math.PI) / 180);
 const toKm = ([lon, lat]) => [lon * KX, -lat * 110.57]; // y down, like the screen
 
@@ -109,18 +118,23 @@ export function renderFreeways(app, { onBack }) {
       return g;
     };
     board.append(block([0, 0], from, 'from'), block(arrows.at(-1).to, to, 'to'));
+    const realLayer = svgEl('g', { class: 'fw-real' }); // the real map, after the drive
     const laidLayer = svgEl('g');
     const carLayer = svgEl('g');
     const trayLayer = svgEl('g');
+    const fxLayer = svgEl('g');
     svg.append(
       board,
+      realLayer,
       laidLayer,
       carLayer,
       svgEl('rect', { x: TRAY[0], y: TRAY[1], width: TRAY[2] - TRAY[0], height: TRAY[3] - TRAY[1], rx: 26, class: 'fw-tray' }),
       Object.assign(svgEl('text', { x: TRAY[0] + 26, y: TRAY[1] + 40, class: 'fw-tray-label' }), { textContent: 'FREEWAYS ON THIS DRIVE' }),
       trayLayer,
+      fxLayer,
     );
     wrap.append(svg);
+    const paddle = new Paddle(fxLayer, LIFT);
 
     // --- arrows: drawn with the tail at (0,0), in board scale ---
     const arrowEl = (a, ref) => {
@@ -215,13 +229,25 @@ export function renderFreeways(app, { onBack }) {
     let drag = null;
     svg.addEventListener('pointerdown', (e) => {
       if (run.done || drag) return;
-      const g = e.target.closest?.('.fw-arrow-piece');
-      const pc = g && pieces.find((x) => x.g === g);
-      if (!pc || g.classList.contains('laid')) return;
+      const q = toSvg(e);
+      // Touching anywhere near an arrow picks it up — the nearest one.
+      const segDist = (pc) => {
+        const ax = pc.x;
+        const ay = pc.y;
+        const L = pc.a.len * cell * Math.hypot(...pc.a.dir) * pc.sc;
+        const ux = pc.a.dir[0] / Math.hypot(...pc.a.dir);
+        const uy = pc.a.dir[1] / Math.hypot(...pc.a.dir);
+        const t = Math.max(0, Math.min(L, (q[0] - ax) * ux + (q[1] - ay) * uy));
+        return Math.hypot(q[0] - (ax + ux * t), q[1] - (ay + uy * t));
+      };
+      const free = pieces.filter((x) => !x.g.classList.contains('laid'));
+      const pc = free.reduce((b, x) => (b && segDist(b) <= segDist(x) ? b : x), null);
+      if (!pc || segDist(pc) > PICK) return;
+      const g = pc.g;
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
-      const q = toSvg(e);
-      const lift = e.pointerType === 'touch' ? 60 : 0;
+      const lift = HAS_MOUSE ? 0 : LIFT;
+      if (lift) paddle.show(q);
       // Keep the grabbed point of the arrow under the finger as it grows to full size.
       const local = [(q[0] - pc.x) / pc.sc, (q[1] - pc.y) / pc.sc];
       drag = { pc, id: e.pointerId, local, lift };
@@ -244,12 +270,14 @@ export function renderFreeways(app, { onBack }) {
       }
       move(pc, x, y, 1);
       pc.g.classList.toggle('near', near(pc));
+      if (drag.lift) paddle.move(q);
     });
     const end = (e, cancelled) => {
       if (!drag || e.pointerId !== drag.id) return;
       const { pc } = drag;
       const q = toSvg(e);
       drag = null;
+      paddle.hide();
       pc.g.classList.remove('held', 'near');
       if (!cancelled && near(pc)) return place(pc);
       const tail = [pc.x, pc.y]; // where they put its tail
@@ -317,6 +345,104 @@ export function renderFreeways(app, { onBack }) {
       countEvent(run.shown >= legs ? 'freeway-shown' : 'freeway-solved');
       say1(`🎉 You made it! ${routeWords()}`, 'good');
       renderFooter();
+      sched.after(reduceMotion() ? 0 : 700, morphToMap);
+    }
+
+    // The payoff: the abstract chain morphs into the real freeways on the
+    // real map — the grid fades, the places fade in, each arrow bends into
+    // its freeway's true path.
+    function morphToMap() {
+      const frame = [...p.blocks.flatMap((b) => lineOf(b))];
+      const lons = frame.map((c) => c[0]);
+      const lats = frame.map((c) => c[1]);
+      const [x0, x1, y0, y1] = [Math.min(...lons), Math.max(...lons), Math.min(...lats), Math.max(...lats)];
+      const dx = Math.max(x1 - x0, 0.12) * 0.3;
+      const dy = Math.max(y1 - y0, 0.1) * 0.3;
+      const proj = geoMercator().fitExtent([[30, 30], [W - 30, BH - 30]], {
+        type: 'MultiPoint', coordinates: [[x0 - dx, y0 - dy], [x1 + dx, y1 + dy], [x0 - dx, y1 + dy], [x1 + dx, y0 - dy]],
+      });
+      const P = (c) => proj(c);
+      const ringD = (r) => 'M' + r.map((c) => P(c).map((v) => v.toFixed(1)).join(',')).join('L') + 'Z';
+      // The real map, fading in under everything.
+      const clipId = 'fw-real-clip';
+      const defs = svgEl('defs');
+      const clip = svgEl('clipPath', { id: clipId });
+      clip.append(svgEl('rect', { x: 8, y: 8, width: W - 16, height: BH - 8, rx: 26 }));
+      defs.append(clip);
+      const map = svgEl('g', { 'clip-path': `url(#${clipId})`, class: 'fw-real-map' });
+      for (const id of ALL) {
+        const cls = id === p.from ? 'fw-place from' : id === p.to ? 'fw-place to' : 'fw-place';
+        map.append(svgEl('path', { d: ringD(shapeOf(id)), class: cls }));
+      }
+      const mid = (id) => {
+        const r = shapeOf(id).map(P);
+        return r.reduce((a, q) => [a[0] + q[0] / r.length, a[1] + q[1] / r.length], [0, 0]);
+      };
+      const names = svgEl('g', { class: 'fw-real-names' });
+      const big = ALL.filter((id) => id !== p.from && id !== p.to && (PLACES[id]?.pop ?? 0) >= 60000)
+        .map((id) => [id, mid(id)])
+        .filter(([, [x, y]]) => x > 60 && x < W - 60 && y > 40 && y < BH - 40)
+        .slice(0, 6);
+      for (const [id, [x, y]] of big) names.append(Object.assign(svgEl('text', { x, y, 'text-anchor': 'middle', class: 'fw-landmark' }), { textContent: labelOf(id) }));
+      realLayer.append(defs, map);
+      // Each arrow's straight line, resampled, morphing to its real path.
+      const N = 48;
+      const resample = (pts) => {
+        const seg = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+        const total = seg.reduce((a, b) => a + b, 0) || 1;
+        return Array.from({ length: N }, (_, i) => {
+          let left = (total * i) / (N - 1);
+          for (let j = 0; j < seg.length; j++) {
+            if (left <= seg[j] || j === seg.length - 1) {
+              const t = seg[j] ? Math.min(1, left / seg[j]) : 0;
+              return [pts[j][0] + (pts[j + 1][0] - pts[j][0]) * t, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * t];
+            }
+            left -= seg[j];
+          }
+          return pts.at(-1);
+        });
+      };
+      const morphs = p.blocks.map((b, leg) => {
+        const from = resample([at(arrows[leg].from), at(arrows[leg].to)]);
+        const to = resample(lineOf(b).map(P));
+        const path = svgEl('path', { class: `fw-morph ${REFS[b.ref]?.kind || 'CA'}` });
+        realLayer.append(path);
+        return { from, to, path, ref: b.ref };
+      });
+      const draw = (k) => {
+        for (const m of morphs) {
+          const pts = m.from.map((a, i) => [a[0] + (m.to[i][0] - a[0]) * k, a[1] + (m.to[i][1] - a[1]) * k]);
+          m.path.setAttribute('d', 'M' + pts.map((q) => q.map((v) => v.toFixed(1)).join(',')).join('L'));
+        }
+      };
+      draw(0);
+      for (const pc of pieces) pc.g.classList.add('morphing');
+      board.classList.add('fading');
+      map.classList.add('showing');
+      // The end names sit beside where the route starts/ends, on the side the
+      // road doesn't run (so neither the road nor the 🚗 covers them).
+      const first = morphs[0].to;
+      const last = morphs.at(-1).to;
+      for (const [id, cls, [x, y], [, ny]] of [[p.from, 'from', first[0], first[6]], [p.to, 'to', last.at(-1), last.at(-7)]]) {
+        const ty = Math.min(BH - 20, Math.max(40, ny > y ? y - 34 : y + 52));
+        const tx = Math.min(W - 150, Math.max(150, x));
+        names.append(Object.assign(svgEl('text', { x: tx, y: ty, 'text-anchor': 'middle', class: `fw-real-end ${cls}` }), { textContent: labelOf(id) }));
+      }
+      const endCar = last.at(-1);
+      const startCar = at(arrows.at(-1).to);
+      const done = () => {
+        draw(1);
+        for (const m of morphs) realLayer.append(shield(m.ref, m.to[Math.floor(N / 2)], 0.8));
+        realLayer.append(names);
+        park(endCar);
+        say1(`🎉 You made it! ${routeWords()} — here it is on the map.`, 'good');
+      };
+      if (reduceMotion()) return done();
+      sched.animate(1400, (k) => {
+        const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+        draw(e);
+        park([startCar[0] + (endCar[0] - startCar[0]) * e, startCar[1] + (endCar[1] - startCar[1]) * e]);
+      }, done);
     }
   }
 

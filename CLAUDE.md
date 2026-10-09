@@ -148,6 +148,11 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
   is pulled in near its spot and clicks in when its tail sits where that freeway really
   starts. The car hops along as the chain grows. A finished drive reads
   "105 west → 405 northwest".
+- **Handling (Dave's round 2):** a touch anywhere near an arrow picks it up (the nearest
+  one within `PICK`). On touch the arrow floats `LIFT` above the finger on the jigsaw's
+  `Paddle`, so the thumb doesn't hide the spot. Once solved, the grid fades out and the
+  arrows **morph into the real freeway legs** on the real map (`morphToMap`). That's
+  where the abstract chain pays off as geography.
 - This is a first cut, meant to iterate on with Dave. Superseded designs (v1 shaped
   pieces; v2 signs on roads with decoys; v3 whole-freeway shapes) live in git history
   before this commit.

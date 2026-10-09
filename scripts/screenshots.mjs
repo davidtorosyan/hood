@@ -429,7 +429,13 @@ await shot('home-campaign-started');
     const b = await arrow(ref).locator('.fw-arrow-tail').boundingBox();
     return [b.x + b.width / 2, b.y + b.height / 2];
   };
-  const goal = async (ref) => toScreen(...(await arrow(ref).getAttribute('data-goal')).split(',').map(Number));
+  // Where the finger goes so the lifted arrow's tail lands on its spot (touch
+  // lifts the arrow above the finger). Must match LIFT in src/freeways/game.js.
+  const FW_LIFT = 240;
+  const goal = async (ref) => {
+    const [x, y] = (await arrow(ref).getAttribute('data-goal')).split(',').map(Number);
+    return toScreen(x, y + FW_LIFT);
+  };
   const carry = async (ref, to, { hold = false } = {}) => {
     await page.mouse.move(...(await tailOf(ref)));
     await page.mouse.down();
@@ -455,8 +461,11 @@ await shot('home-campaign-started');
     } else await carry(ref, [gx + 10, gy - 8]);
     if (!(await arrow(ref).evaluate((g) => g.classList.contains('laid')))) fail(`freeways: ${ref} didn't click in at its spot`);
   }
-  await page.waitForTimeout(3500);
+  await page.waitForTimeout(1500);
   if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: chain laid but not solved');
+  await shot('freeways-morphing');
+  await page.waitForTimeout(2500);
+  if (!(await page.locator('.fw-real-map.showing').count())) fail('freeways: solved drive never morphed onto the map');
   await shot('freeways-solved');
   await page.getByRole('button', { name: /Next drive/ }).click();
   await page.waitForTimeout(500);

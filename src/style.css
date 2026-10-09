@@ -2151,3 +2151,37 @@ body {
   cursor: default;
   pointer-events: none;
 }
+/* v4 payoff: the chain morphs into the real map. */
+.fw-real-map {
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+.fw-real-map.showing {
+  opacity: 1;
+}
+.fw-svg g.fading {
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.fw-arrow-piece.morphing {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.fw-morph {
+  fill: none;
+  stroke-width: 9px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.fw-morph.I { stroke: #1f4fbf; }
+.fw-morph.US { stroke: #475569; }
+.fw-morph.CA { stroke: #15803d; }
+.fw-real-end {
+  font: 800 26px system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 6px;
+}
+.fw-real-end.from { fill: #0b7a53; }
+.fw-real-end.to { fill: var(--accent-text); }
