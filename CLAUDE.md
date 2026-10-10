@@ -144,6 +144,11 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
   whole grid steps from the real leg, and its sign rides on it (`arrowsFor` in
   `rules.js`). The tray shows the arrows shuffled and all at one scale, so you can see
   direction and relative length before picking one up.
+- **Where is it?** (Dave: an unknown place like Lynwood gives you nothing to hang
+  a freeway on.) Each block has a grey caption naming its part of LA (`areaOf` in
+  `locator.js`: the top region, or the Eastside / Northeast L.A. where the region would
+  mislead). A small county map in the board's emptiest corner (`locator`) puts a
+  green and an orange dot on the two places.
 - **The puzzle is the chain.** Drag arrows tail-to-tip from the 🚗 to the flag. An arrow
   is pulled in near its spot and clicks in when its tail sits where that freeway really
   starts. The car hops along as the chain grows. A finished drive reads
@@ -174,7 +179,7 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
   - `rules.js`: pure and unit-tested. `arrowsFor` (legs → chained grid arrows),
     `dirName`, leg order, and helpers kept from v3.
   - `puzzles.js`: the data.
-  - `sign.js`: freeway shields.
+  - `sign.js`: freeway shields. `locator.js`: the county inset and area captions.
   - `game.js`: the board, tray, drag and car. Pointer events are captured on the svg
     root, moves use the CSS transform, and timers go through a Scheduler.
   `store.freeways` is its ledger (`at`). `test/freeways.test.js` checks

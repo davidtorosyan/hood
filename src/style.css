@@ -2105,6 +2105,26 @@ body {
   font: 800 28px system-ui, sans-serif;
   fill: var(--text);
 }
+.fw-block-place .fw-block-sub {
+  font: 600 22px system-ui, sans-serif;
+  fill: #6b7587;
+}
+.fw-locator-card {
+  fill: #ffffff;
+  stroke: #e3e7ee;
+  stroke-width: 2;
+}
+.fw-locator-region {
+  fill: #dfe4ec;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+.fw-locator-dot {
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+.fw-locator-dot.from { fill: #0f9d6b; }
+.fw-locator-dot.to { fill: var(--accent); }
 .fw-block-place .fw-block-icon {
   font-size: 34px;
   fill: #ffffff;

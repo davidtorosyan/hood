@@ -18,6 +18,7 @@ import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
 import { REFS, PUZZLES, idOf, lineOf, say, nextIndex, drivable, arrowsFor, dirName } from './puzzles.js';
 import { shield } from './sign.js';
+import { areaOf, locator } from './locator.js';
 
 const book = store.freeways;
 const W = 1000;
@@ -108,18 +109,38 @@ export function renderFreeways(app, { onBack }) {
       board.append(svgEl('circle', { cx: x, cy: y, r: 4, class: 'fw-dot' }));
     }
     // The two places, as blocks.
-    const block = (node, name, cls) => {
+    const block = (node, id, name, cls) => {
       const [x, y] = at(node);
       const s = Math.min(cell * 0.9, 120);
       const g = svgEl('g', { class: `fw-block-place ${cls}` });
       g.append(
         svgEl('rect', { x: x - s / 2, y: y - s / 2, width: s, height: s, rx: 18 }),
         Object.assign(svgEl('text', { x, y: y + s / 2 + 34, 'text-anchor': 'middle' }), { textContent: name }),
+        Object.assign(svgEl('text', { x, y: y + s / 2 + 62, 'text-anchor': 'middle', class: 'fw-block-sub' }), { textContent: areaOf(id) }),
         Object.assign(svgEl('text', { x, y: y + 12, 'text-anchor': 'middle', class: 'fw-block-icon' }), { textContent: cls === 'from' ? '●' : '⚑' }),
       );
       return g;
     };
-    board.append(block([0, 0], from, 'from'), block(arrows.at(-1).to, to, 'to'));
+    board.append(block([0, 0], p.from, from, 'from'), block(arrows.at(-1).to, p.to, to, 'to'));
+    // Where in LA: a little county map in whichever corner the drive leaves empty.
+    {
+      const LW = 270;
+      const LH = 200;
+      const ends = [[0, 0], arrows.at(-1).to].flatMap((n) => {
+        const [x, y] = at(n);
+        return [[x - 120, y + 100], [x + 120, y + 100]]; // its block's caption
+      });
+      const along = nodes.slice(1).flatMap((n, i) => [0, 0.25, 0.5, 0.75, 1].map((t) => at([nodes[i][0] + (n[0] - nodes[i][0]) * t, nodes[i][1] + (n[1] - nodes[i][1]) * t])));
+      const busy = [...ends, ...along]; // the chain's path, and the block captions
+      const corners = [[22, 22], [W - 22 - LW, 22], [22, BH - 14 - LH], [W - 22 - LW, BH - 14 - LH]];
+      const room = ([cx, cy]) => Math.min(...busy.map(([x, y]) => {
+        const dx = Math.max(cx - x, 0, x - (cx + LW));
+        const dy = Math.max(cy - y, 0, y - (cy + LH));
+        return Math.hypot(dx, dy);
+      }));
+      const best = corners.reduce((a, c) => (room(c) > room(a) ? c : a));
+      board.append(locator(p.from, p.to, [...best, LW, LH]));
+    }
     const realLayer = svgEl('g', { class: 'fw-real' }); // the real map, after the drive
     const laidLayer = svgEl('g');
     const carLayer = svgEl('g');
