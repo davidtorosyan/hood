@@ -596,7 +596,10 @@ export class Board {
       ? zoomable ? '' : '👆 Tap a place to learn about it'
       : zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece to learn about it';
     const progress = this.cbs.progressLine?.() ?? progressLine(this.nodeId);
-    this.stage.showSolved({ tip, chips: this.campaign && zoomable ? [] : chips, progress });
+    // Campaign: just Next — no tips or name chips (Dave). Places are explored
+    // on the overworld map instead.
+    if (this.campaign) this.stage.showSolved({ tip: '', chips: [], progress: '' });
+    else this.stage.showSolved({ tip, chips, progress });
     if (justSolved) this.stage.celebrate(labelOf(this.nodeId));
     // Campaign: the places merge back into the one shape they make.
     if (justSolved && this.mergeColor) this.sched.after(MERGE_BACK_MS, () => this.#merge(true));

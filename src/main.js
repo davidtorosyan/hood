@@ -10,9 +10,9 @@ import { openBugReport } from './bugreport.js';
 import { initPwa } from './pwa.js';
 import { renderProgress } from './progressScreen.js';
 import { catchUp, record, PUZZLES, TROPHIES } from './progress.js';
-import { renderOverworld, campaignLine } from './campaign/overworld.js';
+import { renderOverworld, unmountOverworld, campaignLine } from './campaign/overworld.js';
 import { built, progress } from './campaign/state.js';
-import { nextStep, isFirstDrive, chapterOf, markDriven } from './campaign/journey.js';
+import { isFirstDrive, chapterOf, markDriven } from './campaign/journey.js';
 import { mountCampaignPuzzle } from './jigsaw/index.js';
 import { renderFreeways, unmountFreeways } from './freeways/game.js';
 import { PUZZLES as DRIVES, idOf as driveId } from './freeways/puzzles.js';
@@ -39,6 +39,7 @@ catchUp(); // trophies already earned (e.g. before trophies existed), awarded qu
 function goHome() {
   unmountJigsaw();
   unmountFreeways();
+  unmountOverworld();
   store.setAtHome(true);
   store.setScreen('home');
   renderHome();
@@ -47,21 +48,25 @@ function goHome() {
 // --- Freeways (prototype) ---
 function openFreeways() {
   unmountJigsaw();
+  unmountOverworld();
   store.setScreen('freeways');
   renderFreeways(app, { onBack: goHome });
 }
 
 // --- Rebuild LA (the campaign) ---
-function openOverworld() {
+// `arriving`: puzzle ids just built / driven between — the camera starts on
+// them and pulls back to show them in the county.
+function openOverworld(arriving = null) {
   unmountJigsaw();
   unmountFreeways();
   store.setScreen('campaign');
-  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onStep: playStep, onExplore: () => playExplore() });
+  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onStep: playStep, onExplore: () => playExplore(), arriving });
   record('campaign'); // announce any campaign trophy just earned
 }
 
 function playCampaign(id) {
   unmountFreeways();
+  unmountOverworld();
   const wasBuilt = built(id);
   const flash = () => {
     if (!wasBuilt && built(id)) store.campaign.set('fresh', id); // flash it on the map
@@ -69,11 +74,11 @@ function playCampaign(id) {
   mountCampaignPuzzle(app, {
     nodeId: id,
     progressLine: campaignLine,
-    back: () => (flash(), openOverworld()),
-    // Solved: straight on to the journey's next step (playtest: people expected
-    // to go right on, not pick from the map). Done with the journey: the map.
-    next: () => (flash(), nextStep() ? playStep(nextStep()) : openOverworld()),
-    doneLabel: () => (nextStep() ? 'Next ▶' : '🗺️ Back to the map'),
+    // Back, or Next once solved: the camera pulls back out of this area onto
+    // the county map (the piece lands), where Next flies on to the next area.
+    back: () => (flash(), openOverworld([id])),
+    next: () => (flash(), openOverworld([id])),
+    doneLabel: () => 'Next ▶',
   });
 }
 
@@ -82,15 +87,16 @@ function playCampaign(id) {
 function playStep(step) {
   if (step.kind !== 'drive') return playCampaign(step.id);
   unmountJigsaw();
+  unmountOverworld();
   store.setScreen('campaign');
   renderFreeways(app, {
     drive: step.drive,
     coach: isFirstDrive(step),
     areas: step.areas,
     title: chapterOf(step).title,
-    onBack: openOverworld,
+    onBack: () => openOverworld(step.areas),
     onSolved: () => markDriven(step),
-    onNext: () => (nextStep() ? playStep(nextStep()) : openOverworld()),
+    onNext: () => openOverworld(step.areas),
   });
 }
 
@@ -132,7 +138,7 @@ function renderHome() {
       el('div', { class: 'home-actions' }, [
         // Two ways to play: the campaign (rebuild LA bottom-up, outward from a
         // starting spot) and free exploring (the whole zoomable map, any order).
-        el('button', { class: 'btn home-play', onClick: openOverworld }, [
+        el('button', { class: 'btn home-play', onClick: () => openOverworld() }, [
           '🧩 Rebuild LA',
           el('span', { class: 'home-play-sub' }, cp.built ? `${cp.built} of ${cp.total} rebuilt` : 'LA’s been scrambled — put it back'),
         ]),

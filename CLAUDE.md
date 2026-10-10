@@ -139,8 +139,14 @@ campaign is now a fixed **journey** of steps (`src/campaign/chapters.js`, plain 
 build a cluster, build another, **drive between them by freeway**, connect the
 district, and so on outward. The drive uses places you just built, so you know them.
 The first drive is one arrow with the jigsaw's `Coach` finger demo, and later ones
-grow to two and three arrows. A solved puzzle or drive's button is **Next ▶**, which
-goes straight to the next step. **Transitions tie it together** (Dave): a campaign
+grow to two and three arrows. A solved puzzle or drive shows **only Next ▶** (no tips or name chips, per Dave).
+Next pulls the camera back out of that area onto the county map, where the new piece
+lands. Next there flies out, across and in to the next area before it opens (the
+overworld is a camera: `mapview.js`'s `MapView` handles viewBox flights, pan/pinch/wheel,
+and names that appear when they fit). Between steps the map is **yours to explore**:
+only built places are drawn. Tapping a small one zooms to its group; tapping a big one
+opens its place card. After two builds, a wordless finger-tap hint shows this, once,
+until you open a card. **Transitions tie it together** (Dave): a campaign
 puzzle opens as the group's ONE shape with its name (`Board` `mergeColor`), splits into
 its places, then scrambles. Once solved, the places merge back into the named shape. A
 drive opens on the real map of the two areas just built, and they shrink into the
@@ -216,7 +222,8 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
   PWA registration.
 - `src/campaign/` — `state.js` (pure-ish campaign rules: `frontier`, `linkable`,
   `offers`, `progress`), `chapters.js` + `journey.js` (the ordered journey and its
-  next step), `overworld.js` (the overworld map + next-up cards).
+  next step), `overworld.js` (the overworld hub: map, Next card, explore) and
+  `mapview.js` (its camera).
 - `src/pwa.js` — service-worker registration with update checks on focus/visibility and
   every 5 min; vite-plugin-pwa autoUpdate reloads once the new worker takes control.
 - `src/jigsaw/` — the mode, in small modules:

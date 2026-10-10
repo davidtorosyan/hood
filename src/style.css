@@ -1550,7 +1550,7 @@ body {
   animation: ow-fresh 0.7s ease-in-out 3;
 }
 @keyframes ow-fresh {
-  50% { fill: var(--accent); }
+  50% { opacity: 0.45; }
 }
 .ow-outlines {
   pointer-events: none;
@@ -2323,3 +2323,75 @@ body {
 }
 .fw-intro-area.shrinking.from path { fill: #34b384; transition: fill 0.9s ease; }
 .fw-intro-area.shrinking.to path { fill: var(--accent); transition: fill 0.9s ease; }
+
+/* Rebuild LA overworld as a camera: a big map to explore, the Next step under it. */
+.ow-body.journey {
+  display: flex;
+  flex-direction: column;
+}
+.ow-map-wrap.big {
+  position: relative;
+  height: min(60vh, 620px);
+  min-height: 300px;
+  padding: 0;
+  overflow: hidden;
+  transition: opacity 0.16s ease;
+}
+.ow-map-wrap.big .ow-map {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  touch-action: none;
+  cursor: grab;
+}
+.ow-map-wrap.leaving {
+  opacity: 0;
+}
+.ow-map .ow-board-edge,
+.ow-map .ow-place,
+.ow-map .ow-slot,
+.ow-map .ow-island,
+.ow-map .ow-outline,
+.ow-map .ow-road {
+  vector-effect: non-scaling-stroke;
+}
+.ow-labels {
+  pointer-events: none;
+}
+.ow-label {
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  fill: #1d2433;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-linejoin: round;
+}
+.ow-label.tier0 {
+  font-weight: 800;
+}
+.topbar .ow-count {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+/* A finger tapping a built place: the map is for exploring. */
+.ow-tap-hint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 42px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-30%, -8%);
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.3));
+}
+.ow-tap-hint.tapping {
+  animation: ow-tap 1.1s ease-in-out 3;
+}
+@keyframes ow-tap {
+  0% { opacity: 0; transform: translate(-30%, 20%); }
+  25% { opacity: 1; transform: translate(-30%, 0%); }
+  45% { transform: translate(-30%, -8%) scale(0.88); }
+  65% { opacity: 1; transform: translate(-30%, 0%); }
+  100% { opacity: 0; transform: translate(-30%, 0%); }
+}

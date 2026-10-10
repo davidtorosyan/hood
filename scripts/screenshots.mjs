@@ -380,7 +380,7 @@ await shot('campaign-start');
 if ((await page.locator('.ow-next').count()) !== 1) fail('fresh campaign: no single Next step');
 if (await page.locator('.ow-place').count()) fail('fresh campaign already has built places');
 await page.locator('.ow-next').click();
-await page.waitForTimeout(400);
+await page.waitForTimeout(1500); // the camera flies in, then the puzzle opens
 // The group as one named shape, then split into its places, then scrambled.
 await shot('campaign-puzzle-merged');
 if (!(await page.locator('.jig-piece.merged').count())) fail('campaign: the puzzle should open as one merged shape');
@@ -391,19 +391,61 @@ await solveByName();
 await page.waitForTimeout(2000);
 await shot('campaign-puzzle-solved');
 if (!(await page.locator('.jig-piece.merged').count())) fail('campaign: a solved puzzle should merge back into one shape');
-// "Next ▶" goes straight on to the next build…
+// "Next ▶" pulls the camera back out onto the county map, where the piece
+// lands; Next there flies on to the next area.
 await page.getByRole('button', { name: /^Next/ }).last().click();
-await page.waitForTimeout(300);
+await page.waitForTimeout(250);
+await shot('campaign-map-arriving');
+await page.waitForTimeout(1600);
+await shot('campaign-map-after-one');
+if (!(await page.locator('.ow-place').count())) fail('campaign: nothing shows as built');
+await page.locator('.ow-next').click();
+await page.waitForTimeout(500);
+await shot('campaign-map-flying');
+await page.waitForTimeout(900);
 await waitForPrompt();
 await solveByName();
-await page.waitForTimeout(900);
+await page.waitForTimeout(2000);
 await page.getByRole('button', { name: /^Next/ }).last().click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(2200);
+// Two built: a finger shows you can tap the map to explore what you've built.
+await shot('campaign-map-explore-hint');
+// Explore: tapping a built place zooms to it; tapping again opens its card.
+{
+  const tapPlace = async () => {
+    const spot = await page.evaluate(() => {
+      // The biggest place on screen (a small one zooms instead of opening).
+      const places = [...document.querySelectorAll('.ow-place')].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width);
+      for (const p of places) {
+        const r = p.getBoundingClientRect();
+        for (let iy = 1; iy < 6; iy++) for (let ix = 1; ix < 6; ix++) {
+          const x = r.x + (r.width * ix) / 6;
+          const y = r.y + (r.height * iy) / 6;
+          if (document.elementFromPoint(x, y) === p) return [x, y];
+        }
+      }
+      return null;
+    });
+    if (!spot) return fail('campaign: no built place to tap');
+    await page.mouse.click(...spot);
+  };
+  await tapPlace();
+  await page.waitForTimeout(1000);
+  await shot('campaign-map-zoomed');
+  await tapPlace();
+  await page.waitForTimeout(500);
+  if (!(await page.locator('.card').count())) fail('campaign: tapping a built place (zoomed in) should open its card');
+  await shot('campaign-map-card');
+  await page.locator('.card-close').click();
+  await page.waitForTimeout(300);
+}
+await page.locator('.ow-next').click();
+await page.waitForTimeout(2000); // the camera flies to the two areas
 // …then the first drive: it opens on the real map of the two areas, which
 // shrink into the blocks; then one arrow, with a finger showing the drag.
 if (!(await page.locator('.fw-svg').count())) fail('campaign: the third step should be a drive');
 await shot('campaign-drive-intro');
-await page.waitForTimeout(1250);
+await page.waitForTimeout(900);
 await shot('campaign-drive-shrinking');
 await page.waitForTimeout(1600);
 await shot('campaign-drive-coach');
@@ -419,11 +461,8 @@ await shot('campaign-drive-coach');
   await shot('campaign-drive-solved');
 }
 await page.getByRole('button', { name: /^Next/ }).click();
-await page.waitForTimeout(400);
-if (!(await page.locator('.jig-stage').count())) fail('campaign: after the drive, the next build');
-// Back to the map: the drive is a road between what's built; the next spot is ringed.
-await page.getByRole('button', { name: 'Back to the map' }).click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(2000);
+// Back on the map: the drive is a road between what's built; the next spot is ringed.
 await shot('campaign-overworld-road');
 if (!(await page.locator('.ow-road').count())) fail('campaign: the driven freeway is not drawn on the map');
 if (!(await page.locator('.ow-outline.next').count())) fail('campaign: the next spot is not ringed');
