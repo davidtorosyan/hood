@@ -433,8 +433,10 @@ await shot('home-campaign-started');
   // lifts the arrow above the finger). Must match LIFT in src/freeways/game.js.
   const FW_LIFT = 240;
   const goal = async (ref) => {
+    // Touch holds the arrow by its middle, so the finger goes under the middle.
     const [x, y] = (await arrow(ref).getAttribute('data-goal')).split(',').map(Number);
-    return toScreen(x, y + FW_LIFT);
+    const [mx, my] = (await arrow(ref).getAttribute('data-mid')).split(',').map(Number);
+    return toScreen(x + mx, y + my + FW_LIFT);
   };
   const carry = async (ref, to, { hold = false } = {}) => {
     await page.mouse.move(...(await tailOf(ref)));

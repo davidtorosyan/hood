@@ -150,7 +150,9 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
   "105 west → 405 northwest".
 - **Handling (Dave's round 2):** a touch anywhere near an arrow picks it up (the nearest
   one within `PICK`). On touch the arrow floats `LIFT` above the finger on the jigsaw's
-  `Paddle`, so the thumb doesn't hide the spot. Once solved, the grid fades out and the
+  `Paddle`, held by its middle (the stick meets the arrow's centre), so the thumb
+  doesn't hide the spot. A miss just slides the arrow home: **no tips** (Dave dislikes
+  them). Once solved, the grid fades out and the
   arrows **morph into the real freeway legs** on the real map (`morphToMap`). That's
   where the abstract chain pays off as geography.
 - This is a first cut, meant to iterate on with Dave. Superseded designs (v1 shaped

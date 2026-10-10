@@ -101,6 +101,8 @@ export function renderFreeways(app, { onBack }) {
     const svg = svgEl('svg', { class: 'fw-svg', viewBox: `0 0 ${W} ${H}`, role: 'application', 'aria-label': `Get from ${from} to ${to}` });
     const board = svgEl('g');
     board.append(svgEl('rect', { x: 8, y: 8, width: W - 16, height: BH - 8, rx: 26, class: 'fw-plane' }));
+    // An arrow's middle, relative to its tail, at full (board) size.
+    const midOf = (pc) => pc.a.dir.map((d) => (d * pc.a.len * cell) / 2);
     for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) {
       const [x, y] = at([gx, gy]);
       board.append(svgEl('circle', { cx: x, cy: y, r: 4, class: 'fw-dot' }));
@@ -176,6 +178,7 @@ export function renderFreeways(app, { onBack }) {
       pc.home = [cx - s * (bx0 + bx1) / 2, cy - s * (by0 + by1) / 2, s];
       pc.goal = at(pc.a.from); // where its tail belongs
       pc.g.dataset.goal = pc.goal.map((v) => v.toFixed(1)).join(','); // (harness only)
+      pc.g.dataset.mid = midOf(pc).map((v) => v.toFixed(1)).join(',');
       trayLayer.append(pc.g);
     });
     const move = (pc, x, y, sc, ms = 0) => {
@@ -247,9 +250,10 @@ export function renderFreeways(app, { onBack }) {
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
       const lift = HAS_MOUSE ? 0 : LIFT;
-      if (lift) paddle.show(q);
-      // Keep the grabbed point of the arrow under the finger as it grows to full size.
-      const local = [(q[0] - pc.x) / pc.sc, (q[1] - pc.y) / pc.sc];
+      // Touch: the arrow rides LIFT above the finger, held by its middle (where
+      // the paddle's stick meets it). Mouse: the grabbed point stays under the cursor.
+      const local = lift ? midOf(pc) : [(q[0] - pc.x) / pc.sc, (q[1] - pc.y) / pc.sc];
+      if (lift) paddle.show(q, [q[0], q[1] - lift]);
       drag = { pc, id: e.pointerId, local, lift };
       trayLayer.append(g);
       g.classList.add('held');
@@ -270,24 +274,17 @@ export function renderFreeways(app, { onBack }) {
       }
       move(pc, x, y, 1);
       pc.g.classList.toggle('near', near(pc));
-      if (drag.lift) paddle.move(q);
+      if (drag.lift) paddle.move(q, [x + drag.local[0], y + drag.local[1]]);
     });
     const end = (e, cancelled) => {
       if (!drag || e.pointerId !== drag.id) return;
       const { pc } = drag;
-      const q = toSvg(e);
       drag = null;
       paddle.hide();
       pc.g.classList.remove('held', 'near');
       if (!cancelled && near(pc)) return place(pc);
-      const tail = [pc.x, pc.y]; // where they put its tail
+      // A miss just goes home: no tips (Dave doesn't want them).
       move(pc, ...pc.home, 300);
-      if (cancelled || q[1] > BH) return;
-      // Nudge, kindly.
-      const carAt = at(run.driven ? arrows[run.driven - 1].to : [0, 0]);
-      const onCar = Math.hypot(tail[0] - carAt[0], tail[1] - carAt[1]) < cell * 0.5;
-      if (onCar) say1(`Not first — ${say(pc.ref)} comes later in the drive. Which arrow leaves from the 🚗?`, 'warn');
-      else say1(`Arrows chain tail-to-tip: start ${say(pc.ref)} where the freeway before it ends.`, 'warn');
     };
     svg.addEventListener('pointerup', (e) => end(e, false));
     svg.addEventListener('pointercancel', (e) => end(e, true));

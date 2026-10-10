@@ -106,17 +106,18 @@ export class Paddle {
     this.el.style.display = 'none';
     layer.append(this.el);
   }
-  show([x, y]) {
+  // `to`: where the stick ends (default: straight up by `lift`).
+  show(at, to) {
     this.el.style.display = '';
-    this.move([x, y]);
+    this.move(at, to);
   }
-  move([x, y]) {
+  move([x, y], [tx, ty] = [x, y - this.lift]) {
     this.dot.setAttribute('cx', f1(x));
     this.dot.setAttribute('cy', f1(y));
     this.line.setAttribute('x1', f1(x));
     this.line.setAttribute('y1', f1(y));
-    this.line.setAttribute('x2', f1(x));
-    this.line.setAttribute('y2', f1(y - this.lift));
+    this.line.setAttribute('x2', f1(tx));
+    this.line.setAttribute('y2', f1(ty));
   }
   hide() {
     this.el.style.display = 'none';

@@ -1694,9 +1694,9 @@ body {
   fill: #e8ebf0;
 }
 .fw-place {
-  fill: #f4f5f8;
-  stroke: #e6e9ef;
-  stroke-width: 1;
+  fill: #dde2ea;
+  stroke: #b9c1ce;
+  stroke-width: 1.2;
 }
 .fw-place.from {
   fill: #a7e3c9;
@@ -1710,7 +1710,7 @@ body {
 }
 .fw-landmark {
   font: 600 22px system-ui, sans-serif;
-  fill: #8a94a6;
+  fill: #5d6879;
   pointer-events: none;
 }
 .fw-labels {
