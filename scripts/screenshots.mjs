@@ -334,50 +334,91 @@ await page.mouse.wheel(0, 900);
 await page.waitForTimeout(300);
 await shot('progress-trophies');
 
-// Rebuild LA: a fresh campaign. Start choices → build one → back to the map,
-// which shows it rebuilt plus the frontier around it.
+// Freeway helpers (Freeways mode and Rebuild LA's drives): drag an arrow.
+const fwToScreen = (x, y) =>
+  page.evaluate(([x, y]) => {
+    const svg = document.querySelector('.fw-svg');
+    const pt = svg.createSVGPoint();
+    pt.x = x;
+    pt.y = y;
+    const s = pt.matrixTransform(svg.getScreenCTM());
+    return [s.x, s.y];
+  }, [x, y]);
+const fwArrow = (ref) => page.locator(`.fw-arrow-piece[data-ref="${ref}"]`);
+const fwTailOf = async (ref) => {
+  const b = await fwArrow(ref).locator('.fw-arrow-tail').boundingBox();
+  return [b.x + b.width / 2, b.y + b.height / 2];
+};
+// Where the finger goes so the lifted arrow's tail lands on its spot (touch
+// lifts the arrow above the finger). Must match LIFT in src/freeways/game.js.
+const FW_LIFT = 240;
+const fwGoal = async (ref) => {
+  // Touch holds the arrow by its middle, so the finger goes under the middle.
+  const [x, y] = (await fwArrow(ref).getAttribute('data-goal')).split(',').map(Number);
+  const [mx, my] = (await fwArrow(ref).getAttribute('data-mid')).split(',').map(Number);
+  return fwToScreen(x + mx, y + my + FW_LIFT);
+};
+const fwCarry = async (ref, to, { hold = false } = {}) => {
+  await page.mouse.move(...(await fwTailOf(ref)));
+  await page.mouse.down();
+  await page.mouse.move(...to, { steps: 12 });
+  if (hold) return;
+  await page.mouse.up();
+  await page.waitForTimeout(450);
+};
+
+// Rebuild LA: a fresh campaign is a journey — one obvious Next step at a
+// time: build, build, then drive between them by freeway (the first drive
+// has a finger demo), and so on.
 page = await newPage({ ...devices['iPhone 13'] });
 await page.goto(URL);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.locator('.home-play').first().click();
 await page.waitForTimeout(400);
-await shot('campaign-start-choices');
+await shot('campaign-start');
+if ((await page.locator('.ow-next').count()) !== 1) fail('fresh campaign: no single Next step');
+if (await page.locator('.ow-place').count()) fail('fresh campaign already has built places');
+await page.locator('.ow-next').click();
+await page.waitForTimeout(300);
+await shot('campaign-puzzle-start');
+await waitForPrompt();
+await solveByName();
+await page.waitForTimeout(900);
+await shot('campaign-puzzle-solved');
+// "Next ▶" goes straight on to the next build…
+await page.getByRole('button', { name: /^Next/ }).last().click();
+await page.waitForTimeout(300);
+await waitForPrompt();
+await solveByName();
+await page.waitForTimeout(900);
+await page.getByRole('button', { name: /^Next/ }).last().click();
+await page.waitForTimeout(1200);
+// …then the first drive: one arrow, with a finger showing the drag.
+if (!(await page.locator('.fw-svg').count())) fail('campaign: the third step should be a drive');
+await shot('campaign-drive-coach');
 {
-  const n = await page.locator('.ow-card').count();
-  if (n !== 3) fail(`expected 3 starting choices, got ${n}`);
-  if (await page.locator('.ow-built').count()) fail('fresh campaign already has built places');
-}
-// Keep playing the top card. Offers favour finishing a district, so a
-// "Connect" (building the groups themselves into one) comes within a few.
-let linked = false;
-for (let round = 0; round < 9 && !linked; round++) {
-  const isLink = (await page.locator('.ow-card.link').count()) > 0;
-  if (isLink) await shot('campaign-connect-offered');
-  const card = page.locator(isLink ? '.ow-card.link' : '.ow-card.build').first();
-  const title = await card.locator('b').textContent();
-  await card.click();
-  await page.waitForTimeout(300);
-  if (round === 0) await shot('campaign-puzzle-start');
-  await waitForPrompt();
-  if (isLink) await shot('campaign-connect-play');
-  await solveByName();
-  await page.waitForTimeout(900);
-  if (round === 0) await shot('campaign-puzzle-solved');
-  await page.getByRole('button', { name: /Back to the map/ }).last().click();
-  await page.waitForTimeout(500);
-  if (round === 0) {
-    await shot('campaign-overworld-after-one');
-    if (!(await page.locator('.ow-place').count())) fail(`${title}: nothing shows as built`);
-    if (!(await page.locator('.ow-card').count())) fail('no offers after the first build');
+  const refs = await page.$$eval('.fw-arrow-piece', (gs) => gs.map((g) => g.dataset.ref));
+  if (refs.length !== 1) fail(`campaign: the first drive should have one arrow, got ${refs}`);
+  for (const ref of refs) {
+    const [gx, gy] = await fwGoal(ref);
+    await fwCarry(ref, [gx + 6, gy - 6]);
+    if (!(await fwArrow(ref).evaluate((g) => g.classList.contains('laid')))) fail(`campaign drive: ${ref} didn't click in`);
   }
-  if (isLink) {
-    linked = true;
-    await page.waitForTimeout(1500);
-    await shot('campaign-after-connect');
-  }
+  await page.waitForTimeout(3500);
+  await shot('campaign-drive-solved');
 }
-if (!linked) fail('no Connect offered within 9 builds');
+await page.getByRole('button', { name: /^Next/ }).click();
+await page.waitForTimeout(400);
+if (!(await page.locator('.jig-stage').count())) fail('campaign: after the drive, the next build');
+// Back to the map: the drive is a road between what's built; the next spot is ringed.
+await page.getByRole('button', { name: 'Back to the map' }).click();
+await page.waitForTimeout(500);
+await shot('campaign-overworld-road');
+if (!(await page.locator('.ow-road').count())) fail('campaign: the driven freeway is not drawn on the map');
+if (!(await page.locator('.ow-outline.next').count())) fail('campaign: the next spot is not ringed');
+await page.locator('.ow-more summary').click();
+await page.waitForTimeout(300);
 
 // Tap a frontier place on the map: selects its puzzle + card.
 {
@@ -415,53 +456,22 @@ await shot('home-campaign-started');
   await page.locator('.home-play-3').click();
   await page.waitForTimeout(500);
   await shot('freeways-start');
-  const toScreen = (x, y) =>
-    page.evaluate(([x, y]) => {
-      const svg = document.querySelector('.fw-svg');
-      const pt = svg.createSVGPoint();
-      pt.x = x;
-      pt.y = y;
-      const s = pt.matrixTransform(svg.getScreenCTM());
-      return [s.x, s.y];
-    }, [x, y]);
-  const arrow = (ref) => page.locator(`.fw-arrow-piece[data-ref="${ref}"]`);
-  const tailOf = async (ref) => {
-    const b = await arrow(ref).locator('.fw-arrow-tail').boundingBox();
-    return [b.x + b.width / 2, b.y + b.height / 2];
-  };
-  // Where the finger goes so the lifted arrow's tail lands on its spot (touch
-  // lifts the arrow above the finger). Must match LIFT in src/freeways/game.js.
-  const FW_LIFT = 240;
-  const goal = async (ref) => {
-    // Touch holds the arrow by its middle, so the finger goes under the middle.
-    const [x, y] = (await arrow(ref).getAttribute('data-goal')).split(',').map(Number);
-    const [mx, my] = (await arrow(ref).getAttribute('data-mid')).split(',').map(Number);
-    return toScreen(x + mx, y + my + FW_LIFT);
-  };
-  const carry = async (ref, to, { hold = false } = {}) => {
-    await page.mouse.move(...(await tailOf(ref)));
-    await page.mouse.down();
-    await page.mouse.move(...to, { steps: 12 });
-    if (hold) return;
-    await page.mouse.up();
-    await page.waitForTimeout(450);
-  };
   const refs = await page.$$eval('.fw-arrow-piece', (gs) => gs.map((g) => g.dataset.ref));
   if (refs.length < 2) fail(`freeways: odd route ${refs}`);
   // Drop one far from where it belongs: it goes back, with a nudge.
   const box = await page.locator('.fw-svg').boundingBox();
-  await carry(refs[0], [box.x + 40, box.y + 40]);
+  await fwCarry(refs[0], [box.x + 40, box.y + 40]);
   if (await page.locator('.fw-arrow-piece.laid').count()) fail('freeways: a far-off drop should not count');
   // Carry the right one to its spot (sloppily): it glows, then clicks in.
   for (const ref of refs) {
-    const [gx, gy] = await goal(ref);
+    const [gx, gy] = await fwGoal(ref);
     if (ref === refs[0]) {
-      await carry(ref, [gx + 10, gy - 8], { hold: true });
+      await fwCarry(ref, [gx + 10, gy - 8], { hold: true });
       await shot('freeways-carrying-arrow');
       await page.mouse.up();
       await page.waitForTimeout(450);
-    } else await carry(ref, [gx + 10, gy - 8]);
-    if (!(await arrow(ref).evaluate((g) => g.classList.contains('laid')))) fail(`freeways: ${ref} didn't click in at its spot`);
+    } else await fwCarry(ref, [gx + 10, gy - 8]);
+    if (!(await fwArrow(ref).evaluate((g) => g.classList.contains('laid')))) fail(`freeways: ${ref} didn't click in at its spot`);
   }
   await page.waitForTimeout(1500);
   if (!(await page.getByRole('button', { name: /Next drive/ }).count())) fail('freeways: chain laid but not solved');

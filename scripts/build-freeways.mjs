@@ -15,6 +15,7 @@ import { decodeRing, encodeRing } from '../src/jigsaw/polyline.js';
 import { PLACES } from '../src/data/places.js';
 
 import { NODES as JUNCTIONS, FREEWAYS } from './freeway-routes.mjs';
+import { CHAPTERS, driveKey } from '../src/campaign/chapters.js';
 const { nodes, root } = JSON.parse(readFileSync('src/data/hierarchy.json', 'utf8'));
 const shapes = JSON.parse(readFileSync('src/data/puzzle-shapes.json', 'utf8'));
 
@@ -141,6 +142,7 @@ const edgeDist = ([x, y], r) => {
   return m;
 };
 const ramps = new Map();
+const edgeRamps = new Map(); // every freeway point inside a place, edge or not
 for (const id of PLACE_IDS) {
   const r = placeRing.get(id);
   const inner = [];
@@ -153,6 +155,7 @@ for (const id of PLACE_IDS) {
   // Small places can't be "well inside"; there, any vertex inside will do.
   const vs = inner.length >= 2 ? inner : any;
   if (vs.length) ramps.set(id, vs);
+  if (any.length) edgeRamps.set(id, any);
 }
 
 // A small binary min-heap of [cost, vertex] for the shortest-path searches.
@@ -272,32 +275,30 @@ const uses = new Map();
 const cOf = (id) => centroid(placeRing.get(id));
 const WANT = { short: 52, long: 38 }; // 2-leg drives; 3–4-leg drives
 const count = { short: 0, long: 0 };
-for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < WANT.long); tries++) {
-  const a = ends[Math.floor(rand() * ends.length)];
-  const b = ends[Math.floor(rand() * ends.length)];
-  if (a === b || seenPair.has([a, b].sort().join('|'))) continue;
-  if ((uses.get(a) || 0) >= 3 || (uses.get(b) || 0) >= 3) continue;
+// One drive from a to b, or a reason it isn't a good one. `legs`: the
+// allowed number of freeways ([min, max]).
+// `edges`: a freeway along a place's edge counts as getting there (campaign
+// drives join two built areas, so the area is the destination, not the
+// place's middle).
+function drive(a, b, { legs = [2, 4], edges = false } = {}) {
+  const on = edges ? edgeRamps : ramps;
+  if (!on.has(a) || !on.has(b)) return { why: 'no freeway through one end' };
   const straight = dist(cOf(a), cOf(b));
-  if (straight < 12) continue;
-  const path = route(ramps.get(a), ramps.get(b));
-  if (!path) continue;
+  const path = route(on.get(a), on.get(b));
+  if (!path) return { why: 'no route' };
   const blocks = blocksOf(path);
-  const kind = blocks.length >= 3 ? 'long' : 'short';
-  if (count[kind] >= WANT[kind]) continue;
   const total = blocks.reduce((s, x) => s + x.km, 0);
   const refs = new Set(blocks.map((x) => x.ref));
-  if (blocks.length < 2 || blocks.length > 4) continue;
-  if (refs.size !== blocks.length) continue; // no 10 → 110 → 10 doglegs
-  if (blocks.some((x) => x.km < 5)) continue; // no stub legs
-  if (blocks.length >= 3 && straight < 16) continue; // no 3-freeway hops for a short trip
-  if (total > 1.45 * straight) continue;
-  if (doublesBack(path, cOf(b))) continue;
-  count[kind]++;
-  seenPair.add([a, b].sort().join('|'));
-  uses.set(a, (uses.get(a) || 0) + 1);
-  uses.set(b, (uses.get(b) || 0) + 1);
+  const why =
+    blocks.length < legs[0] || blocks.length > legs[1] ? `${blocks.length} legs (${blocks.map((x) => x.ref).join('→')})`
+    : refs.size !== blocks.length ? 'doglegs' // no 10 → 110 → 10
+    : blocks.some((x) => x.km < 5) ? `stub leg (${blocks.map((x) => `${x.ref}:${x.km.toFixed(1)}km`).join(' ')})`
+    : blocks.length >= 3 && straight < 16 ? '3-freeway hop for a short trip'
+    : total > 1.45 * straight ? 'too roundabout'
+    : doublesBack(path, cOf(b)) ? 'doubles back'
+    : null;
+  if (why) return { why };
   const enc = (pts) => encodeRing(simplify(pts).map(toLL));
-  // A few places each block runs through, spread along it (for hints).
   // The best-known places each leg runs through, in driving order (hints
   // label them on the map as they name them).
   const via = (pts) => {
@@ -309,7 +310,7 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
     const top = [...seq].sort((x, y) => (PLACES[y]?.pop ?? 0) - (PLACES[x]?.pop ?? 0)).slice(0, 2);
     return seq.filter((id) => top.includes(id));
   };
-  puzzles.push({
+  return {
     from: a,
     to: b,
     km: Math.round(total),
@@ -320,7 +321,52 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
       // Where you switch onto this freeway: a name locals use, else "the 5/110 interchange".
       ...(k ? { at: junctionAt(x.pts[0]) || `the ${blocks[k - 1].ref}/${x.ref} interchange` } : {}),
     })),
-  });
+  };
+}
+
+// The best drive from somewhere in area A to somewhere in area B (both
+// puzzles you've built in the campaign): the right number of legs, between
+// the best-known places that make one.
+function driveBetween(A, B, { legs = [1, 1] } = {}) {
+  let best = null;
+  for (const a of leaves(A)) for (const b of leaves(B)) {
+    if (!edgeRamps.has(a) || !edgeRamps.has(b)) continue;
+    const d = drive(a, b, { legs, edges: true });
+    if (d.why) continue;
+    const score = Math.min(PLACES[a]?.pop ?? 0, PLACES[b]?.pop ?? 0);
+    if (!best || score > best.score) best = { ...d, score };
+  }
+  if (!best) return null;
+  delete best.score;
+  return best;
+}
+
+// `--route A B`: try one pair (for picking campaign drives).
+{
+  const i = process.argv.indexOf('--route');
+  if (i > 0) {
+    const [a, b] = process.argv.slice(i + 1, i + 3);
+    const d = kids(a).length ? driveBetween(a, b, { legs: [1, 3] }) ?? { why: 'no good drive between them' } : drive(a, b, { legs: [1, 4] });
+    console.log(d.why ?? `${d.from} → ${d.to}: ${d.blocks.map((x) => x.ref).join(' → ')} (${d.km} km)`);
+    process.exit(0);
+  }
+}
+
+for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < WANT.long); tries++) {
+  const a = ends[Math.floor(rand() * ends.length)];
+  const b = ends[Math.floor(rand() * ends.length)];
+  if (a === b || seenPair.has([a, b].sort().join('|'))) continue;
+  if ((uses.get(a) || 0) >= 3 || (uses.get(b) || 0) >= 3) continue;
+  if (dist(cOf(a), cOf(b)) < 12) continue;
+  const d = drive(a, b);
+  if (d.why) continue;
+  const kind = d.blocks.length >= 3 ? 'long' : 'short';
+  if (count[kind] >= WANT[kind]) continue;
+  count[kind]++;
+  seenPair.add([a, b].sort().join('|'));
+  uses.set(a, (uses.get(a) || 0) + 1);
+  uses.set(b, (uses.get(b) || 0) + 1);
+  puzzles.push(d);
 }
 // Order: a few 2-leg drives to learn on, then alternate 2-leg and longer
 // ones so it doesn't plateau.
@@ -335,7 +381,17 @@ for (let tries = 0; tries < 40000 && (count.short < WANT.short || count.long < W
   puzzles.splice(0, puzzles.length, ...ordered);
 }
 
-const usedRefs = new Set(puzzles.flatMap((p) => p.blocks.map((x) => x.ref)));
+// Rebuild LA's drives: one per 'drive' step, between the two areas built
+// just before it. The build fails if a step has no good drive.
+const campaign = {};
+for (const ch of CHAPTERS) for (const [kind, A, B] of ch.steps) {
+  if (kind !== 'drive') continue;
+  const d = driveBetween(A, B, { legs: [1, 3] });
+  if (!d) throw new Error(`campaign: no good drive from ${A} to ${B}`);
+  campaign[driveKey(A, B)] = d;
+}
+
+const usedRefs = new Set([...puzzles, ...Object.values(campaign)].flatMap((p) => p.blocks.map((x) => x.ref)));
 const out = {
   source: 'Hand-traced schematic (scripts/freeway-routes.mjs): right neighborhoods and interchanges, not survey lines.',
   refs: Object.fromEntries(Object.entries(REFS).filter(([r]) => usedRefs.has(r))),
@@ -343,8 +399,10 @@ const out = {
   // are what you place).
   network: lines.map((l) => ({ ref: l.ref, line: encodeRing(l.pts.map(toLL)) })),
   puzzles,
+  campaign,
 };
 writeFileSync('src/data/freeways.json', JSON.stringify(out));
 const by = puzzles.reduce((m, p) => ((m[p.blocks.length] = (m[p.blocks.length] || 0) + 1), m), {});
 console.log(`${lines.length} lines, ${V.length} vertices, ${interchanges} interchange links, ${ramps.size} places with a freeway`);
 console.log(`${puzzles.length} puzzles by block count:`, by, `refs: ${[...usedRefs].join(' ')}`);
+for (const [k, d] of Object.entries(campaign)) console.log(`campaign: ${k}: ${d.from} → ${d.to}, ${d.blocks.map((x) => x.ref).join(' → ')}`);

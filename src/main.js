@@ -12,6 +12,7 @@ import { renderProgress } from './progressScreen.js';
 import { catchUp, record, PUZZLES, TROPHIES } from './progress.js';
 import { renderOverworld, campaignLine } from './campaign/overworld.js';
 import { built, progress } from './campaign/state.js';
+import { nextStep, isFirstDrive, chapterOf, markDriven } from './campaign/journey.js';
 import { mountCampaignPuzzle } from './jigsaw/index.js';
 import { renderFreeways, unmountFreeways } from './freeways/game.js';
 import { PUZZLES as DRIVES, idOf as driveId } from './freeways/puzzles.js';
@@ -55,19 +56,40 @@ function openOverworld() {
   unmountJigsaw();
   unmountFreeways();
   store.setScreen('campaign');
-  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onExplore: () => playExplore() });
+  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onStep: playStep, onExplore: () => playExplore() });
   record('campaign'); // announce any campaign trophy just earned
 }
 
 function playCampaign(id) {
+  unmountFreeways();
   const wasBuilt = built(id);
+  const flash = () => {
+    if (!wasBuilt && built(id)) store.campaign.set('fresh', id); // flash it on the map
+  };
   mountCampaignPuzzle(app, {
     nodeId: id,
     progressLine: campaignLine,
-    back: () => {
-      if (!wasBuilt && built(id)) store.campaign.set('fresh', id); // flash it on the map
-      openOverworld();
-    },
+    back: () => (flash(), openOverworld()),
+    // Solved: straight on to the journey's next step (playtest: people expected
+    // to go right on, not pick from the map). Done with the journey: the map.
+    next: () => (flash(), nextStep() ? playStep(nextStep()) : openOverworld()),
+    doneLabel: () => (nextStep() ? 'Next ▶' : '🗺️ Back to the map'),
+  });
+}
+
+// One step of the journey: a puzzle to build/connect, or a drive between two
+// areas you've built.
+function playStep(step) {
+  if (step.kind !== 'drive') return playCampaign(step.id);
+  unmountJigsaw();
+  store.setScreen('campaign');
+  renderFreeways(app, {
+    drive: step.drive,
+    coach: isFirstDrive(step),
+    title: chapterOf(step).title,
+    onBack: openOverworld,
+    onSolved: () => markDriven(step),
+    onNext: () => (nextStep() ? playStep(nextStep()) : openOverworld()),
   });
 }
 

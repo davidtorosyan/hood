@@ -132,6 +132,23 @@ The campaign plays the same `Board` with `{ book: store.campaign, campaign: true
 there's no zooming or context navigation, and solving offers "🗺️ Back to the map".
 The campaign keeps its own ledger (`store.campaign`), separate from Explore's
 progress.
+**The journey (Oct 2026, prototype: chapter 1 written).** Playtest: Rebuild LA was
+addicting, but picking where to go next confused people (they expected to go
+straight on), and Freeways lacked a tutorial and used places nobody knew. So the
+campaign is now a fixed **journey** of steps (`src/campaign/chapters.js`, plain data):
+build a cluster, build another, **drive between them by freeway**, connect the
+district, and so on outward. The drive uses places you just built, so you know them.
+The first drive is one arrow with the jigsaw's `Coach` finger demo, and later ones
+grow to two and three arrows. A solved puzzle or drive's button is **Next ▶**, which
+goes straight to the next step. The overworld shows one big Next card, rings the next
+spot, and draws the freeways you've driven as roads. Picking elsewhere is folded under
+"Or build somewhere else". After the written steps, the old free-pick campaign carries
+on. `journey.js` holds the step state (drives done are kept in `store.campaign`'s
+`drives`). `npm run build:freeways` routes each drive step between the two areas
+(`driveBetween`: the best-known pair of places that gives a clean drive) into
+freeways.json's `campaign` table. `test/journey.test.js` checks the order and the
+drives. Freeways' `renderFreeways` takes `{ drive, onSolved, onNext, coach, title }`
+for this.
 
 ### Freeways — a prototype (Oct 2026; v4: abstract arrows, Dave's redesign)
 A third mode from home ("🛣️ Freeways"). Dave on v3 (whole-freeway shapes on a real map):
@@ -193,7 +210,8 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
   trophies + progress, build stamp), relaunch to the screen you left (`store.screen()`),
   PWA registration.
 - `src/campaign/` — `state.js` (pure-ish campaign rules: `frontier`, `linkable`,
-  `offers`, `progress`), `overworld.js` (the overworld map + next-up cards).
+  `offers`, `progress`), `chapters.js` + `journey.js` (the ordered journey and its
+  next step), `overworld.js` (the overworld map + next-up cards).
 - `src/pwa.js` — service-worker registration with update checks on focus/visibility and
   every 5 min; vite-plugin-pwa autoUpdate reloads once the new worker takes control.
 - `src/jigsaw/` — the mode, in small modules:

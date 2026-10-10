@@ -56,8 +56,10 @@ export function mountJigsaw(app, { back, node } = {}) {
 // with its own slim chrome (← Map, the puzzle's name, Solve) and no wandering
 // off — no zooming into pieces, breadcrumbs, search or context jumps.
 // `back` returns to the overworld; `progressLine()` is the tray footnote.
-export function mountCampaignPuzzle(app, { nodeId, back, progressLine }) {
-  renderNode(app, { back, campaign: { progressLine } }, nodeId, {});
+// `next` (optional): the solved tray's button goes straight on to the journey's
+// next step instead of back to the map; `doneLabel` names it.
+export function mountCampaignPuzzle(app, { nodeId, back, next, doneLabel, progressLine }) {
+  renderNode(app, { back, campaign: { progressLine, next, doneLabel } }, nodeId, {});
 }
 
 // Leaving the jigsaw: stop the live board so nothing keeps running behind home.
@@ -143,7 +145,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
   if (st.pop > 0) statBits.push(`${fmtPeople(st.pop)} people`);
 
   const nav = campaign
-    ? { onDone: () => ctx.back(), progressLine: campaign.progressLine }
+    ? { onDone: () => (campaign.next ?? ctx.back)(), progressLine: campaign.progressLine }
     : {
         onZoomInto: (childId) => renderNode(app, ctx, childId, { autoPlay: true, arrived: true }),
         onZoomOut: goUp,
@@ -160,7 +162,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
       else if (name === 'card-open') record('card');
     },
     onPersist: () => book.savePuzzle(nodeId, me.serialize()),
-  }, { book, campaign: !!campaign });
+  }, { book, campaign: !!campaign, doneLabel: campaign?.doneLabel });
   board = me;
   boardWrap.append(me.root);
 

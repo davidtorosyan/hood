@@ -12,7 +12,7 @@ import { geoMercator } from 'd3-geo';
 import { el, svgEl, clear } from '../ui/dom.js';
 import { ROOT, labelOf, leavesOf, shapeOf } from '../jigsaw/tree.js';
 import { Scheduler } from '../jigsaw/scheduler.js';
-import { Paddle } from '../jigsaw/fx.js';
+import { Paddle, Coach } from '../jigsaw/fx.js';
 import { PLACES } from '../data/places.js';
 import { store } from '../store.js';
 import { countEvent } from '../telemetry.js';
@@ -38,21 +38,24 @@ export function unmountFreeways() {
   live = null;
 }
 
-export function renderFreeways(app, { onBack }) {
+// Free play: the drives in order. Rebuild LA passes one `drive` (from its
+// journey) with `onSolved` / `onNext`, and `coach` for the first one (a finger
+// shows the drag); there's no Skip, and its own ledger isn't touched.
+export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, coach = false, title = null }) {
   unmountFreeways();
   const sched = new Scheduler();
   let run = null; // { index, placed: Set<leg>, driven, done, shown }
 
   const start = (index) => {
     run = { index, placed: new Set(), driven: 0, done: false, shown: 0 };
-    book.set('at', index);
+    if (!drive) book.set('at', index);
     countEvent('freeway-start');
     mount();
   };
 
   function mount() {
     sched.cancelAll();
-    const p = PUZZLES[run.index];
+    const p = drive ?? PUZZLES[run.index];
     const legs = p.blocks.length;
     const from = labelOf(p.from);
     const to = labelOf(p.to);
@@ -69,12 +72,12 @@ export function renderFreeways(app, { onBack }) {
       el('div', { class: 'screen fw-screen' }, [
         el('div', { class: 'topbar' }, [
           el('button', { class: 'icon-btn', onClick: onBack, 'aria-label': 'Home' }, '⌂'),
-          el('span', { class: 'topbar-title' }, 'Freeways'),
-          el('span', { class: 'fw-count' }, `${PUZZLES.filter((q) => book.isSolved(idOf(q))).length} / ${PUZZLES.length} drives`),
+          el('span', { class: 'topbar-title' }, drive ? 'Rebuild LA' : 'Freeways'),
+          el('span', { class: 'fw-count' }, title ?? `${PUZZLES.filter((q) => book.isSolved(idOf(q))).length} / ${PUZZLES.length} drives`),
         ]),
         el('div', { class: 'fw-ask' }, [
           el('div', { class: 'fw-ask-line' }, ['Get from ', el('b', { class: 'fw-from' }, from), ' to ', el('b', { class: 'fw-to' }, to)]),
-          el('div', { class: 'fw-ask-sub' }, 'Chain the freeway arrows from the 🚗 to the flag.'),
+          el('div', { class: 'fw-ask-sub' }, legs === 1 ? 'Drag the freeway arrow so it starts at the 🚗.' : 'Chain the freeway arrows from the 🚗 to the flag.'),
         ]),
         wrap,
         msg,
@@ -231,15 +234,23 @@ export function renderFreeways(app, { onBack }) {
     const routeWords = () => p.blocks.map((b, i) => `${b.ref} ${dirName(arrows[i].dir)}`).join(' → ');
     const renderFooter = () => {
       clear(footer);
-      if (run.done) footer.append(el('button', { class: 'btn fw-next', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Next drive ▶'));
+      if (drive) footer.append(run.done ? el('button', { class: 'btn fw-next', onClick: onNext }, 'Next ▶') : el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'));
+      else if (run.done) footer.append(el('button', { class: 'btn fw-next', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Next drive ▶'));
       else footer.append(
         el('button', { class: 'btn btn-quiet', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Skip'),
         el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'),
       );
     };
     if (run.done) say1(routeWords(), 'good');
-    else say1('Which freeway leaves from the 🚗 — and which way does it go?');
+    else say1(legs === 1 ? '' : 'Which freeway leaves from the 🚗 — and which way does it go?');
     renderFooter();
+    // The first drive in Rebuild LA: a finger shows the drag, tray → car.
+    const demo = new Coach(fxLayer, sched);
+    if (coach && !run.done && !run.placed.size) {
+      const pc = pieces[0];
+      const m = midOf(pc);
+      sched.after(500, () => demo.play([pc.home[0] + m[0] * pc.home[2], pc.home[1] + m[1] * pc.home[2]], [pc.goal[0] + m[0], pc.goal[1] + m[1]], 4));
+    }
 
     // --- dragging (pointer captured on the stable svg root) ---
     const toSvg = (e) => {
@@ -253,6 +264,7 @@ export function renderFreeways(app, { onBack }) {
     let drag = null;
     svg.addEventListener('pointerdown', (e) => {
       if (run.done || drag) return;
+      demo.stop();
       const q = toSvg(e);
       // Touching anywhere near an arrow picks it up — the nearest one.
       const segDist = (pc) => {
@@ -359,7 +371,8 @@ export function renderFreeways(app, { onBack }) {
 
     function finish() {
       run.done = true;
-      book.markDone(idOf(p), run.shown >= legs ? 'skipped' : 'solved');
+      if (drive) onSolved?.();
+      else book.markDone(idOf(p), run.shown >= legs ? 'skipped' : 'solved');
       countEvent(run.shown >= legs ? 'freeway-shown' : 'freeway-solved');
       say1(routeWords(), 'good');
       renderFooter();
@@ -473,6 +486,7 @@ export function renderFreeways(app, { onBack }) {
     },
   };
 
+  if (drive) return start(0);
   const saved = book.get('at');
   start(Number.isInteger(saved) && PUZZLES[saved] ? saved : nextIndex(book.isSolved));
 }

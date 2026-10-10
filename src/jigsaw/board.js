@@ -51,11 +51,12 @@ export class Board {
   // opts: { book: the progress ledger to read/write (store.explore by default),
   //         campaign: true → a "Rebuild LA" puzzle: no zooming into pieces or
   //         flying off via context; the solved tray offers "Back to the map" }
-  constructor(nodeId, cbs = {}, { book = store.explore, campaign = false } = {}) {
+  constructor(nodeId, cbs = {}, { book = store.explore, campaign = false, doneLabel = null } = {}) {
     this.nodeId = nodeId;
     this.cbs = cbs;
     this.book = book;
     this.campaign = campaign;
+    this.doneLabel = doneLabel; // campaign: () => the solved tray button's label
     this.pieces = [];
     this.byId = new Map();
     this.phase = 'building';
@@ -568,7 +569,7 @@ export class Board {
     const zoomable = this.pieces.some((p) => p.zoomable);
     // Not played yet: Play is the call to action. Played: a quieter Play again.
     const fresh = !this.book.progress(this.nodeId);
-    this.stage.replayBtn.textContent = this.campaign ? '🗺️ Back to the map' : fresh ? '▶ Play this puzzle' : '🔀 Play again';
+    this.stage.replayBtn.textContent = this.campaign ? (this.doneLabel?.() ?? '🗺️ Back to the map') : fresh ? '▶ Play this puzzle' : '🔀 Play again';
     this.stage.replayBtn.classList.toggle('primary', fresh || this.campaign);
     const chips = this.pieces.map((p) => ({
       label: labelOf(p.id),

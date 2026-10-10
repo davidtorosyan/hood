@@ -9,6 +9,8 @@ import { projectAll, mapAspectOf } from '../jigsaw/geometry.js';
 import { colorForIndex } from '../jigsaw/palette.js';
 import { store } from '../store.js';
 import { builtLeaves, districtProgress, frontier, offers, progress, finished, topBuilt } from './state.js';
+import { nextStep, chapterOf, stepTitle, drivenDrives } from './journey.js';
+import { lineOf } from '../freeways/puzzles.js';
 
 // The board fits the county's real shape, so there's no dead band around it.
 const W = 1000;
@@ -20,8 +22,10 @@ const regionColor = (leaf) => colorForIndex(REGIONS.indexOf(pathIds(leaf)[1]));
 // Where a puzzle sits, for its card: "San Gabriel Valley" / "West San Gabriel · SGV".
 const whereOf = (id) => pathIds(id).slice(1, -1).reverse().map(labelOf).join(' · ') || 'LA County';
 
-// onBack: home · onPlay(id): play that puzzle · onExplore: open Explore mode
-export function renderOverworld(app, { onBack, onPlay, onExplore }) {
+// onBack: home · onPlay(id): play that puzzle · onStep(step): play the
+// journey's next step · onExplore: open Explore mode
+export function renderOverworld(app, { onBack, onPlay, onStep, onExplore }) {
+  const step = nextStep();
   const { links, picks } = offers();
   const front = frontier();
   const have = builtLeaves();
@@ -33,8 +37,8 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
   const slots = [...picks, ...front.filter((id) => !picks.includes(id))];
 
   // --- the map ---
-  const svg = svgEl('svg', { class: 'ow-map', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of what you have rebuilt' });
-  const { pathOf } = projectAll(REGIONS, [10, 10, W - 10, H - 10]);
+  const svg = svgEl('svg', { class: `ow-map${step ? ' journey' : ''}`, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of what you have rebuilt' });
+  const { proj, pathOf } = projectAll(REGIONS, [10, 10, W - 10, H - 10]);
   const layer = (cls) => svgEl('g', cls ? { class: cls } : {});
   // The empty board: the county's silhouette. Each region is stroked, then
   // filled on top without a stroke, so only the outer edge shows.
@@ -58,7 +62,17 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
   const islandLayer = layer('ow-outlines');
   for (const id of topBuilt()) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-island' }));
   for (const id of links) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-outline link', 'data-puzzle': id }));
-  svg.append(board, slotLayer, builtLayer, islandLayer);
+  // The freeways you've driven, as roads between what you've built.
+  const roadLayer = layer('ow-roads');
+  for (const d of drivenDrives()) {
+    for (const b of d.blocks) {
+      const pts = lineOf(b).map((c) => proj(c).map((v) => v.toFixed(1)).join(','));
+      roadLayer.append(svgEl('path', { d: 'M' + pts.join('L'), class: 'ow-road' }));
+    }
+  }
+  // The next step's spot, ringed.
+  if (step && step.kind !== 'drive') islandLayer.append(svgEl('path', { d: pathOf(step.id), class: 'ow-outline next' }));
+  svg.append(board, slotLayer, builtLayer, islandLayer, roadLayer);
 
   // Which puzzle a tap means: a slot, or a link over built places.
   const linkOf = new Map();
@@ -102,6 +116,15 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
     cards.get(id).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
 
+  // The journey's next step: one big obvious button. (Picking somewhere else
+  // is still there, folded away underneath.)
+  const nextCard = step
+    ? el('button', { class: 'ow-next', onClick: () => onStep(step) }, [
+        el('span', { class: 'ow-next-chapter' }, chapterOf(step).title),
+        el('b', {}, `${step.kind === 'drive' ? '🛣️' : step.kind === 'link' ? '🔗' : '🧩'} ${stepTitle(step)}`),
+        el('span', { class: 'ow-next-go', 'aria-hidden': 'true' }, '▶'),
+      ])
+    : null;
   const intro = finished()
     ? el('div', { class: 'ow-intro done' }, [
         el('b', {}, '🎉 LA is whole again!'),
@@ -112,13 +135,14 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
       ? el('div', { class: 'ow-intro' }, [
           el('div', { class: 'ow-count' }, [el('b', {}, `${nBuilt}`), ` of ${total} puzzles rebuilt`]),
           el('div', { class: 'pg-bar' }, [el('div', { class: 'pg-bar-fill', style: `width:${(100 * nBuilt) / total}%` })]),
-          links.length
+          step ? null
+          : links.length
             ? el('span', { class: 'ow-hint link' }, `🔗 Every piece of ${labelOf(links[0])} is built — connect them!`)
             : el('span', { class: 'ow-hint' }, 'Finish a district and you can connect its pieces into one.'),
         ])
       : el('div', { class: 'ow-intro' }, [
           el('b', {}, 'Oh no — LA’s been scrambled!'),
-          el('span', {}, 'Rebuild it piece by piece. Pick a spot to start; the map grows outward from there.'),
+          el('span', {}, step ? 'Rebuild it piece by piece, and link it up by freeway.' : 'Rebuild it piece by piece. Pick a spot to start; the map grows outward from there.'),
         ]);
 
   clear(app);
@@ -130,9 +154,12 @@ export function renderOverworld(app, { onBack, onPlay, onExplore }) {
       ]),
       el('div', { class: 'screen-body ow-body' }, [
         intro,
+        nextCard,
         el('div', { class: 'ow-map-wrap' }, [svg]),
-        finished() ? null : el('h2', { class: 'pg-h' }, started ? 'Up next' : 'Where to start?'),
-        finished() ? null : list,
+        finished() ? null
+          : step ? el('details', { class: 'ow-more', onToggle: (e) => svg.classList.toggle('picking', e.target.open) }, [el('summary', {}, 'Or build somewhere else'), list])
+          : el('h2', { class: 'pg-h' }, started ? 'Up next' : 'Where to start?'),
+        finished() || step ? null : list,
       ]),
     ]),
   );

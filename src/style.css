@@ -2205,3 +2205,72 @@ body {
 }
 .fw-real-end.from { fill: #0b7a53; }
 .fw-real-end.to { fill: var(--accent-text); }
+
+/* Rebuild LA journey: the one obvious next step, roads you've driven. */
+.ow-next {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 18px;
+  padding: 14px 18px;
+  background: var(--accent);
+  color: var(--ink);
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: transform 0.08s ease;
+}
+.ow-next:active {
+  transform: scale(0.98);
+}
+.ow-next-chapter {
+  grid-column: 1;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+.ow-next b {
+  grid-column: 1;
+  font-size: 19px;
+}
+.ow-next-go {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 22px;
+}
+.ow-outline.next {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  stroke-width: 4.5;
+}
+.ow-roads {
+  pointer-events: none;
+}
+.ow-road {
+  fill: none;
+  stroke: #1f4fbf;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+.ow-more {
+  margin: 4px 0 12px;
+}
+.ow-more summary {
+  cursor: pointer;
+  color: var(--muted, #6b7587);
+  font-weight: 600;
+  padding: 8px 0;
+}
+/* On the journey the map shows just the next step; the open slots appear
+   once you choose to build somewhere else. */
+.ow-map.journey:not(.picking) .ow-slot {
+  display: none;
+}
