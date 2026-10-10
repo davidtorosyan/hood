@@ -216,7 +216,7 @@ export function renderFreeways(app, { onBack }) {
         el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'),
       );
     };
-    if (run.done) say1(`🎉 You made it! ${routeWords()}`, 'good');
+    if (run.done) say1(routeWords(), 'good');
     else say1('Which freeway leaves from the 🚗 — and which way does it go?');
     renderFooter();
 
@@ -293,7 +293,7 @@ export function renderFreeways(app, { onBack }) {
       run.placed.add(pc.leg);
       layDown(pc, 160);
       const left = legs - run.placed.size;
-      say1(`${shown ? 'Here’s' : '✓'} ${say(pc.ref)} ${dirName(pc.a.dir)}.${left ? ` ${left} to go.` : ' That’s the drive!'}`, shown ? '' : 'good');
+      say1(`${shown ? 'Here’s' : '✓'} ${say(pc.ref)} ${dirName(pc.a.dir)}.${left ? ` ${left} to go.` : ''}`, shown ? '' : 'good');
       sched.after(reduceMotion() ? 0 : 250, driveOn);
     }
     function showOne() {
@@ -340,7 +340,7 @@ export function renderFreeways(app, { onBack }) {
       run.done = true;
       book.markDone(idOf(p), run.shown >= legs ? 'skipped' : 'solved');
       countEvent(run.shown >= legs ? 'freeway-shown' : 'freeway-solved');
-      say1(`🎉 You made it! ${routeWords()}`, 'good');
+      say1(routeWords(), 'good');
       renderFooter();
       sched.after(reduceMotion() ? 0 : 700, morphToMap);
     }
@@ -432,7 +432,7 @@ export function renderFreeways(app, { onBack }) {
         for (const m of morphs) realLayer.append(shield(m.ref, m.to[Math.floor(N / 2)], 0.8));
         realLayer.append(names);
         park(endCar);
-        say1(`🎉 You made it! ${routeWords()} — here it is on the map.`, 'good');
+        say1(routeWords(), 'good');
       };
       if (reduceMotion()) return done();
       sched.animate(1400, (k) => {

@@ -464,7 +464,7 @@ await shot('home-campaign-started');
     if (!(await arrow(ref).evaluate((g) => g.classList.contains('laid')))) fail(`freeways: ${ref} didn't click in at its spot`);
   }
   await page.waitForTimeout(1500);
-  if (!/You made it/.test(await page.locator('.fw-msg').textContent())) fail('freeways: chain laid but not solved');
+  if (!(await page.getByRole('button', { name: /Next drive/ }).count())) fail('freeways: chain laid but not solved');
   await shot('freeways-morphing');
   await page.waitForTimeout(2500);
   if (!(await page.locator('.fw-real-map.showing').count())) fail('freeways: solved drive never morphed onto the map');

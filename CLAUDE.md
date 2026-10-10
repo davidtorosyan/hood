@@ -147,7 +147,7 @@ frustrating. Nobody cares about freeways' exact shapes; what matters is **direct
 - **The puzzle is the chain.** Drag arrows tail-to-tip from the 🚗 to the flag. An arrow
   is pulled in near its spot and clicks in when its tail sits where that freeway really
   starts. The car hops along as the chain grows. A finished drive reads
-  "105 west → 405 northwest".
+  "105 west → 405 northwest", plainly (no cheer: Dave found "You made it!" corny).
 - **Handling (Dave's round 2):** a touch anywhere near an arrow picks it up (the nearest
   one within `PICK`). On touch the arrow floats `LIFT` above the finger on the jigsaw's
   `Paddle`, held by its middle (the stick meets the arrow's centre), so the thumb
