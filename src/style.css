@@ -2245,9 +2245,10 @@ body {
   font-size: 22px;
 }
 .ow-outline.next {
-  stroke: var(--accent);
-  stroke-dasharray: none;
-  stroke-width: 4.5;
+  stroke: #8a94a6;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  fill: rgba(138, 148, 166, 0.1);
 }
 .ow-roads {
   pointer-events: none;
@@ -2394,4 +2395,62 @@ body {
   45% { transform: translate(-30%, -8%) scale(0.88); }
   65% { opacity: 1; transform: translate(-30%, 0%); }
   100% { opacity: 0; transform: translate(-30%, 0%); }
+}
+/* Freeways solved: the tray becomes the jigsaw's solved panel (route + Next). */
+.fw-board {
+  position: relative;
+}
+.fw-solved {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px;
+}
+.fw-solved-route {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0b7a53;
+  text-align: center;
+}
+.fw-svg.done .fw-tray-label {
+  display: none;
+}
+
+/* Built groups (zoomed out) vs the places inside them (zoomed in). */
+.ow-group {
+  fill: var(--fill);
+  stroke: #ffffff;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  cursor: zoom-in;
+}
+.ow-groups,
+.ow-places {
+  transition: opacity 0.35s ease;
+}
+.ow-map.detail .ow-groups,
+.ow-map:not(.detail) .ow-places {
+  opacity: 0;
+  pointer-events: none;
+}
+.ow-map .ow-outline.next {
+  vector-effect: non-scaling-stroke;
+}
+/* The zoom slider, up the right edge: top = your area, bottom = all of LA. */
+.ow-zoom {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  height: 44%;
+  width: 28px;
+  transform: translateY(-50%);
+  writing-mode: vertical-lr;
+  direction: rtl;
+  accent-color: var(--accent);
+  opacity: 0.85;
+  cursor: pointer;
 }

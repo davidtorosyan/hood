@@ -56,11 +56,12 @@ function openFreeways() {
 // --- Rebuild LA (the campaign) ---
 // `arriving`: puzzle ids just built / driven between — the camera starts on
 // them and pulls back to show them in the county.
-function openOverworld(arriving = null) {
+// `onward`: then fly straight on into the next step (Next after a puzzle).
+function openOverworld(arriving = null, onward = false) {
   unmountJigsaw();
   unmountFreeways();
   store.setScreen('campaign');
-  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onStep: playStep, onExplore: () => playExplore(), arriving });
+  renderOverworld(app, { onBack: goHome, onPlay: playCampaign, onStep: playStep, onExplore: () => playExplore(), arriving, onward });
   record('campaign'); // announce any campaign trophy just earned
 }
 
@@ -77,7 +78,7 @@ function playCampaign(id) {
     // Back, or Next once solved: the camera pulls back out of this area onto
     // the county map (the piece lands), where Next flies on to the next area.
     back: () => (flash(), openOverworld([id])),
-    next: () => (flash(), openOverworld([id])),
+    next: () => (flash(), openOverworld([id], true)),
     doneLabel: () => 'Next ▶',
   });
 }
@@ -96,7 +97,7 @@ function playStep(step) {
     title: chapterOf(step).title,
     onBack: () => openOverworld(step.areas),
     onSolved: () => markDriven(step),
-    onNext: () => openOverworld(step.areas),
+    onNext: () => openOverworld(step.areas, true),
   });
 }
 

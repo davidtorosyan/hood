@@ -14,12 +14,18 @@ const LABEL_PX = 13; // on-screen label size
 export class MapView {
   // svg: the map (its viewBox spans [0,0,W,H] at full view). sched: Scheduler.
   // onTap(target, [x, y]): a tap (not a pan) on the map, with the svg point.
-  constructor(svg, { W, H, sched, onTap }) {
+  // onView(box): the camera moved. onTouch(): a finger/mouse went down on it.
+  constructor(svg, { W, H, sched, onTap, onView, onTouch }) {
     this.svg = svg;
     this.W = W;
     this.H = H;
     this.sched = sched;
     this.onTap = onTap;
+    this.onView = onView;
+    this.onTouch = onTouch;
+    // Zoomed in enough to see places (else: the groups they make). Set by the
+    // owner from onView; place names only show in detail, group names only out of it.
+    this.detail = false;
     this.box = [0, 0, W, H];
     this.flight = null;
     this.labels = []; // { el, x, y, size, text, tier, group }
@@ -52,6 +58,7 @@ export class MapView {
   set([x, y, w, h]) {
     this.box = [x, y, w, h];
     this.svg.setAttribute('viewBox', `${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}`);
+    this.onView?.(this.box);
     this.#updateLabels();
   }
 
@@ -69,6 +76,15 @@ export class MapView {
       return this.#fly(from, mid, ms * 0.6, () => this.#fly(mid, to, ms * 0.7, onDone));
     }
     this.#fly(from, to, ms, onDone);
+  }
+
+  // The box a fraction t of the way from a to b (log-size, linear centre).
+  static lerp(a, b, t) {
+    const w = Math.exp(Math.log(a[2]) + (Math.log(b[2]) - Math.log(a[2])) * t);
+    const h = w / (b[2] / b[3]);
+    const cx = a[0] + a[2] / 2 + (b[0] + b[2] / 2 - a[0] - a[2] / 2) * t;
+    const cy = a[1] + a[3] / 2 + (b[1] + b[3] / 2 - a[1] - a[3] / 2) * t;
+    return [cx - w / 2, cy - h / 2, w, h];
   }
 
   #fly(a, b, ms, onDone) {
@@ -121,10 +137,8 @@ export class MapView {
     const px = this.scale();
     const fs = LABEL_PX / px; // svg units for a LABEL_PX label
     const fits = (it) => it.size * px > it.text.length * LABEL_PX * 0.55 + 10;
-    const placeShown = new Set();
-    for (const it of this.labels) if (it.tier === 1 && fits(it)) placeShown.add(it.group);
     for (const it of this.labels) {
-      const show = it.tier === 1 ? fits(it) : fits(it) && !placeShown.has(it.group);
+      const show = fits(it) && (it.tier === 1) === this.detail;
       it.el.style.display = show ? '' : 'none';
       if (!show) continue;
       it.el.setAttribute('x', it.x.toFixed(1));
@@ -173,6 +187,7 @@ export class MapView {
     svg.addEventListener('pointerdown', (e) => {
       this.flight?.cancel?.();
       this.flight = null;
+      this.onTouch?.();
       svg.setPointerCapture(e.pointerId);
       pts.set(e.pointerId, [e.clientX, e.clientY]);
       start = { box: [...this.box], pts: new Map(pts), moved: start?.moved && pts.size > 1, target: e.target };
@@ -218,6 +233,9 @@ export class MapView {
     svg.addEventListener('pointercancel', end);
     svg.addEventListener('wheel', (e) => {
       e.preventDefault();
+      this.flight?.cancel?.();
+      this.flight = null;
+      this.onTouch?.();
       const k = Math.exp(e.deltaY * 0.002);
       const [px, py] = toSvg(e.clientX, e.clientY);
       const [x, y, w, h] = this.box;

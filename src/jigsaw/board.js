@@ -596,13 +596,21 @@ export class Board {
       ? zoomable ? '' : '👆 Tap a place to learn about it'
       : zoomable ? '👆 Tap a piece to zoom in' : '👆 Tap a piece to learn about it';
     const progress = this.cbs.progressLine?.() ?? progressLine(this.nodeId);
-    // Campaign: just Next — no tips or name chips (Dave). Places are explored
-    // on the overworld map instead.
-    if (this.campaign) this.stage.showSolved({ tip: '', chips: [], progress: '' });
+    // Campaign: just Next — no tips or name chips (Dave). Except once, on the
+    // first puzzle you solve: a finger taps a place, with one line saying why
+    // (tapping a place opens its card). That puzzle stays in pieces to tap.
+    const teach = this.campaign && justSolved && !zoomable && !this.book.get('cardTaught');
+    if (teach) this.book.set('cardTaught', true);
+    if (this.campaign) this.stage.showSolved({ tip: teach ? '👆 Tap a place to learn about it' : '', chips: [], progress: '' });
     else this.stage.showSolved({ tip, chips, progress });
     if (justSolved) this.stage.celebrate(labelOf(this.nodeId));
-    // Campaign: the places merge back into the one shape they make.
-    if (justSolved && this.mergeColor) this.sched.after(MERGE_BACK_MS, () => this.#merge(true));
+    if (teach) {
+      const p = this.pieces.reduce((a, b) => (b.geom.w * b.geom.h > a.geom.w * a.geom.h ? b : a));
+      this.sched.after(900, () => this.coach.play([p.geom.cx, p.geom.cy], [p.geom.cx, p.geom.cy], 3));
+    } else if (justSolved && this.mergeColor) {
+      // Campaign: the places merge back into the one shape they make.
+      this.sched.after(MERGE_BACK_MS, () => this.#merge(true));
+    }
     for (const p of this.pieces) {
       p.g.classList.remove('anchor');
       if (p.zoomable) p.markZoomable();
@@ -616,6 +624,7 @@ export class Board {
   #open(piece) {
     if (this.phase !== 'solved') return;
     if (piece.zoomable) return this.campaign ? undefined : this.zoomInto(piece.id); // campaign: stay put
+    this.coach.stop();
 
     this.cbs.onEvent?.('card-open');
     this.cbs.onSelectLeaf?.(piece.id);

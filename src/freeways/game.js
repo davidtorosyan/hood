@@ -236,16 +236,43 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
       msg.className = `fw-msg ${tone}`;
     };
     const routeWords = () => p.blocks.map((b, i) => `${b.ref} ${dirName(arrows[i].dir)}`).join(' → ');
+    // Solved: the tray turns into the same panel the jigsaw shows — the route,
+    // and one Next button — instead of a footer under it.
+    const solvedPanel = el('div', { class: 'fw-solved' });
+    wrap.append(solvedPanel);
+    const placePanel = () => {
+      // Over the tray, in px (the svg is letterboxed into the wrap).
+      const r = svg.getBoundingClientRect();
+      const wr = wrap.getBoundingClientRect();
+      const k = Math.min(r.width / W, r.height / H);
+      const ox = r.left - wr.left + (r.width - W * k) / 2;
+      const oy = r.top - wr.top + (r.height - H * k) / 2;
+      Object.assign(solvedPanel.style, {
+        left: `${(ox + TRAY[0] * k).toFixed(1)}px`,
+        top: `${(oy + TRAY[1] * k).toFixed(1)}px`,
+        width: `${((TRAY[2] - TRAY[0]) * k).toFixed(1)}px`,
+        height: `${((TRAY[3] - TRAY[1]) * k).toFixed(1)}px`,
+      });
+    };
     const renderFooter = () => {
       clear(footer);
-      if (drive) footer.append(run.done ? el('button', { class: 'btn fw-next', onClick: onNext }, 'Next ▶') : el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'));
-      else if (run.done) footer.append(el('button', { class: 'btn fw-next', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Next drive ▶'));
+      solvedPanel.replaceChildren();
+      solvedPanel.style.display = run.done ? '' : 'none';
+      svg.classList.toggle('done', run.done);
+      if (run.done) {
+        placePanel();
+        const next = drive ? onNext : () => start(nextIndex(book.isSolved, run.index));
+        solvedPanel.append(
+          el('div', { class: 'fw-solved-route' }, routeWords()),
+          el('button', { class: 'jig-btn jig-replay primary', onClick: next }, drive ? 'Next ▶' : 'Next drive ▶'),
+        );
+      } else if (drive) footer.append(el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'));
       else footer.append(
         el('button', { class: 'btn btn-quiet', onClick: () => start(nextIndex(book.isSolved, run.index)) }, 'Skip'),
         el('button', { class: 'btn btn-quiet', onClick: showOne }, 'Show me'),
       );
     };
-    if (run.done) say1(routeWords(), 'good');
+    if (run.done) say1('');
     else say1(legs === 1 ? '' : 'Which freeway leaves from the 🚗 — and which way does it go?');
     renderFooter();
     // Rebuild LA: open on the real map — the two areas you just built — which
@@ -431,7 +458,7 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
       if (drive) onSolved?.();
       else book.markDone(idOf(p), run.shown >= legs ? 'skipped' : 'solved');
       countEvent(run.shown >= legs ? 'freeway-shown' : 'freeway-solved');
-      say1(routeWords(), 'good');
+      say1('');
       renderFooter();
       sched.after(reduceMotion() ? 0 : 700, morphToMap);
     }
@@ -523,7 +550,7 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
         for (const m of morphs) realLayer.append(shield(m.ref, m.to[Math.floor(N / 2)], 0.8));
         realLayer.append(names);
         park(endCar);
-        say1(routeWords(), 'good');
+        say1('');
       };
       if (reduceMotion()) return done();
       sched.animate(1400, (k) => {

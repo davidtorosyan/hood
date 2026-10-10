@@ -1,19 +1,20 @@
 // The "Rebuild LA" overworld: the county map you're rebuilding, and the hub
-// between puzzles. It starts as an empty outline; built places are in colour,
-// each built-but-unlinked puzzle is its own outlined "island", and the
-// freeways you've driven are roads between them.
+// between puzzles. It starts as an empty outline; what you've built is in
+// colour — zoomed out as the GROUPS you built (logical chunks to zoom into,
+// like Explore, in the colours their puzzles merge into), zoomed in as the
+// places inside them. The freeways you've driven are roads between them.
 //
-// It's a camera, not a static picture (Dave): coming back from a puzzle it
-// zooms OUT of that area so you see the piece land; Next flies (out, across,
-// in) to the next area before the puzzle opens. In between, the map is yours to
-// explore: pan, pinch, names appear as there's room, and tapping a place you've
-// built zooms to it or opens its card. Only what you've built is there to see.
+// It's a camera (Dave): finishing a puzzle, Next pulls back out of that area
+// so you see the piece land, then flies straight on into the next area — one
+// press. Touch the map on the way and it stops there for you to look around.
+// Opened from home (or ← from a puzzle) it rests on what you've built, a
+// little zoomed in so your progress reads; the slider on the right zooms
+// between that and all of LA.
 import { el, svgEl, clear } from '../ui/dom.js';
 import { ROOT, NODES, childrenOf, leavesOf, labelOf, pathIds, shapeOf } from '../jigsaw/tree.js';
 import { projectAll, mapAspectOf, labelAnchors } from '../jigsaw/geometry.js';
 import { colorForIndex } from '../jigsaw/palette.js';
 import { Scheduler } from '../jigsaw/scheduler.js';
-import { showCard } from '../jigsaw/card.js';
 import { store } from '../store.js';
 import { builtLeaves, districtProgress, frontier, offers, progress, finished, topBuilt, isBottom } from './state.js';
 import { nextStep, chapterOf, stepTitle, drivenDrives } from './journey.js';
@@ -25,9 +26,12 @@ const W = 1000;
 const H = Math.round(W / mapAspectOf(ROOT));
 const ALL_PLACES = leavesOf(ROOT);
 const REGIONS = childrenOf(ROOT);
-const regionColor = (leaf) => colorForIndex(REGIONS.indexOf(pathIds(leaf)[1]));
 const book = store.campaign;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+// A child's colour in its parent's puzzle (what the jigsaw shows).
+const colorIn = (id) => colorForIndex(childrenOf(NODES[id].parent).indexOf(id));
+// Places show (instead of the groups they make) once a group is this wide on screen.
+const DETAIL_PX = 190;
 
 // Where a puzzle sits, for its card: "San Gabriel Valley" / "West San Gabriel · SGV".
 const whereOf = (id) => pathIds(id).slice(1, -1).reverse().map(labelOf).join(' · ') || 'LA County';
@@ -40,8 +44,9 @@ export function unmountOverworld() {
 
 // onBack: home · onPlay(id): play that puzzle · onStep(step): play the
 // journey's next step · onExplore: open Explore mode · arriving: puzzle ids
-// just built/driven between (the camera starts on them and pulls back).
-export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arriving = null }) {
+// just built/driven between (the camera starts on them and pulls back) ·
+// onward: then carry straight on to the next step.
+export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arriving = null, onward = false }) {
   unmountOverworld();
   const sched = new Scheduler();
   live = { dispose: () => sched.dispose() };
@@ -53,6 +58,7 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   book.set('fresh', null); // flash it once
   const { built: nBuilt, total } = progress();
   const started = have.size > 0;
+  const groups = book.doneIds().filter((id) => NODES[id] && isBottom(id));
 
   const slots = [...picks, ...front.filter((id) => !picks.includes(id))];
 
@@ -70,18 +76,27 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   for (const id of slots) {
     slotLayer.append(svgEl('path', { d: pathOf(id), class: `ow-slot${picks.includes(id) ? ' offer' : ''}`, 'data-puzzle': id }));
   }
-  // What you've built, place by place, then an outline around each island.
-  const builtLayer = layer();
+  // What you've built: the groups (zoomed out) and their places (zoomed in).
+  const groupLayer = layer('ow-groups');
+  for (const id of groups) {
+    const path = svgEl('path', { d: pathOf(id), class: `ow-group${leavesOf(id).some((l) => fresh.has(l)) ? ' ow-fresh' : ''}` });
+    path.style.setProperty('--fill', colorIn(id));
+    path.dataset.group = id;
+    groupLayer.append(path);
+  }
+  const placeLayer = layer('ow-places');
   for (const leaf of ALL_PLACES) {
     if (!have.has(leaf)) continue;
-    const path = svgEl('path', { d: pathOf(leaf), class: `ow-place${fresh.has(leaf) ? ' ow-fresh' : ''}` });
-    path.style.setProperty('--fill', regionColor(leaf));
-    path.dataset.place = leaf;
-    builtLayer.append(path);
+    const path = svgEl('path', { d: pathOf(leaf), class: 'ow-place' });
+    path.style.setProperty('--fill', colorIn(leaf));
+    path.dataset.group = NODES[leaf].parent;
+    placeLayer.append(path);
   }
   const islandLayer = layer('ow-outlines');
   for (const id of topBuilt()) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-island' }));
   for (const id of links) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-outline link', 'data-puzzle': id }));
+  // Where you're going next: a quiet dashed hint (Next is the button, not this).
+  if (step && step.kind !== 'drive') islandLayer.append(svgEl('path', { d: pathOf(step.id), class: 'ow-outline next' }));
   // The freeways you've driven, as roads between what you've built.
   const roadLayer = layer('ow-roads');
   for (const d of drivenDrives()) {
@@ -90,10 +105,8 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
       roadLayer.append(svgEl('path', { d: 'M' + pts.join('L'), class: 'ow-road' }));
     }
   }
-  // The next step's spot, ringed.
-  if (step && step.kind !== 'drive') islandLayer.append(svgEl('path', { d: pathOf(step.id), class: 'ow-outline next' }));
   const labelLayer = layer('ow-labels');
-  svg.append(board, slotLayer, builtLayer, islandLayer, roadLayer, labelLayer);
+  svg.append(board, slotLayer, groupLayer, placeLayer, islandLayer, roadLayer, labelLayer);
 
   // Projected boxes and label spots.
   const ringOf = (id) => shapeOf(id).map((c) => proj(c));
@@ -107,11 +120,13 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     }
     return [x0, y0, x1 - x0, y1 - y0];
   };
-  const labelItem = (id, tier, group) => {
+  const labelItem = (id, tier) => {
     const ring = ringOf(id);
     const [x, y] = labelAnchors(ring, 6)[0] ?? ring[0];
-    return { x, y, size: boxOf([id])[2], text: labelOf(id), tier, group };
+    return { x, y, size: boxOf([id])[2], text: labelOf(id), tier };
   };
+  // A typical built group's width (svg units): the detail switch keys off it.
+  const groupWidth = groups.length ? groups.map((id) => boxOf([id])[2]).sort((a, b) => a - b)[groups.length >> 1] : 0;
 
   // Which puzzle a tap means (choosing "somewhere else"): a slot, or a link.
   const linkOf = new Map();
@@ -143,34 +158,6 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     ...links.map((id) => card(id, 'link')),
     ...picks.map((id) => card(id, 'build')),
   ]);
-
-  // --- the camera ---
-  const hint = el('div', { class: 'ow-tap-hint', 'aria-hidden': 'true' }, '👆');
-  const wrap = el('div', { class: 'ow-map-wrap big' }, [svg, hint]);
-  let leaving = false;
-  const view = new MapView(svg, {
-    W,
-    H,
-    sched,
-    onTap: (target) => {
-      if (leaving) return;
-      const puzzle = target?.dataset?.puzzle || (svg.classList.contains('picking') ? linkOf.get(target?.dataset?.place) : null);
-      if (puzzle && (!step || svg.classList.contains('picking'))) return select(puzzle);
-      const leaf = target?.dataset?.place;
-      if (!leaf) return;
-      // Small on screen → zoom to its group; big enough → its card.
-      const group = NODES[leaf].parent;
-      if (boxOf([leaf])[2] * view.scale() < 60) return view.flyTo(view.fit(boxOf([group]), 0.15), 650, () => playHint(leaf));
-      book.set('cardHint', 'done');
-      showCard(leaf);
-    },
-  });
-  view.setLabels(labelLayer, [
-    ...book.doneIds().filter((id) => NODES[id] && isBottom(id)).map((id) => labelItem(id, 0, id)),
-    ...[...have].map((id) => labelItem(id, 1, NODES[id].parent)),
-  ]);
-
-  // Tap a slot (choosing somewhere else): select its card.
   const select = (id) => {
     if (!cards.has(id)) list.prepend(card(id, links.includes(id) ? 'link' : 'build'));
     for (const [cid, c] of cards) c.classList.toggle('selected', cid === id);
@@ -178,36 +165,65 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     cards.get(id).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
 
-  // A finger tapping a place you've built, once you have a couple: the map is
-  // for exploring (no words — Dave doesn't like tips). Until you've opened a card.
-  function playHint(leaf) {
-    if (book.get('cardHint') === 'done' || !leaf) return;
-    const { x, y } = labelItem(leaf, 1);
-    const r = svg.getBoundingClientRect();
-    const wr = wrap.getBoundingClientRect();
-    const s = view.scale();
-    const [bx, by, bw, bh] = view.box;
-    const sx = r.left - wr.left + (r.width - bw * s) / 2 + (x - bx) * s;
-    const sy = r.top - wr.top + (r.height - bh * s) / 2 + (y - by) * s;
-    hint.style.left = `${sx.toFixed(0)}px`;
-    hint.style.top = `${sy.toFixed(0)}px`;
-    hint.classList.remove('tapping');
-    hint.getBoundingClientRect(); // restart the animation
-    hint.classList.add('tapping');
-    sched.after(3400, () => hint.classList.remove('tapping'));
-  }
-  const hintAfterArrival = () => {
-    const bottoms = book.doneIds().filter((id) => NODES[id] && isBottom(id));
-    if (bottoms.length < 2) return;
-    const recent = arriving?.find((id) => NODES[id] && isBottom(id)) ?? bottoms.at(-1);
-    playHint(leavesOf(recent)[0]);
+  // --- the camera ---
+  // The slider zooms between all of LA (bottom) and what you've built (top).
+  const slider = el('input', { type: 'range', class: 'ow-zoom', min: 0, max: 1000, value: 0, 'aria-label': 'Zoom' });
+  const wrap = el('div', { class: 'ow-map-wrap big' }, [svg, groups.length ? slider : null]);
+  let leaving = false;
+  let carryOn = null; // the pending "fly on to the next step" (cancelled by a touch)
+  const stay = () => {
+    if (carryOn != null) sched.cancel(carryOn);
+    carryOn = null;
   };
+  const view = new MapView(svg, {
+    W,
+    H,
+    sched,
+    onTouch: stay,
+    onView: (box) => {
+      const px = view.scale();
+      const detail = groupWidth * px > DETAIL_PX;
+      view.detail = detail;
+      svg.classList.toggle('detail', detail);
+      if (!sliding) slider.value = String(Math.round(1000 * zoomFrac(box)));
+    },
+    onTap: (target) => {
+      if (leaving) return;
+      const puzzle = target?.dataset?.puzzle || (svg.classList.contains('picking') ? linkOf.get(target?.dataset?.place) : null);
+      if (puzzle && (!step || svg.classList.contains('picking'))) return select(puzzle);
+      // Tapping a group you've built zooms into it (the overworld is for
+      // looking around; place cards live in the puzzles).
+      const group = target?.dataset?.group;
+      if (group) view.flyTo(view.fit(boxOf([group]), 0.18), 650);
+    },
+  });
+  view.setLabels(labelLayer, [
+    ...groups.map((id) => labelItem(id, 0)),
+    ...[...have].map((id) => labelItem(id, 1)),
+  ]);
+  // Your area: what you've built (plus where you're headed), roomily.
+  const target = step ? (step.kind === 'drive' ? step.areas : [step.id]) : [];
+  const localBox = () => view.fit(boxOf([...groups, ...target.filter((id) => NODES[id])]), 0.35);
+  const zoomFrac = (box) => {
+    const [f, l] = [view.full(), localBox()];
+    const span = Math.log(f[2]) - Math.log(l[2]);
+    return span > 0 ? Math.max(0, Math.min(1, (Math.log(f[2]) - Math.log(box[2])) / span)) : 0;
+  };
+  let sliding = false;
+  slider.addEventListener('input', () => {
+    stay();
+    sliding = true;
+    view.flight?.cancel?.();
+    view.set(MapView.lerp(view.full(), localBox(), Number(slider.value) / 1000));
+    sliding = false;
+  });
+  slider.addEventListener('pointerdown', stay);
 
   // Next: fly to the next area (out, across, in), then open it.
   const go = () => {
-    if (leaving) return;
+    if (leaving || !step) return;
+    stay();
     leaving = true;
-    const target = step.kind === 'drive' ? step.areas : [step.id];
     const open = () => {
       wrap.classList.add('leaving');
       sched.after(160, () => onStep(step));
@@ -262,16 +278,25 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     ]),
   );
 
-  // Camera: start on what you just built and pull back to the county; else
-  // the whole county.
+  // --- where the camera starts, and what it does ---
+  // Resting view: your area. After your very first build, Next pulls all the
+  // way out once — there's a lot of LA left — before flying on.
   const arrivingIds = (arriving || []).filter((id) => NODES[id]);
-  if (arrivingIds.length && !reduceMotion()) {
-    view.set(view.fit(boxOf(arrivingIds), 0.06));
-    sched.after(350, () => view.flyTo(view.full(), 1100, hintAfterArrival));
-  } else {
-    view.set(view.full());
-    sched.after(400, hintAfterArrival);
+  const firstTime = groups.length === 1 && !book.get('seenWhole');
+  const rest = () => (!groups.length ? view.full() : localBox());
+  if (!arrivingIds.length || reduceMotion()) {
+    view.set(rest());
+    if (onward && step) carryOn = sched.after(600, go);
+    return;
   }
+  view.set(view.fit(boxOf(arrivingIds), 0.06));
+  const pullBack = onward && firstTime ? view.full() : rest();
+  if (onward && firstTime) book.set('seenWhole', true);
+  sched.after(300, () =>
+    view.flyTo(pullBack, onward && firstTime ? 1300 : 1000, () => {
+      if (onward && step) carryOn = sched.after(firstTime ? 1300 : 700, go);
+    }),
+  );
 }
 
 // For the puzzle screen's tray: "🧩 12 of 69 puzzles rebuilt".

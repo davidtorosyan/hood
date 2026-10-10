@@ -139,14 +139,19 @@ campaign is now a fixed **journey** of steps (`src/campaign/chapters.js`, plain 
 build a cluster, build another, **drive between them by freeway**, connect the
 district, and so on outward. The drive uses places you just built, so you know them.
 The first drive is one arrow with the jigsaw's `Coach` finger demo, and later ones
-grow to two and three arrows. A solved puzzle or drive shows **only Next ▶** (no tips or name chips, per Dave).
-Next pulls the camera back out of that area onto the county map, where the new piece
-lands. Next there flies out, across and in to the next area before it opens (the
-overworld is a camera: `mapview.js`'s `MapView` handles viewBox flights, pan/pinch/wheel,
-and names that appear when they fit). Between steps the map is **yours to explore**:
-only built places are drawn. Tapping a small one zooms to its group; tapping a big one
-opens its place card. After two builds, a wordless finger-tap hint shows this, once,
-until you open a card. **Transitions tie it together** (Dave): a campaign
+grow to two and three arrows. A solved puzzle or drive shows **only Next ▶** (no tips or name chips, per Dave; a
+drive's solved tray is the same panel as the jigsaw's). **One press** (Dave): Next pulls
+the camera back out of that area onto the county map so the piece lands, then flies
+straight into the next area and opens it. Touching the map on the way stops it there.
+The very first time it pulls all the way out to the whole county once (there's a lot
+of LA left). Otherwise it rests **zoomed into your area**, so progress reads. The
+overworld is a camera (`mapview.js`'s `MapView`: viewBox flights, pan/pinch/wheel, names
+that appear when they fit). Zoomed out it shows the **groups** you've built in the
+colours their puzzles merge into, like Explore: chunks to tap and zoom into. Zoomed in,
+it shows their places. A **slider** on the right zooms between your area and all of LA.
+There are no place cards on the map. They're taught once, in the first solved puzzle (a
+finger tap plus "Tap a place to learn about it"). The next area is marked by a quiet
+grey dashed outline, not a call to action. **Transitions tie it together** (Dave): a campaign
 puzzle opens as the group's ONE shape with its name (`Board` `mergeColor`), splits into
 its places, then scrambles. Once solved, the places merge back into the named shape. A
 drive opens on the real map of the two areas just built, and they shrink into the
