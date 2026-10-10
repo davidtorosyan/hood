@@ -201,4 +201,5 @@ export function collapseName(layer, name, [cx, cy]) {
   text.getBoundingClientRect(); // commit opacity 0 so the fade runs
   text.style.transition = 'opacity 0.3s ease 0.06s';
   text.style.opacity = '1';
+  return text;
 }

@@ -27,6 +27,8 @@ const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)
 // paddle), so the thumb never hides where it's going. Mouse: no lift.
 const HAS_MOUSE = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
 const LIFT = 240;
+const INTRO_HOLD_MS = 1300; // Rebuild LA: the two areas on the real map…
+const INTRO_SHRINK_MS = 900; // …then shrinking into the blocks
 const PICK = 130; // board units: a touch this near an arrow in the tray picks it up
 const ALL = leavesOf(ROOT);
 const KX = 111.32 * Math.cos((34 * Math.PI) / 180);
@@ -41,7 +43,9 @@ export function unmountFreeways() {
 // Free play: the drives in order. Rebuild LA passes one `drive` (from its
 // journey) with `onSolved` / `onNext`, and `coach` for the first one (a finger
 // shows the drag); there's no Skip, and its own ledger isn't touched.
-export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, coach = false, title = null }) {
+// `areas` ([from, to] puzzle ids): the drive opens on the real map of those two
+// areas (just built), which shrink into the start and destination blocks.
+export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, coach = false, title = null, areas = null }) {
   unmountFreeways();
   const sched = new Scheduler();
   let run = null; // { index, placed: Set<leg>, driven, done, shown }
@@ -146,7 +150,7 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
     }
     const realLayer = svgEl('g', { class: 'fw-real' }); // the real map, after the drive
     const laidLayer = svgEl('g');
-    const carLayer = svgEl('g');
+    const carLayer = svgEl('g', { class: 'fw-car-layer' });
     const trayLayer = svgEl('g');
     const fxLayer = svgEl('g');
     svg.append(
@@ -244,12 +248,65 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
     if (run.done) say1(routeWords(), 'good');
     else say1(legs === 1 ? '' : 'Which freeway leaves from the 🚗 — and which way does it go?');
     renderFooter();
+    // Rebuild LA: open on the real map — the two areas you just built — which
+    // then shrink into the start and destination blocks as the grid fades in.
+    let introMs = 0;
+    if (areas && !run.introDone && !run.done && !run.placed.size && !reduceMotion()) {
+      run.introDone = true;
+      introMs = INTRO_HOLD_MS + INTRO_SHRINK_MS;
+      playIntro();
+    }
+    function playIntro() {
+      const proj = geoMercator().fitExtent([[90, 90], [W - 90, BH - 90]], {
+        type: 'MultiPolygon',
+        coordinates: areas.map((id) => [shapeOf(id)]),
+      });
+      const P = (c) => proj(c);
+      const ringD = (r) => 'M' + r.map((c) => P(c).map((v) => v.toFixed(1)).join(',')).join('L') + 'Z';
+      const layer = svgEl('g', { class: 'fw-intro' });
+      const clip = svgEl('clipPath', { id: 'fw-intro-clip' });
+      clip.append(svgEl('rect', { x: 8, y: 8, width: W - 16, height: BH - 8, rx: 26 }));
+      const map = svgEl('g', { 'clip-path': 'url(#fw-intro-clip)', class: 'fw-intro-map' });
+      for (const id of ALL) map.append(svgEl('path', { d: ringD(shapeOf(id)), class: 'fw-place' }));
+      layer.append(clip, map);
+      const ends = [[0, 0], arrows.at(-1).to];
+      const shapes = areas.map((id, k) => {
+        const r = shapeOf(id).map(P);
+        const xs = r.map((q) => q[0]);
+        const ys = r.map((q) => q[1]);
+        const box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+        const g = svgEl('g', { class: `fw-intro-area ${k ? 'to' : 'from'}` });
+        g.append(svgEl('path', { d: ringD(shapeOf(id)) }));
+        const name = Object.assign(svgEl('text', { x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central' }), { textContent: labelOf(id) });
+        layer.append(g, name);
+        return { g, name, box, to: at(ends[k]) };
+      });
+      svg.insertBefore(layer, realLayer);
+      board.classList.add('fw-pre');
+      carLayer.classList.add('fw-pre');
+      sched.after(INTRO_HOLD_MS, () => {
+        const s = Math.min(cell * 0.9, 120);
+        map.classList.add('gone');
+        for (const { g, name, box, to } of shapes) {
+          const k = s / Math.max(box[2] - box[0], box[3] - box[1]);
+          const [cx, cy] = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+          name.classList.add('gone');
+          g.getBoundingClientRect(); // reflow, so the transition runs
+          g.classList.add('shrinking');
+          g.style.transform = `translate(${(to[0] - k * cx).toFixed(1)}px, ${(to[1] - k * cy).toFixed(1)}px) scale(${k.toFixed(4)})`;
+        }
+        board.classList.remove('fw-pre');
+        carLayer.classList.remove('fw-pre');
+      });
+      sched.after(INTRO_HOLD_MS + INTRO_SHRINK_MS, () => layer.remove());
+    }
+
     // The first drive in Rebuild LA: a finger shows the drag, tray → car.
     const demo = new Coach(fxLayer, sched);
     if (coach && !run.done && !run.placed.size) {
       const pc = pieces[0];
       const m = midOf(pc);
-      sched.after(500, () => demo.play([pc.home[0] + m[0] * pc.home[2], pc.home[1] + m[1] * pc.home[2]], [pc.goal[0] + m[0], pc.goal[1] + m[1]], 4));
+      sched.after(500 + introMs, () => demo.play([pc.home[0] + m[0] * pc.home[2], pc.home[1] + m[1] * pc.home[2]], [pc.goal[0] + m[0], pc.goal[1] + m[1]], 4));
     }
 
     // --- dragging (pointer captured on the stable svg root) ---

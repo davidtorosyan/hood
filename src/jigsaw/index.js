@@ -162,7 +162,7 @@ function renderNode(app, ctx, nodeId, opts = {}) {
       else if (name === 'card-open') record('card');
     },
     onPersist: () => book.savePuzzle(nodeId, me.serialize()),
-  }, { book, campaign: !!campaign, doneLabel: campaign?.doneLabel });
+  }, { book, campaign: !!campaign, doneLabel: campaign?.doneLabel, mergeColor: campaign && node.parent ? colorIn(node.parent, nodeId) : null });
   board = me;
   boardWrap.append(me.root);
 

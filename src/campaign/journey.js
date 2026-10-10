@@ -14,7 +14,7 @@ export const STEPS = CHAPTERS.flatMap((ch, c) =>
     kind,
     chapter: c,
     id: kind === 'drive' ? driveKey(a, b) : a,
-    ...(kind === 'drive' ? { drive: DATA.campaign[driveKey(a, b)] } : {}),
+    ...(kind === 'drive' ? { drive: DATA.campaign[driveKey(a, b)], areas: [a, b] } : {}),
   })),
 );
 

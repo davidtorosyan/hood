@@ -44,6 +44,12 @@ const SNAP_MS = 150; // the "click" pull-in when a piece connects
 const NEXT_ASK_MS = 320; // a beat after a snap before the next ask
 const FIND_HINT_MS = 9000; // no right grab for this long → pulse the asked-for piece
 const INTRO_MS = 750; // an unsolved level shows assembled this long, then breaks apart
+// Campaign intro: the group as one named shape this long, then it splits into
+// its places (SPLIT_MS to read them) before scrambling. Solved: a beat, then
+// the places merge back.
+const MERGED_MS = REDUCED_MOTION ? 600 : 1400;
+const SPLIT_MS = REDUCED_MOTION ? 600 : 1200;
+const MERGE_BACK_MS = REDUCED_MOTION ? 0 : 900;
 
 export class Board {
   // cbs: { onPersist(), onZoomInto(childId), onZoomOut(), onGoTo(id), onSelectLeaf(id),
@@ -51,12 +57,16 @@ export class Board {
   // opts: { book: the progress ledger to read/write (store.explore by default),
   //         campaign: true → a "Rebuild LA" puzzle: no zooming into pieces or
   //         flying off via context; the solved tray offers "Back to the map" }
-  constructor(nodeId, cbs = {}, { book = store.explore, campaign = false, doneLabel = null } = {}) {
+  // mergeColor (campaign): the group shows as ONE shape in this colour, named,
+  // before it splits into its places — and merges back once solved.
+  constructor(nodeId, cbs = {}, { book = store.explore, campaign = false, doneLabel = null, mergeColor = null } = {}) {
     this.nodeId = nodeId;
     this.cbs = cbs;
     this.book = book;
     this.campaign = campaign;
     this.doneLabel = doneLabel; // campaign: () => the solved tray button's label
+    this.mergeColor = mergeColor;
+    this.mergeName = null; // the group's name over the merged shape
     this.pieces = [];
     this.byId = new Map();
     this.phase = 'building';
@@ -186,7 +196,12 @@ export class Board {
         this.phase = 'intro'; // assembled, about to break apart; input waits
         this.stage.hideSolved();
         this.#emitAction();
-        this.sched.after(INTRO_MS + (zoomOutFrom ? ZOOM_MS : 0), () => this.scramble());
+        if (this.mergeColor) {
+          // The group as one named shape → it splits into its places → scramble.
+          this.#merge(true, false);
+          this.sched.after(MERGED_MS, () => this.#merge(false));
+          this.sched.after(MERGED_MS + SPLIT_MS, () => this.scramble());
+        } else this.sched.after(INTRO_MS + (zoomOutFrom ? ZOOM_MS : 0), () => this.scramble());
       } else {
         this.#enterSolved();
       }
@@ -583,6 +598,8 @@ export class Board {
     const progress = this.cbs.progressLine?.() ?? progressLine(this.nodeId);
     this.stage.showSolved({ tip, chips: this.campaign && zoomable ? [] : chips, progress });
     if (justSolved) this.stage.celebrate(labelOf(this.nodeId));
+    // Campaign: the places merge back into the one shape they make.
+    if (justSolved && this.mergeColor) this.sched.after(MERGE_BACK_MS, () => this.#merge(true));
     for (const p of this.pieces) {
       p.g.classList.remove('anchor');
       if (p.zoomable) p.markZoomable();
@@ -711,6 +728,30 @@ export class Board {
     this.svg.getBoundingClientRect(); // commit the start colours so the morph runs
     for (const p of this.pieces) p.collapse(color);
     this.sched.after(COLLAPSE_MS, onDone);
+  }
+
+  // Show the pieces as one shape (the group, named) or as its separate places.
+  // `animate`: blend (the split / the merge back) rather than jump.
+  #merge(on, animate = true) {
+    for (const p of this.pieces) {
+      p.g.classList.toggle('merge-anim', animate);
+      p.g.style.setProperty('--merge', this.mergeColor);
+      p.g.classList.toggle('merged', on);
+      if (p.labelEl) {
+        p.labelEl.style.transition = animate ? 'opacity 0.35s ease' : 'none';
+        p.labelEl.style.opacity = on ? '0' : '';
+      }
+    }
+    if (on && !this.mergeName) {
+      const cx = this.pieces.reduce((s, p) => s + p.geom.cx, 0) / this.pieces.length;
+      const cy = this.pieces.reduce((s, p) => s + p.geom.cy, 0) / this.pieces.length;
+      this.mergeName = collapseName(this.labelLayer, labelOf(this.nodeId), [cx, cy]);
+    } else if (!on && this.mergeName) {
+      const t = this.mergeName;
+      this.mergeName = null;
+      t.style.opacity = '0';
+      this.sched.after(350, () => t.remove());
+    }
   }
 
   // Pulse a piece to draw the eye (a search just landed on it).

@@ -140,7 +140,12 @@ build a cluster, build another, **drive between them by freeway**, connect the
 district, and so on outward. The drive uses places you just built, so you know them.
 The first drive is one arrow with the jigsaw's `Coach` finger demo, and later ones
 grow to two and three arrows. A solved puzzle or drive's button is **Next ▶**, which
-goes straight to the next step. The overworld shows one big Next card, rings the next
+goes straight to the next step. **Transitions tie it together** (Dave): a campaign
+puzzle opens as the group's ONE shape with its name (`Board` `mergeColor`), splits into
+its places, then scrambles. Once solved, the places merge back into the named shape. A
+drive opens on the real map of the two areas just built, and they shrink into the
+start/destination blocks as the grid fades in (`areas` → `playIntro` in
+`freeways/game.js`). The overworld shows one big Next card, rings the next
 spot, and draws the freeways you've driven as roads. Picking elsewhere is folded under
 "Or build somewhere else". After the written steps, the old free-pick campaign carries
 on. `journey.js` holds the step state (drives done are kept in `store.campaign`'s

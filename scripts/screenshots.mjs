@@ -380,12 +380,17 @@ await shot('campaign-start');
 if ((await page.locator('.ow-next').count()) !== 1) fail('fresh campaign: no single Next step');
 if (await page.locator('.ow-place').count()) fail('fresh campaign already has built places');
 await page.locator('.ow-next').click();
-await page.waitForTimeout(300);
-await shot('campaign-puzzle-start');
+await page.waitForTimeout(400);
+// The group as one named shape, then split into its places, then scrambled.
+await shot('campaign-puzzle-merged');
+if (!(await page.locator('.jig-piece.merged').count())) fail('campaign: the puzzle should open as one merged shape');
+await page.waitForTimeout(1300);
+await shot('campaign-puzzle-split');
 await waitForPrompt();
 await solveByName();
-await page.waitForTimeout(900);
+await page.waitForTimeout(2000);
 await shot('campaign-puzzle-solved');
+if (!(await page.locator('.jig-piece.merged').count())) fail('campaign: a solved puzzle should merge back into one shape');
 // "Next ▶" goes straight on to the next build…
 await page.getByRole('button', { name: /^Next/ }).last().click();
 await page.waitForTimeout(300);
@@ -393,9 +398,14 @@ await waitForPrompt();
 await solveByName();
 await page.waitForTimeout(900);
 await page.getByRole('button', { name: /^Next/ }).last().click();
-await page.waitForTimeout(1200);
-// …then the first drive: one arrow, with a finger showing the drag.
+await page.waitForTimeout(500);
+// …then the first drive: it opens on the real map of the two areas, which
+// shrink into the blocks; then one arrow, with a finger showing the drag.
 if (!(await page.locator('.fw-svg').count())) fail('campaign: the third step should be a drive');
+await shot('campaign-drive-intro');
+await page.waitForTimeout(1250);
+await shot('campaign-drive-shrinking');
+await page.waitForTimeout(1600);
 await shot('campaign-drive-coach');
 {
   const refs = await page.$$eval('.fw-arrow-piece', (gs) => gs.map((g) => g.dataset.ref));

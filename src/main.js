@@ -86,6 +86,7 @@ function playStep(step) {
   renderFreeways(app, {
     drive: step.drive,
     coach: isFirstDrive(step),
+    areas: step.areas,
     title: chapterOf(step).title,
     onBack: openOverworld,
     onSolved: () => markDriven(step),
