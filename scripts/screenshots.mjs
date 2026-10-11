@@ -456,14 +456,14 @@ await shot('campaign-overworld-road');
 if (!(await page.locator('.ow-road').count())) fail('campaign: the driven freeway is not drawn on the map');
 if (!(await page.locator('.ow-outline.next').count())) fail('campaign: the next spot is not marked');
 if (await page.locator('.fw-svg, .jig-stage').count()) fail('campaign: ← to the map should stay on the map');
-// Zoomed out you see groups; tap one and it zooms in to its places.
+// Zoomed out you see what you built as areas; tap one and it opens into its places.
 {
-  const g = page.locator('.ow-group').first();
+  const g = page.locator('.ow-node.on:not(.leaf)').first();
   const b = await g.boundingBox();
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
   await page.waitForTimeout(900);
   await shot('campaign-map-group-zoomed');
-  if (!(await page.locator('.ow-map.detail').count())) fail('campaign: zooming into a group should show its places');
+  if (!(await page.locator('.ow-node.on.leaf').count())) fail('campaign: zooming into an area should show its places');
   // The slider: bottom = all of LA.
   await page.locator('.ow-zoom').fill('0');
   await page.waitForTimeout(300);

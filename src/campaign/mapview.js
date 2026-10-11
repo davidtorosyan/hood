@@ -23,9 +23,9 @@ export class MapView {
     this.onTap = onTap;
     this.onView = onView;
     this.onTouch = onTouch;
-    // Zoomed in enough to see places (else: the groups they make). Set by the
-    // owner from onView; place names only show in detail, group names only out of it.
-    this.detail = false;
+    // Which labels may show at all (the owner's level of detail); a label
+    // also needs room to fit.
+    this.labelFilter = null;
     this.box = [0, 0, W, H];
     this.flight = null;
     this.labels = []; // { el, x, y, size, text, tier, group }
@@ -138,7 +138,7 @@ export class MapView {
     const fs = LABEL_PX / px; // svg units for a LABEL_PX label
     const fits = (it) => it.size * px > it.text.length * LABEL_PX * 0.55 + 10;
     for (const it of this.labels) {
-      const show = fits(it) && (it.tier === 1) === this.detail;
+      const show = fits(it) && (this.labelFilter?.(it) ?? true);
       it.el.style.display = show ? '' : 'none';
       if (!show) continue;
       it.el.setAttribute('x', it.x.toFixed(1));

@@ -24,14 +24,14 @@ import { MapView } from './mapview.js';
 // The board fits the county's real shape, so there's no dead band around it.
 const W = 1000;
 const H = Math.round(W / mapAspectOf(ROOT));
-const ALL_PLACES = leavesOf(ROOT);
 const REGIONS = childrenOf(ROOT);
 const book = store.campaign;
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 // A child's colour in its parent's puzzle (what the jigsaw shows).
 const colorIn = (id) => colorForIndex(childrenOf(NODES[id].parent).indexOf(id));
-// Places show (instead of the groups they make) once a group is this wide on screen.
-const DETAIL_PX = 190;
+// A built area opens up into its parts (district → groups → places) once
+// it's this wide on screen — like zooming in Explore.
+const OPEN_PX = 240;
 
 // Where a puzzle sits, for its card: "San Gabriel Valley" / "West San Gabriel · SGV".
 const whereOf = (id) => pathIds(id).slice(1, -1).reverse().map(labelOf).join(' · ') || 'LA County';
@@ -54,7 +54,8 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   const { links, picks } = offers();
   const front = frontier();
   const have = builtLeaves();
-  const fresh = new Set(book.get('fresh') ? leavesOf(book.get('fresh')) : []);
+  const freshId = book.get('fresh');
+  const fresh = new Set(freshId && NODES[freshId] ? leavesOf(freshId) : []);
   book.set('fresh', null); // flash it once
   const { built: nBuilt, total } = progress();
   const started = have.size > 0;
@@ -76,22 +77,27 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   for (const id of slots) {
     slotLayer.append(svgEl('path', { d: pathOf(id), class: `ow-slot${picks.includes(id) ? ' offer' : ''}`, 'data-puzzle': id }));
   }
-  // What you've built: the groups (zoomed out) and their places (zoomed in).
-  const groupLayer = layer('ow-groups');
-  for (const id of groups) {
-    const path = svgEl('path', { d: pathOf(id), class: `ow-group${leavesOf(id).some((l) => fresh.has(l)) ? ' ow-fresh' : ''}` });
+  // What you've built, as a tree: each island (the biggest thing you've
+  // connected — Central L.A., or a lone group) and, inside it, its parts down
+  // to the places. Zoomed out you see the island whole; zoom in and it opens
+  // into its parts, level by level, like Explore. Each in the colour it has in
+  // its parent's puzzle (what that puzzle merged into).
+  const tops = topBuilt();
+  const builtLayer = layer('ow-built');
+  const nodeEls = new Map(); // id → path
+  const topOf = new Map(); // id → its island
+  const kidsOf = (id) => childrenOf(id);
+  const isLeaf = (id) => !kidsOf(id).length;
+  const addNode = (id, top) => {
+    const path = svgEl('path', { d: pathOf(id), class: `ow-node${isLeaf(id) ? ' leaf' : ''}${leavesOf(id).every((l) => fresh.has(l)) && fresh.size ? ' ow-fresh' : ''}` });
     path.style.setProperty('--fill', colorIn(id));
-    path.dataset.group = id;
-    groupLayer.append(path);
-  }
-  const placeLayer = layer('ow-places');
-  for (const leaf of ALL_PLACES) {
-    if (!have.has(leaf)) continue;
-    const path = svgEl('path', { d: pathOf(leaf), class: 'ow-place' });
-    path.style.setProperty('--fill', colorIn(leaf));
-    path.dataset.group = NODES[leaf].parent;
-    placeLayer.append(path);
-  }
+    path.dataset.node = id;
+    builtLayer.append(path);
+    nodeEls.set(id, path);
+    topOf.set(id, top);
+    for (const c of kidsOf(id)) addNode(c, top);
+  };
+  for (const t of tops) addNode(t, t);
   const islandLayer = layer('ow-outlines');
   for (const id of topBuilt()) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-island' }));
   for (const id of links) islandLayer.append(svgEl('path', { d: pathOf(id), class: 'ow-outline link', 'data-puzzle': id }));
@@ -106,7 +112,8 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     }
   }
   const labelLayer = layer('ow-labels');
-  svg.append(board, slotLayer, groupLayer, placeLayer, islandLayer, roadLayer, labelLayer);
+  const stitchLayer = layer('ow-stitch');
+  svg.append(board, slotLayer, builtLayer, islandLayer, roadLayer, stitchLayer, labelLayer);
 
   // Projected boxes and label spots.
   const ringOf = (id) => shapeOf(id).map((c) => proj(c));
@@ -120,13 +127,26 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     }
     return [x0, y0, x1 - x0, y1 - y0];
   };
-  const labelItem = (id, tier) => {
+  const widths = new Map([...nodeEls.keys()].map((id) => [id, boxOf([id])[2]]));
+  const labelItem = (id) => {
     const ring = ringOf(id);
     const [x, y] = labelAnchors(ring, 6)[0] ?? ring[0];
-    return { x, y, size: boxOf([id])[2], text: labelOf(id), tier };
+    return { id, x, y, size: widths.get(id), text: labelOf(id), tier: isLeaf(id) ? 1 : 0 };
   };
-  // A typical built group's width (svg units): the detail switch keys off it.
-  const groupWidth = groups.length ? groups.map((id) => boxOf([id])[2]).sort((a, b) => a - b)[groups.length >> 1] : 0;
+  // Which built areas show at this zoom: an area opens into its parts once
+  // it's OPEN_PX wide on screen; its parts may open in turn.
+  let shown = new Set();
+  let pinned = null; // an area kept whole however close (just stitched together)
+  const updateShown = (px) => {
+    const next = new Set();
+    const walk = (id) => {
+      if (!isLeaf(id) && id !== pinned && widths.get(id) * px > OPEN_PX) kidsOf(id).forEach(walk);
+      else next.add(id);
+    };
+    tops.forEach(walk);
+    for (const [id, path] of nodeEls) path.classList.toggle('on', next.has(id));
+    shown = next;
+  };
 
   // Which puzzle a tap means (choosing "somewhere else"): a slot, or a link.
   const linkOf = new Map();
@@ -168,7 +188,7 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   // --- the camera ---
   // The slider zooms between all of LA (bottom) and what you've built (top).
   const slider = el('input', { type: 'range', class: 'ow-zoom', min: 0, max: 1000, value: 0, 'aria-label': 'Zoom' });
-  const wrap = el('div', { class: 'ow-map-wrap big' }, [svg, groups.length ? slider : null]);
+  const wrap = el('div', { class: 'ow-map-wrap big' }, [svg, tops.length ? slider : null]);
   let leaving = false;
   let carryOn = null; // the pending "fly on to the next step" (cancelled by a touch)
   const stay = () => {
@@ -181,29 +201,24 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     sched,
     onTouch: stay,
     onView: (box) => {
-      const px = view.scale();
-      const detail = groupWidth * px > DETAIL_PX;
-      view.detail = detail;
-      svg.classList.toggle('detail', detail);
+      updateShown(view.scale());
       if (!sliding) slider.value = String(Math.round(1000 * zoomFrac(box)));
     },
     onTap: (target) => {
       if (leaving) return;
       const puzzle = target?.dataset?.puzzle || (svg.classList.contains('picking') ? linkOf.get(target?.dataset?.place) : null);
       if (puzzle && (!step || svg.classList.contains('picking'))) return select(puzzle);
-      // Tapping a group you've built zooms into it (the overworld is for
-      // looking around; place cards live in the puzzles).
-      const group = target?.dataset?.group;
-      if (group) view.flyTo(view.fit(boxOf([group]), 0.18), 650);
+      // Tapping an area you've built zooms into it, opening it into its parts
+      // (the overworld is for looking around; place cards live in the puzzles).
+      const node = target?.dataset?.node;
+      if (node && !isLeaf(node)) view.flyTo(view.fit(boxOf([node]), 0.12), 650);
     },
   });
-  view.setLabels(labelLayer, [
-    ...groups.map((id) => labelItem(id, 0)),
-    ...[...have].map((id) => labelItem(id, 1)),
-  ]);
+  view.labelFilter = (it) => shown.has(it.id);
+  view.setLabels(labelLayer, [...nodeEls.keys()].map(labelItem));
   // Your area: what you've built (plus where you're headed), roomily.
   const target = step ? (step.kind === 'drive' ? step.areas : [step.id]) : [];
-  const localBox = () => view.fit(boxOf([...groups, ...target.filter((id) => NODES[id])]), 0.35);
+  const localBox = () => view.fit(boxOf([...tops, ...target.filter((id) => NODES[id])]), 0.35);
   const zoomFrac = (box) => {
     const [f, l] = [view.full(), localBox()];
     const span = Math.log(f[2]) - Math.log(l[2]);
@@ -278,12 +293,56 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
     ]),
   );
 
+  // The stitch: the district's parts start pulled apart (each its own island),
+  // slide together, then the seams fade into the one shape, named.
+  function stitch(id) {
+    const STITCH = 1900;
+    const parts = kidsOf(id);
+    const [bx, by, bw, bh] = boxOf([id]);
+    const [cx, cy] = [bx + bw / 2, by + bh / 2];
+    const own = [...nodeEls.keys()].filter((n) => topOf.get(n) === id);
+    for (const n of own) nodeEls.get(n).style.visibility = 'hidden';
+    pinned = id; // stays whole until the camera has pulled back
+    updateShown(view.scale());
+    svg.classList.add('stitching');
+    const g = svgEl('g', { class: 'ow-stitching' });
+    const pieces = parts.map((c) => {
+      const [x, y, w, h] = boxOf([c]);
+      const [dx, dy] = [x + w / 2 - cx, y + h / 2 - cy];
+      const path = svgEl('path', { d: pathOf(c), class: 'ow-stitch-part' });
+      path.style.setProperty('--fill', colorIn(c));
+      path.style.transform = `translate(${(dx * 0.22).toFixed(1)}px, ${(dy * 0.22).toFixed(1)}px)`;
+      g.append(path);
+      return path;
+    });
+    const whole = svgEl('path', { d: pathOf(id), class: 'ow-stitch-whole' });
+    whole.style.setProperty('--fill', colorIn(id));
+    const name = svgEl('text', { x: cx, y: cy, 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'ow-stitch-name' });
+    name.textContent = labelOf(id);
+    g.append(whole, name);
+    stitchLayer.append(g);
+    sched.after(50, () => {
+      const px = view.scale();
+      name.style.fontSize = `${(22 / px).toFixed(2)}px`;
+      name.style.strokeWidth = `${(6 / px).toFixed(2)}px`;
+      g.getBoundingClientRect(); // reflow, so the slide runs
+      for (const p of pieces) p.style.transform = 'translate(0px, 0px)';
+    });
+    sched.after(950, () => g.classList.add('merged'));
+    sched.after(STITCH, () => {
+      g.remove();
+      svg.classList.remove('stitching');
+      for (const n of own) nodeEls.get(n).style.visibility = '';
+    });
+    return STITCH;
+  }
+
   // --- where the camera starts, and what it does ---
   // Resting view: your area. After your very first build, Next pulls all the
   // way out once — there's a lot of LA left — before flying on.
   const arrivingIds = (arriving || []).filter((id) => NODES[id]);
   const firstTime = groups.length === 1 && !book.get('seenWhole');
-  const rest = () => (!groups.length ? view.full() : localBox());
+  const rest = () => (!tops.length ? view.full() : localBox());
   if (!arrivingIds.length || reduceMotion()) {
     view.set(rest());
     if (onward && step) carryOn = sched.after(600, go);
@@ -292,8 +351,13 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   view.set(view.fit(boxOf(arrivingIds), 0.06));
   const pullBack = onward && firstTime ? view.full() : rest();
   if (onward && firstTime) book.set('seenWhole', true);
-  sched.after(300, () =>
+  // Just connected a district? Stitch it: its groups, apart, slide together
+  // and merge into one named shape — then the camera pulls back.
+  const stitchMs = freshId && NODES[freshId] && !isBottom(freshId) && arrivingIds.includes(freshId) ? stitch(freshId) : 0;
+  sched.after(300 + stitchMs, () =>
     view.flyTo(pullBack, onward && firstTime ? 1300 : 1000, () => {
+      pinned = null;
+      updateShown(view.scale());
       if (onward && step) carryOn = sched.after(firstTime ? 1300 : 700, go);
     }),
   );

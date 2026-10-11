@@ -146,9 +146,13 @@ straight into the next area and opens it. Touching the map on the way stops it t
 The very first time it pulls all the way out to the whole county once (there's a lot
 of LA left). Otherwise it rests **zoomed into your area**, so progress reads. The
 overworld is a camera (`mapview.js`'s `MapView`: viewBox flights, pan/pinch/wheel, names
-that appear when they fit). Zoomed out it shows the **groups** you've built in the
-colours their puzzles merge into, like Explore: chunks to tap and zoom into. Zoomed in,
-it shows their places. A **slider** on the right zooms between your area and all of LA.
+that appear when they fit). What you've built is drawn **nested, like Explore**.
+Each island (the biggest thing you've connected, like Central L.A., or a lone group)
+shows whole until it's `OPEN_PX` wide on screen. Then it opens into its parts (district
+→ groups → places), each in the colour its puzzle merged into. Tapping an area zooms
+into it. **Connecting a district stitches it** on arrival: its groups start apart, slide
+together, then merge into one named shape (`stitch`). It's pinned whole until the camera
+has pulled back. A **slider** on the right zooms between your area and all of LA.
 There are no place cards on the map. They're taught once, in the first solved puzzle (a
 finger tap plus "Tap a place to learn about it"). The next area is marked by a quiet
 grey dashed outline, not a call to action. **Transitions tie it together** (Dave): a campaign
