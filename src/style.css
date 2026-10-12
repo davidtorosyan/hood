@@ -2490,3 +2490,8 @@ body {
 .ow-map.stitching .ow-labels {
   opacity: 0;
 }
+/* Flying straight on to the next step: nothing to press, so no Next card. */
+.ow-body.carrying .ow-next,
+.ow-body.carrying .ow-more {
+  visibility: hidden;
+}

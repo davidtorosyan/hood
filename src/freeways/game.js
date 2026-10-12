@@ -78,6 +78,8 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
           el('button', { class: 'icon-btn', onClick: onBack, 'aria-label': 'Home' }, '⌂'),
           el('span', { class: 'topbar-title' }, drive ? 'Rebuild LA' : 'Freeways'),
           el('span', { class: 'fw-count' }, title ?? `${PUZZLES.filter((q) => book.isSolved(idOf(q))).length} / ${PUZZLES.length} drives`),
+          // Solve: lays every arrow (handy for testing; counts as shown).
+          run.done ? null : el('button', { class: 'jig-btn jig-topbtn jig-solve', onClick: () => solveAll() }, 'Solve'),
         ]),
         el('div', { class: 'fw-ask' }, [
           el('div', { class: 'fw-ask-line' }, ['Get from ', el('b', { class: 'fw-from' }, from), ' to ', el('b', { class: 'fw-to' }, to)]),
@@ -411,6 +413,16 @@ export function renderFreeways(app, { onBack, drive = null, onSolved, onNext, co
       layDown(pc, 160);
       const left = legs - run.placed.size;
       say1(`${shown ? 'Here’s' : '✓'} ${say(pc.ref)} ${dirName(pc.a.dir)}.${left ? ` ${left} to go.` : ''}`, shown ? '' : 'good');
+      sched.after(reduceMotion() ? 0 : 250, driveOn);
+    }
+    function solveAll() {
+      if (run.done) return;
+      for (const pc of pieces) {
+        if (run.placed.has(pc.leg)) continue;
+        run.shown++;
+        run.placed.add(pc.leg);
+        layDown(pc, 160);
+      }
       sched.after(reduceMotion() ? 0 : 250, driveOn);
     }
     function showOne() {

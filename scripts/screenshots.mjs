@@ -416,6 +416,7 @@ if (!/Tap a place/.test(await page.locator('.jig-tip').textContent())) fail('cam
 await page.getByRole('button', { name: /^Next/ }).last().click();
 await page.waitForTimeout(1900);
 await shot('campaign-map-whole');
+if (await page.locator('.ow-next').isVisible()) fail('campaign: flying straight on, the Next card should be hidden');
 await page.waitForTimeout(2600);
 await shot('campaign-next-puzzle');
 await waitForPrompt();
@@ -434,6 +435,7 @@ await page.waitForTimeout(900);
 await shot('campaign-drive-shrinking');
 await page.waitForTimeout(1600);
 await shot('campaign-drive-coach');
+if (!(await page.locator('.fw-screen .jig-solve').count())) fail('campaign: a drive should have a Solve button');
 {
   const refs = await page.$$eval('.fw-arrow-piece', (gs) => gs.map((g) => g.dataset.ref));
   if (refs.length !== 1) fail(`campaign: the first drive should have one arrow, got ${refs}`);

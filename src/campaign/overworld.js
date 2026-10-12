@@ -191,9 +191,12 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
   const wrap = el('div', { class: 'ow-map-wrap big' }, [svg, tops.length ? slider : null]);
   let leaving = false;
   let carryOn = null; // the pending "fly on to the next step" (cancelled by a touch)
+  // Carrying straight on, there's nothing to press, so no Next card — it
+  // shows only if you stop the flight (by touching the map) or come here yourself.
   const stay = () => {
     if (carryOn != null) sched.cancel(carryOn);
     carryOn = null;
+    if (!leaving) body.classList.remove('carrying');
   };
   const view = new MapView(svg, {
     W,
@@ -273,6 +276,15 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
               : el('span', { class: 'ow-hint' }, 'Finish a district and you can connect its pieces into one.'),
           ]);
 
+  const body = el('div', { class: `screen-body ow-body${step ? ' journey' : ''}${onward && step ? ' carrying' : ''}` }, [
+    intro,
+    wrap,
+    nextCard,
+    finished() ? null
+      : step ? el('details', { class: 'ow-more', onToggle: (e) => svg.classList.toggle('picking', e.target.open) }, [el('summary', {}, 'Or build somewhere else'), list])
+      : el('h2', { class: 'pg-h' }, started ? 'Up next' : 'Where to start?'),
+    finished() || step ? null : list,
+  ]);
   clear(app);
   app.append(
     el('div', { class: 'screen' }, [
@@ -281,15 +293,7 @@ export function renderOverworld(app, { onBack, onPlay, onStep, onExplore, arrivi
         el('span', { class: 'topbar-title' }, 'Rebuild LA'),
         started ? el('span', { class: 'ow-count' }, `${nBuilt} / ${total} built`) : null,
       ]),
-      el('div', { class: `screen-body ow-body${step ? ' journey' : ''}` }, [
-        intro,
-        wrap,
-        nextCard,
-        finished() ? null
-          : step ? el('details', { class: 'ow-more', onToggle: (e) => svg.classList.toggle('picking', e.target.open) }, [el('summary', {}, 'Or build somewhere else'), list])
-          : el('h2', { class: 'pg-h' }, started ? 'Up next' : 'Where to start?'),
-        finished() || step ? null : list,
-      ]),
+      body,
     ]),
   );
 
